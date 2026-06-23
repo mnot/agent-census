@@ -7,21 +7,22 @@ from datetime import datetime
 
 from ..model import ClientProfile, Kind
 
-# Order kinds appear in reports; UNKNOWN always last.
+# Order kinds appear in reports: a rough good -> bad gradient, with the
+# can't-say buckets (singleton, unknown) at the very end.
 KIND_ORDER: tuple[Kind, ...] = (
     Kind.BROWSER,
-    Kind.CRAWLER,
-    Kind.SEARCH_ENGINE,
+    Kind.FEED_READER,
     Kind.SOCIAL_PREVIEW,
+    Kind.SEARCH_ENGINE,
     Kind.AI_CRAWLER,
     Kind.SEO_MARKETING,
+    Kind.MONITOR,
+    Kind.CRAWLER,
     Kind.SCRAPER,
-    Kind.VULN_SCANNER,
-    Kind.IMPERSONATOR,
     Kind.SPOOFED_BROWSER,
     Kind.SPAM_BOT,
-    Kind.FEED_READER,
-    Kind.MONITOR,
+    Kind.VULN_SCANNER,
+    Kind.IMPERSONATOR,
     Kind.SINGLETON,
     Kind.UNKNOWN,
 )

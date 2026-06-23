@@ -21,6 +21,7 @@ from .format import (
     fmt_ts,
     human_bytes,
     human_duration,
+    kind_label,
     truncate,
 )
 from .inspect import ROLLUP_MIN_CLIENTS
@@ -193,7 +194,7 @@ def _page(title: str, content: str) -> str:
 
 def _kind_badge(kind: Kind) -> str:
     color = _KIND_COLORS.get(kind, "#6b7280")
-    return f'<span class="badge" style="background:{color}">{_esc(kind.value)}</span>'
+    return f'<span class="badge" style="background:{color}">{_esc(kind_label(kind))}</span>'
 
 
 def _tags_html(tags: frozenset[str]) -> str:

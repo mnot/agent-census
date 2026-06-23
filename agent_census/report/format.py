@@ -33,6 +33,11 @@ def client_label(profile: ClientProfile) -> str:
     return f"{prefix} | {ua if ua is not None else '-'}"
 
 
+def kind_label(kind: Kind) -> str:
+    """Human-facing category name: the enum slug with underscores shown as spaces."""
+    return kind.value.replace("_", " ")
+
+
 def truncate(text: str, limit: int = 80) -> str:
     """Shorten ``text`` to ``limit`` chars with an ellipsis (full detail is in inspect)."""
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"

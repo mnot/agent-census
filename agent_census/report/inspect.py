@@ -16,6 +16,7 @@ from .format import (
     fmt_ts,
     human_bytes,
     human_duration,
+    kind_label,
     md_escape,
     truncate,
 )
@@ -32,7 +33,8 @@ def select_profiles(
     """Pick the profiles to inspect by client substring and/or kind."""
     profiles = list(result.profiles)
     if kind is not None:
-        profiles = [p for p in profiles if p.classification.primary.value == kind]
+        want = kind.strip().lower().replace(" ", "_").replace("-", "_")
+        profiles = [p for p in profiles if p.classification.primary.value == want]
     if client is not None:
         needle = client.lower()
         profiles = [
@@ -47,7 +49,7 @@ def _identity_block(profile: ClientProfile) -> list[str]:
     return [
         f"## {md_escape(client_label(profile))}",
         "",
-        f"- **Classified:** `{cls.primary.value}` (confidence {cls.confidence:.0%})",
+        f"- **Classified:** `{kind_label(cls.primary)}` (confidence {cls.confidence:.0%})",
         f"- **Tags:** {', '.join(sorted(cls.tags)) or '–'}",
         f"- **IP:** {profile.client_id.ip}"
         + (f" ({len(profile.member_ips)} verified IPs)" if profile.member_ips else ""),
@@ -71,7 +73,8 @@ def _rationale_block(profile: ClientProfile) -> list[str]:
     for signal in signals:
         marker = "→" if signal.kind is profile.classification.primary else " "
         lines.append(
-            f"- {marker} **{signal.kind.value}** ({signal.confidence:.0%}) — {signal.classifier}"
+            f"- {marker} **{kind_label(signal.kind)}** ({signal.confidence:.0%}) "
+            f"— {signal.classifier}"
         )
         for item in signal.evidence:
             lines.append(f"    - {md_escape(item)}")
@@ -157,7 +160,8 @@ def _rollup_block(profiles: list[ClientProfile]) -> list[str]:
         ua = elide_ua(profile.features.user_agent, is_browser=cls.primary is Kind.BROWSER) or "–"
         tags = ", ".join(sorted(cls.tags)) or "–"
         lines.append(
-            f"| {md_escape(truncate(ua, 70))} | {cls.primary.value} | {cls.confidence:.0%} | "
+            f"| {md_escape(truncate(ua, 70))} | {kind_label(cls.primary)} | "
+            f"{cls.confidence:.0%} | "
             f"{profile.features.request_count:,} | {human_bytes(profile.features.total_bytes)} | "
             f"{tags} |"
         )

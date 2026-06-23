@@ -76,7 +76,20 @@ def test_report_renders_markdown() -> None:
     text = render_report(_run(), source="sample")
     assert "# Agent Census" in text
     assert "## Summary by kind" in text
-    assert "vuln_scanner" in text
+    assert "vuln scanner" in text  # category names display without underscores
+
+
+def test_category_names_display_without_underscores() -> None:
+    result = _run()
+    text = render_report(result, source="x")
+    assert "## vuln scanner" in text  # spaced label in the section header
+    assert "vuln_scanner" not in text  # no slugs in the human-facing report
+
+
+def test_kind_input_accepts_any_separator() -> None:
+    result = _run()
+    for spelling in ("vuln scanner", "vuln-scanner", "vuln_scanner"):
+        assert select_profiles(result, client=None, kind=spelling), spelling
 
 
 def test_inspect_renders_rationale() -> None:

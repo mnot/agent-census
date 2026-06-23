@@ -5,7 +5,7 @@ from __future__ import annotations
 from ..model import ClientProfile, Kind
 from ..pipeline import AnalysisResult
 from .aggregate import KIND_BLURB, KIND_ORDER, by_kind, robots_counts, time_range
-from .format import client_label, fmt_ts, human_bytes, md_escape, truncate
+from .format import client_label, fmt_ts, human_bytes, kind_label, md_escape, truncate
 
 
 def _robots_summary(group: list[ClientProfile]) -> str:
@@ -64,7 +64,8 @@ def _summary_table(result: AnalysisResult, groups: dict[Kind, list[ClientProfile
         robots = _robots_summary(group)
         any_robots = any_robots or robots != "–"
         lines.append(
-            f"| {kind.value} | {clients:,} | {requests:,} | {requests / total_requests:.0%} | "
+            f"| {kind_label(kind)} | {clients:,} | {requests:,} | "
+            f"{requests / total_requests:.0%} | "
             f"{avg:,.0f} | {human_bytes(byte_total)} | {byte_total / total_bytes:.0%} | "
             f"{robots} |"
         )
@@ -87,7 +88,7 @@ def _kind_section(kind: Kind, group: list[ClientProfile], top: int) -> list[str]
     requests = sum(p.features.request_count for p in group)
     byte_total = sum(p.features.total_bytes for p in group)
     lines = [
-        f"## {kind.value} ({len(group):,} clients, {requests:,} requests)",
+        f"## {kind_label(kind)} ({len(group):,} clients, {requests:,} requests)",
         "",
         KIND_BLURB.get(kind, ""),
         "",

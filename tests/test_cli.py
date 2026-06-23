@@ -11,11 +11,13 @@ from agent_census.cli import main
 DATA = Path(__file__).parent / "data"
 LOG = str(DATA / "sample_access.log")
 ROBOTS = str(DATA / "robots.txt")
+# Verification is on by default and makes network calls; tests pass this to stay offline.
+OFFLINE = "--no-verify-bots"
 
 
 def test_analyze_writes_output(tmp_path: Path) -> None:
     out = tmp_path / "report.md"
-    rc = main(["analyze", LOG, "-o", str(out)])
+    rc = main(["analyze", LOG, OFFLINE, "-o", str(out)])
     assert rc == 0
     assert "# Client Census" in out.read_text(encoding="utf-8")
 
@@ -30,6 +32,7 @@ def test_options_intermixed_with_logfiles(tmp_path: Path) -> None:
             "--log-format-preset",
             "combined",
             LOG,
+            OFFLINE,
             "-o",
             str(out),
         ]
@@ -41,14 +44,16 @@ def test_options_intermixed_with_logfiles(tmp_path: Path) -> None:
 
 def test_html_flag(tmp_path: Path) -> None:
     out = tmp_path / "r.html"
-    rc = main(["analyze", LOG, "--html", "-o", str(out)])
+    rc = main(["analyze", LOG, OFFLINE, "--html", "-o", str(out)])
     assert rc == 0
     assert out.read_text(encoding="utf-8").startswith("<!doctype html>")
 
 
 def test_inspect_by_kind(tmp_path: Path) -> None:
     out = tmp_path / "i.md"
-    rc = main(["inspect", LOG, "--robots-file", ROBOTS, "--kind", "vuln_scanner", "-o", str(out)])
+    rc = main(
+        ["inspect", LOG, OFFLINE, "--robots-file", ROBOTS, "--kind", "vuln_scanner", "-o", str(out)]
+    )
     assert rc == 0
     text = out.read_text(encoding="utf-8")
     assert "Why this classification" in text
@@ -71,6 +76,24 @@ def test_keyboard_interrupt_returns_130(
     monkeypatch.setattr("agent_census.cli.pipeline.analyze", boom)
     assert main(["analyze", LOG]) == 130
     assert "interrupted" in capsys.readouterr().err
+
+
+def test_verify_bots_on_by_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from agent_census.pipeline import AnalysisResult, IdentityStats, SkipStats
+
+    seen: dict[str, object] = {}
+
+    def fake_analyze(*_args: object, **kwargs: object) -> AnalysisResult:
+        seen["verifier"] = kwargs.get("verifier")
+        return AnalysisResult((), SkipStats(0, 0, 0, {}), "ip_ua", IdentityStats(0, 0, 0))
+
+    monkeypatch.setattr("agent_census.cli.pipeline.analyze", fake_analyze)
+
+    main(["analyze", LOG, "-o", str(tmp_path / "a.md")])
+    assert seen["verifier"] is not None  # default: verification on
+
+    main(["analyze", LOG, "--no-verify-bots", "-o", str(tmp_path / "b.md")])
+    assert seen["verifier"] is None  # opted out
 
 
 def test_no_command_prints_help_returns_0() -> None:

@@ -41,9 +41,12 @@ examples:
   agent-census analyze access.log \\
       --log-format '%h %l %u %t "%r" %>s %b "%{Referer}i" "%{User-Agent}i"'
 
-  # HTML report, with robots.txt compliance and DNS-verified crawlers
+  # HTML report with robots.txt compliance (crawler verification is on by default)
   agent-census analyze access.log* --html -o census.html \\
-      --robots-file /srv/http/site/robots.txt --verify-bots
+      --robots-file /srv/http/site/robots.txt
+
+  # skip the network lookups crawler verification does
+  agent-census analyze access.log --no-verify-bots
 
 Options may appear before, after, or between the log files.
 """
@@ -104,8 +107,10 @@ def _add_shared(parser: argparse.ArgumentParser) -> None:
     )
     robots_group.add_argument(
         "--verify-bots",
-        action="store_true",
-        help="opt in to reverse/forward DNS verification of declared crawlers",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="DNS / IP-range verification of declared crawlers "
+        "(default: on; --no-verify-bots skips its network lookups)",
     )
 
     out_group = parser.add_argument_group("output")
@@ -137,7 +142,8 @@ agent-census: characterize the clients hitting a web site.
 
 Reads one or more Apache access logs, identifies each distinct client, and works
 out what it is from its request patterns -- URLs, status codes, and timing. It
-also checks robots.txt compliance and can DNS-verify declared crawlers.
+also checks robots.txt compliance and verifies declared crawlers by DNS / IP
+range (on by default; --no-verify-bots to skip the network lookups).
 
 Client kinds:
   browser       crawler        search_engine  social_preview  ai_crawler
@@ -151,7 +157,7 @@ _TOP_EPILOG = """\
 quick start:
   agent-census analyze /var/log/apache2/access.log
   agent-census analyze access.log* --html -o census.html
-  agent-census analyze access.log --robots-file ./robots.txt --verify-bots
+  agent-census analyze access.log --robots-file ./robots.txt
   agent-census inspect access.log --kind vuln_scanner
 
 Run 'agent-census analyze -h' or 'agent-census inspect -h' for every option,

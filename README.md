@@ -74,15 +74,20 @@ agent-census analyze access.log --host example.com --fetch-robots
 ### Verifying declared crawlers
 
 A client can claim to be Googlebot in its User-Agent for free. The real check is
-DNS: reverse-resolve the IP and forward-confirm it. That makes network calls, so
-it's opt-in:
+the client's IP: membership in a crawler's published address ranges, or
+reverse/forward DNS for crawlers that rely on it. This runs **by default** (it
+makes network calls — DNS lookups and the occasional ranges fetch); turn it off
+for a fully offline, faster run:
 
 ```
-agent-census analyze access.log --verify-bots
+agent-census analyze access.log --no-verify-bots
 ```
 
-Without it, a "Googlebot" that probes for `/.env` still gets flagged
-`impersonator` from its behaviour alone.
+A confirmed crawler's many IPs collapse into one entry keyed by its domain.
+A client claiming a crawler whose IP is out of the published ranges (or whose
+reverse DNS doesn't check out) is classed `impersonator`. Even with verification
+off, a "Googlebot" that probes for `/.env` is still flagged `impersonator` from
+its behaviour alone.
 
 ### Inspecting a client
 

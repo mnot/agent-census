@@ -21,7 +21,7 @@ from . import uas
 from .classify import DEFAULT_UNKNOWN_THRESHOLD, classify_client
 from .features import DisallowedCheck, FeatureAccumulator
 from .identity import ClientKeyStrategy
-from .model import BotVerification, ClientId, ClientProfile, LogEntry
+from .model import BotVerification, ClientId, ClientProfile, LogEntry, VerificationStatus
 from .parsing.base import LogParser
 from .robots import RobotsRules, report_from_signals
 
@@ -96,6 +96,53 @@ def _identity_stats(
     return IdentityStats(len(accumulators), singletons, multi)
 
 
+def _matched_domain(verification: BotVerification) -> str:
+    host = (verification.resolved_host or "").lower().rstrip(".")
+    for domain in verification.expected_domains:
+        if host == domain or host.endswith("." + domain):
+            return domain
+    if verification.expected_domains:
+        return verification.expected_domains[0]
+    return verification.resolved_host or "verified"
+
+
+def _merge_verified(
+    accumulators: dict[ClientId, FeatureAccumulator],
+    tokens: dict[ClientId, str | None],
+    verifications: dict[ClientId, BotVerification],
+) -> dict[ClientId, tuple[str, ...]]:
+    """Collapse all IPs of each DNS-verified bot into one entry keyed by its domain.
+
+    Returns the IPs that went into each merged entry. Mutates ``accumulators``,
+    ``tokens`` and ``verifications`` in place: the per-IP keys are replaced by a
+    single ``ClientId`` whose ``ip`` is the verified reverse-DNS domain.
+    """
+    groups: dict[tuple[str, str | None], list[ClientId]] = defaultdict(list)
+    for key, verification in verifications.items():
+        if verification.status is VerificationStatus.VERIFIED:
+            groups[(_matched_domain(verification), tokens.get(key))].append(key)
+
+    member_ips: dict[ClientId, tuple[str, ...]] = {}
+    for (domain, token), keys in groups.items():
+        merged = FeatureAccumulator()
+        ips: list[str] = []
+        for key in keys:
+            merged.merge(accumulators.pop(key))
+            ips.append(key.ip)
+            verifications.pop(key, None)
+            tokens.pop(key, None)
+        new_id = ClientId(ip=domain, user_agent=merged.user_agent)
+        accumulators[new_id] = merged
+        tokens[new_id] = token
+        verifications[new_id] = BotVerification(
+            VerificationStatus.VERIFIED,
+            resolved_host=domain,
+            evidence=(f"{len(ips)} IP(s) verified as {domain}",),
+        )
+        member_ips[new_id] = tuple(ips)
+    return member_ips
+
+
 def analyze(
     logs: Path | Sequence[Path],
     parser: LogParser,
@@ -145,6 +192,7 @@ def analyze(
 
     # DNS-verify declared crawlers as one deduped, concurrent batch.
     verifications: dict[ClientId, BotVerification] = {}
+    member_ips: dict[ClientId, tuple[str, ...]] = {}
     if verifier is not None:
         candidates = [
             (key, acc.user_agent)
@@ -152,6 +200,8 @@ def analyze(
             if verifier.needs(acc.user_agent)
         ]
         verifications = verifier.verify_all(candidates)
+        # Collapse each verified bot's many IPs into one entry keyed by its domain.
+        member_ips = _merge_verified(accumulators, tokens, verifications)
 
     profiles: list[ClientProfile] = []
     while accumulators:
@@ -185,6 +235,7 @@ def analyze(
                 classification=classification,
                 compliance=compliance,
                 verification=verification,
+                member_ips=member_ips.get(key, ()),
             )
         )
 
@@ -201,23 +252,25 @@ def collect_entries(
     logs: Path | Sequence[Path],
     parser: LogParser,
     strategy: ClientKeyStrategy,
-    keys: set[ClientId],
+    profiles: Sequence[ClientProfile],
 ) -> dict[ClientId, tuple[LogEntry, ...]]:
-    """Re-read the logs, keeping raw entries only for the given client keys.
+    """Re-read the logs, keeping raw entries only for the given client profiles.
 
     Used by ``inspect`` after analysis has identified which clients to show, so
-    only the selected clients' requests are held in memory.
+    only the selected clients' requests are held in memory. A merged verified-bot
+    profile is matched by its member IPs rather than by the identity key.
     """
-    if not keys:
+    if not profiles:
         return {}
     paths = [logs] if isinstance(logs, Path) else list(logs)
-    collected: dict[ClientId, list[LogEntry]] = {key: [] for key in keys}
+    by_key = {p.client_id: p for p in profiles if not p.member_ips}
+    by_ip = {ip: p for p in profiles for ip in p.member_ips}
+    buckets: dict[ClientId, list[LogEntry]] = {p.client_id: [] for p in profiles}
     for outcome in parser.parse_lines(read_many(paths)):
         entry = outcome.entry
         if entry is None:
             continue
-        key = strategy.key(entry)
-        bucket = collected.get(key)
-        if bucket is not None:
-            bucket.append(entry)
-    return {key: tuple(entries) for key, entries in collected.items()}
+        profile = by_key.get(strategy.key(entry)) or by_ip.get(entry.remote_host)
+        if profile is not None:
+            buckets[profile.client_id].append(entry)
+    return {cid: tuple(entries) for cid, entries in buckets.items()}

@@ -65,6 +65,40 @@ def test_verify_all_empty() -> None:
     assert BotVerifier().verify_all([]) == {}
 
 
+def test_verified_bot_ips_merge_into_one_entry(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pathlib import Path
+
+    from agent_census import identity, pipeline
+    from agent_census.model import Kind
+    from agent_census.parsing import resolve
+    from agent_census.parsing.apache import PRESETS
+
+    monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: "crawl.googlebot.com")
+    monkeypatch.setattr(netverify, "_forward_ips", lambda host: {f"66.249.66.{i}" for i in range(5)})
+
+    lines = [
+        f'66.249.66.{i} - - [10/Oct/2023:13:0{i}:00 -0700] "GET /p{i} HTTP/1.1" 200 100 "-" '
+        '"Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"'
+        for i in range(4)
+    ]
+    tmp = Path("/tmp/agent_census_merge.log")
+    tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    try:
+        parser = resolve("apache", {"format": PRESETS["combined"]})
+        result = pipeline.analyze(
+            tmp, parser, identity.get_strategy("ip_ua"), verifier=BotVerifier()
+        )
+    finally:
+        tmp.unlink()
+
+    bots = [p for p in result.profiles if p.classification.primary is Kind.SEARCH_ENGINE]
+    assert len(bots) == 1  # four IPs collapsed into one entry
+    bot = bots[0]
+    assert bot.client_id.ip == "googlebot.com"  # keyed by verified domain, not an IP
+    assert bot.features.request_count == 4  # requests summed across the IPs
+    assert len(bot.member_ips) == 4
+
+
 def test_reverse_dns_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(netverify, "_DNS_TIMEOUT", 0.1)
     monkeypatch.setattr(netverify.socket, "gethostbyaddr", lambda ip: time.sleep(5))

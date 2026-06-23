@@ -35,7 +35,8 @@ def _identity_block(profile: ClientProfile) -> list[str]:
         "",
         f"- **Classified:** `{cls.primary.value}` (confidence {cls.confidence:.2f})",
         f"- **Tags:** {', '.join(sorted(cls.tags)) or '–'}",
-        f"- **IP:** {profile.client_id.ip}",
+        f"- **IP:** {profile.client_id.ip}"
+        + (f" ({len(profile.member_ips)} verified IPs)" if profile.member_ips else ""),
         f"- **User-Agent:** {md_escape(feats.user_agent or '–')}",
         f"- **Requests:** {feats.request_count:,} · "
         f"**Bandwidth:** {human_bytes(feats.total_bytes)} · "

@@ -261,3 +261,5 @@ class ClientProfile:
     classification: Classification
     compliance: ComplianceReport | None = None
     verification: BotVerification | None = None
+    # For a merged verified-bot entry: the individual IPs collapsed into it.
+    member_ips: tuple[str, ...] = ()

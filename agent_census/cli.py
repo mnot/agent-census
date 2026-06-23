@@ -260,8 +260,7 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
 def _inspect_text(ctx: _RunContext, args: argparse.Namespace) -> str:
     """Render inspect output, collecting raw entries only for the matched clients."""
     selected = select_profiles(ctx.result, client=args.client, kind=args.kind)
-    keys = {profile.client_id for profile in selected}
-    entries = collect_entries(args.logfiles, ctx.parser, ctx.strategy, keys)
+    entries = collect_entries(args.logfiles, ctx.parser, ctx.strategy, selected)
     selected = [dataclasses.replace(p, entries=entries.get(p.client_id, ())) for p in selected]
     if args.html:
         return render_inspect_html(selected, limit=args.limit, full=args.full)

@@ -93,7 +93,7 @@ def test_collect_entries_only_for_requested_keys() -> None:
     parser = resolve("apache", {"format": PRESETS["combined"]})
     strategy = identity.get_strategy("ip_ua")
     collected = pipeline.collect_entries(
-        DATA / "sample_access.log", parser, strategy, {scanner.client_id}
+        DATA / "sample_access.log", parser, strategy, [scanner]
     )
     assert set(collected) == {scanner.client_id}
     assert len(collected[scanner.client_id]) == scanner.features.request_count

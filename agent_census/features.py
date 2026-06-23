@@ -17,6 +17,7 @@ from array import array
 from collections import Counter, deque
 from collections.abc import Callable, Sequence
 from datetime import datetime
+from typing import TypeVar
 
 from . import uas
 from .dataload import load_list
@@ -39,6 +40,8 @@ _VULN_PATTERNS = tuple(p.lower() for p in load_list("vuln_paths.txt"))
 
 # Predicate the robots stage injects to flag a path the client may not fetch.
 DisallowedCheck = Callable[[str], bool]
+
+_K = TypeVar("_K")
 
 
 def _extension(path: str) -> str:
@@ -119,6 +122,35 @@ def _peak_rpm(times: Sequence[float]) -> int:
         return 0
     buckets: Counter[int] = Counter(int(t // 60) for t in times)
     return max(buckets.values())
+
+
+def _merge_counts(
+    left: dict[_K, int] | None, right: dict[_K, int] | None
+) -> dict[_K, int] | None:
+    if right is None:
+        return left
+    merged = dict(left) if left is not None else {}
+    for key, value in right.items():
+        merged[key] = merged.get(key, 0) + value
+    return merged
+
+
+def _merge_sets(left: set[str] | None, right: set[str] | None) -> set[str] | None:
+    if right is None:
+        return left
+    return right if left is None else (left | right)
+
+
+def _merge_sample(left: list[str] | None, right: list[str] | None) -> list[str] | None:
+    if not right:
+        return left
+    merged = list(left) if left else []
+    for item in right:
+        if len(merged) >= 5:
+            break
+        if item not in merged:
+            merged.append(item)
+    return merged
 
 
 class FeatureAccumulator:
@@ -279,6 +311,50 @@ class FeatureAccumulator:
         elif static and ts is not None and pending:
             self.pages_satisfied += len(pending)
             pending.clear()
+
+    def merge(self, other: FeatureAccumulator) -> None:
+        """Fold ``other`` into this accumulator (used to collapse a bot's IPs).
+
+        Counts and unions combine exactly; timing quantiles are recomputed over
+        the concatenated timestamps; order-dependent counters are summed (each
+        member was a separate connection, so summing their tallies is sound).
+        """
+        self.count += other.count
+        self.total_bytes += other.total_bytes
+        self.count_404 += other.count_404
+        self.vuln_hits += other.vuln_hits
+        self.traversal_hits += other.traversal_hits
+        self.static_count += other.static_count
+        self.breadth_changes += other.breadth_changes
+        self.breadth_pairs += other.breadth_pairs
+        self.ref_total += other.ref_total
+        self.ref_onsite += other.ref_onsite
+        self.pages_total += other.pages_total
+        self.pages_satisfied += other.pages_satisfied
+        self.feed_requests += other.feed_requests
+        self.disallowed_hits += other.disallowed_hits
+        self.fetched_robots = self.fetched_robots or other.fetched_robots
+        self.robots_fetched_first = self.robots_fetched_first or other.robots_fetched_first
+        if self.user_agent is None:
+            self.user_agent = other.user_agent
+        if other.first_seen is not None and (
+            self.first_seen is None or other.first_seen < self.first_seen
+        ):
+            self.first_seen = other.first_seen
+        if other.last_seen is not None and (
+            self.last_seen is None or other.last_seen > self.last_seen
+        ):
+            self.last_seen = other.last_seen
+        self.status_counts = _merge_counts(self.status_counts, other.status_counts)
+        self.methods = _merge_counts(self.methods, other.methods)
+        self.paths_404 = _merge_sets(self.paths_404, other.paths_404)
+        self.distinct_paths = _merge_sets(self.distinct_paths, other.distinct_paths)
+        self.vuln_sample = _merge_sample(self.vuln_sample, other.vuln_sample)
+        self.disallowed_sample = _merge_sample(self.disallowed_sample, other.disallowed_sample)
+        if other._times is not None:  # pylint: disable=protected-access
+            if self._times is None:
+                self._times = array("d")
+            self._times.extend(other._times)  # pylint: disable=protected-access
 
     def finalize(self, *, ua_count_for_ip: int = 1) -> ClientFeatures:
         if self.count == 0:

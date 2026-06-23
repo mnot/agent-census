@@ -34,6 +34,7 @@ domains = ["search.msn.com"]
 ranges_url = "https://www.bing.com/toolbox/bingbot.json"
 
 [[agent]]
+# http://help.yahoo.com/help/us/ysearch/slurp
 ua_substring = "Slurp"
 domains = ["crawl.yahoo.net"]
 

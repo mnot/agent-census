@@ -8,7 +8,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from . import identity, pipeline
+from . import __version__, identity, pipeline
 from .classify import DEFAULT_UNKNOWN_THRESHOLD
 from .errors import AgentCensusError
 from .netverify import make_verify_fn
@@ -121,13 +121,41 @@ def _add_shared(parser: argparse.ArgumentParser) -> None:
     )
 
 
+_TOP_DESCRIPTION = """\
+agent-census: characterize the clients hitting a web site.
+
+Reads one or more Apache access logs, identifies each distinct client, and works
+out what it is from its request patterns -- URLs, status codes, and timing. It
+also checks robots.txt compliance and can DNS-verify declared crawlers.
+
+Client kinds:
+  browser       crawler       good_bot      ai_crawler    scraper
+  vuln_scanner  spam_bot      feed_reader   monitor       unknown
+
+Output is Markdown (default) or a self-contained HTML page.
+"""
+
+_TOP_EPILOG = """\
+quick start:
+  agent-census analyze /var/log/apache2/access.log
+  agent-census analyze access.log* --html -o census.html
+  agent-census analyze access.log --robots-file ./robots.txt --verify-bots
+  agent-census inspect access.log --kind vuln_scanner
+
+Run 'agent-census analyze -h' or 'agent-census inspect -h' for every option,
+the supported log-format directives, and more examples.
+"""
+
+
 def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.ArgumentParser]]:
     parser = argparse.ArgumentParser(
         prog="agent-census",
-        description="Characterize the clients hitting a web site from its access log.",
-        epilog="Run 'agent-census <command> -h' for command-specific help and examples.",
+        description=_TOP_DESCRIPTION,
+        epilog=_TOP_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    sub = parser.add_subparsers(dest="command", metavar="{analyze,inspect}")
+    parser.add_argument("-V", "--version", action="version", version=f"%(prog)s {__version__}")
+    sub = parser.add_subparsers(dest="command", metavar="<command>")
 
     analyze = sub.add_parser(
         "analyze",

@@ -145,12 +145,42 @@ def parse_text(text: str) -> tuple[str, ...]:
 
 
 def parse_csv(text: str) -> tuple[str, ...]:
-    """First column of each row is the CIDR (e.g. DigitalOcean's geo CSV)."""
+    """First column of each row is the CIDR (e.g. DigitalOcean / Linode geofeeds)."""
     out: list[str] = []
     for raw in text.splitlines():
         cell = raw.split(",", 1)[0].strip()
-        if "/" in cell:  # skip header rows / stray lines without a prefix
+        if "/" in cell:  # skip header / comment rows without a prefix
             out.append(cell)
+    return tuple(out)
+
+
+def parse_subnets(text: str) -> tuple[str, ...]:
+    """Vultr geofeed JSON schema: ``{"subnets": [{"ip_prefix": "..."}]}``."""
+    try:
+        data = json.loads(text)
+    except (ValueError, TypeError):
+        return ()
+    subnets = data.get("subnets", []) if isinstance(data, dict) else []
+    out: list[str] = []
+    for subnet in subnets:
+        if isinstance(subnet, dict) and subnet.get("ip_prefix"):
+            out.append(subnet["ip_prefix"])
+    return tuple(out)
+
+
+def parse_oracle(text: str) -> tuple[str, ...]:
+    """Oracle Cloud schema: ``{"regions": [{"cidrs": [{"cidr": "..."}]}]}``."""
+    try:
+        data = json.loads(text)
+    except (ValueError, TypeError):
+        return ()
+    regions = data.get("regions", []) if isinstance(data, dict) else []
+    out: list[str] = []
+    for region in regions:
+        cidrs = region.get("cidrs", []) if isinstance(region, dict) else []
+        for entry in cidrs:
+            if isinstance(entry, dict) and entry.get("cidr"):
+                out.append(entry["cidr"])
     return tuple(out)
 
 
@@ -160,6 +190,8 @@ _PARSERS = {
     "azure": parse_azure,
     "text": parse_text,
     "csv": parse_csv,
+    "subnets": parse_subnets,
+    "oracle": parse_oracle,
 }
 
 

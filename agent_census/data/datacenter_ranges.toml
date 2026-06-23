@@ -7,9 +7,9 @@
 # Each [[source]] is one provider. `ranges` are inline CIDRs, always used and
 # requiring no network. `ranges_url` points at a provider's published list and
 # is fetched (and cached for a week) ONLY when `--fetch-ranges` is passed;
-# `format` says how to parse it (prefixes | aws | azure | text | csv -- see
-# iprange.extract_cidrs). A source may carry both: the inline `ranges` act as an
-# offline fallback for when the URL can't be fetched.
+# `format` says how to parse it (prefixes | aws | azure | text | csv | subnets |
+# oracle -- see iprange.extract_cidrs). A source may carry both: the inline
+# `ranges` act as an offline fallback for when the URL can't be fetched.
 
 # Hand-maintained inline ranges (offline default). Non-exhaustive; extend freely.
 [[source]]
@@ -53,6 +53,21 @@ format = "text"
 name = "DigitalOcean"
 ranges_url = "https://www.digitalocean.com/geo/google.csv"
 format = "csv"
+
+[[source]]
+name = "Linode"
+ranges_url = "https://geoip.linode.com"
+format = "csv"  # RFC 8805 geofeed; first column is the prefix
+
+[[source]]
+name = "Vultr"
+ranges_url = "https://geofeed.constant.com/?json"
+format = "subnets"
+
+[[source]]
+name = "Oracle Cloud"
+ranges_url = "https://docs.oracle.com/iaas/tools/public_ip_ranges.json"
+format = "oracle"
 
 # Microsoft Azure publishes its ranges as a weekly "Service Tags" download whose
 # URL embeds a rotating date, so there is no stable URL to pin here; the inline

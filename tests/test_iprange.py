@@ -33,6 +33,19 @@ def test_parse_csv_first_column() -> None:
     assert extract_cidrs(text, "csv") == ("1.2.3.0/24", "5.6.7.0/24")
 
 
+def test_parse_subnets_vultr_schema() -> None:
+    text = '{"subnets": [{"ip_prefix": "45.32.0.0/21"}, {"ip_prefix": "43.224.32.0/22"}]}'
+    assert extract_cidrs(text, "subnets") == ("45.32.0.0/21", "43.224.32.0/22")
+
+
+def test_parse_oracle_schema() -> None:
+    text = (
+        '{"regions": [{"region": "iad", "cidrs": ['
+        '{"cidr": "40.233.0.0/19", "tags": ["OCI"]}, {"cidr": "139.177.96.0/21"}]}]}'
+    )
+    assert extract_cidrs(text, "oracle") == ("40.233.0.0/19", "139.177.96.0/21")
+
+
 def test_unknown_format_falls_back_to_prefixes() -> None:
     text = '{"prefixes": [{"ipv4Prefix": "9.9.9.0/24"}]}'
     assert extract_cidrs(text, "bogus") == ("9.9.9.0/24",)

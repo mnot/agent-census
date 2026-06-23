@@ -9,8 +9,8 @@
 # is fetched (and cached for a week) by default; pass `--no-fetch-ranges` to stay
 # offline on the inline ranges alone.
 # `format` says how to parse it (prefixes | aws | azure | text | csv | subnets |
-# oracle -- see iprange.extract_cidrs). A source may carry both: the inline
-# `ranges` act as an offline fallback for when the URL can't be fetched.
+# oracle | ripestat -- see iprange.extract_cidrs). A source may carry both: the
+# inline `ranges` act as an offline fallback for when the URL can't be fetched.
 
 # Hand-maintained inline ranges (offline default). Non-exhaustive; extend freely.
 [[source]]
@@ -85,6 +85,13 @@ format = "oracle"
 [[source]]
 name = "Yandex Cloud"
 ranges_url = "https://tech.cdn.yandex.net/prefixes/yc.json"
+
+# Contabo (AS51167) -- https://ipinfo.io/AS51167 . No machine-readable feed at
+# ipinfo; this pulls the same announced prefixes from RIPEstat (auto-updating).
+[[source]]
+name = "Contabo"
+ranges_url = "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS51167"
+format = "ripestat"
 
 
 # Microsoft Azure publishes its ranges as a weekly "Service Tags" download whose

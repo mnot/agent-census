@@ -259,6 +259,25 @@ def parse_subnets(text: str) -> tuple[str, ...]:
     return tuple(out)
 
 
+def parse_ripestat(text: str) -> tuple[str, ...]:
+    """RIPEstat announced-prefixes: ``{"data": {"prefixes": [{"prefix": "..."}]}}``.
+
+    Lets any ASN be used as a range source, e.g.
+    ``https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS51167``.
+    """
+    try:
+        data = json.loads(text)
+    except (ValueError, TypeError):
+        return ()
+    block = data.get("data", {}) if isinstance(data, dict) else {}
+    prefixes = block.get("prefixes", []) if isinstance(block, dict) else []
+    out: list[str] = []
+    for entry in prefixes:
+        if isinstance(entry, dict) and entry.get("prefix"):
+            out.append(entry["prefix"])
+    return tuple(out)
+
+
 def parse_oracle(text: str) -> tuple[str, ...]:
     """Oracle Cloud schema: ``{"regions": [{"cidrs": [{"cidr": "..."}]}]}``."""
     try:
@@ -283,6 +302,7 @@ _PARSERS = {
     "csv": parse_csv,
     "subnets": parse_subnets,
     "oracle": parse_oracle,
+    "ripestat": parse_ripestat,
 }
 
 

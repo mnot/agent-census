@@ -44,6 +44,14 @@ def test_parse_subnets_vultr_schema() -> None:
     assert extract_cidrs(text, "subnets") == ("45.32.0.0/21", "43.224.32.0/22")
 
 
+def test_parse_ripestat_schema() -> None:
+    text = (
+        '{"data": {"prefixes": [{"prefix": "2a02:c207::/32", "timelines": []}, '
+        '{"prefix": "144.91.100.0/23"}]}}'
+    )
+    assert extract_cidrs(text, "ripestat") == ("2a02:c207::/32", "144.91.100.0/23")
+
+
 def test_parse_oracle_schema() -> None:
     text = (
         '{"regions": [{"region": "iad", "cidrs": ['

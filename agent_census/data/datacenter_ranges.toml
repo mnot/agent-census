@@ -6,7 +6,8 @@
 #
 # Each [[source]] is one provider. `ranges` are inline CIDRs, always used and
 # requiring no network. `ranges_url` points at a provider's published list and
-# is fetched (and cached for a week) ONLY when `--fetch-ranges` is passed;
+# is fetched (and cached for a week) by default; pass `--no-fetch-ranges` to stay
+# offline on the inline ranges alone.
 # `format` says how to parse it (prefixes | aws | azure | text | csv | subnets |
 # oracle -- see iprange.extract_cidrs). A source may carry both: the inline
 # `ranges` act as an offline fallback for when the URL can't be fetched.

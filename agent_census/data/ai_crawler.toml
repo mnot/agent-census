@@ -134,3 +134,8 @@ domains = ["linkup.so"]
 [[agent]]
 ua_substring = "Timpibot"
 domains = ["timpi.io"]
+
+[[agent]]
+# https://www.semanticscholar.org/crawler
+ua_substring = "SemanticScholarBot"
+

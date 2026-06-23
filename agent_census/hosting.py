@@ -2,11 +2,11 @@
 
 A browser User-Agent arriving from hosting infrastructure (rather than an ISP or
 mobile network) is the signature of spoofed-browser automation. Ranges come from
-``data/datacenter_ranges.toml``: inline CIDRs are always used (offline); each
-source's ``ranges_url`` is fetched and merged only when range fetching is enabled
-(:func:`agent_census.iprange.enable_remote`, wired to ``--fetch-ranges``), so a
-default run stays offline. A miss means "not known to be hosted", not
-"residential" -- the inline list is a small starter set.
+``data/datacenter_ranges.toml``: inline CIDRs are always used; each source's
+``ranges_url`` is fetched and merged when range fetching is enabled (on by
+default, cached weekly; ``--no-fetch-ranges`` stays offline on the inline list).
+A miss means "not known to be hosted", not "residential" -- the inline list is a
+small starter set.
 """
 
 from __future__ import annotations

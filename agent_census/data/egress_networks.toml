@@ -6,7 +6,8 @@
 #
 # Each [[network]] mirrors a datacenter source ([name], optional inline `ranges`,
 # `ranges_url` + `format`) plus a `tag` applied to its clients. Ranges are
-# fetched only with --fetch-ranges (cached weekly); add more networks freely.
+# fetched by default (cached weekly); --no-fetch-ranges disables. Add networks
+# freely.
 
 [[network]]
 name = "iCloud Private Relay"

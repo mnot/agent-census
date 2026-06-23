@@ -114,10 +114,11 @@ def _add_shared(parser: argparse.ArgumentParser) -> None:
     )
     robots_group.add_argument(
         "--fetch-ranges",
-        action="store_true",
-        help="opt in to fetching providers' published IP ranges (cached weekly; "
-        "sharpens datacenter / spoofed_browser detection and identifies egress "
-        "networks like iCloud Private Relay)",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="fetch providers' published IP ranges for datacenter / egress "
+        "detection (default: on, cached weekly; --no-fetch-ranges stays offline "
+        "on the bundled inline ranges)",
     )
 
     out_group = parser.add_argument_group("output")

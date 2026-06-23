@@ -122,6 +122,14 @@ def _add_shared(parser: argparse.ArgumentParser) -> None:
         default=DEFAULT_UNKNOWN_THRESHOLD,
         help="minimum confidence to assign a kind (default: %(default)s)",
     )
+    out_group.add_argument(
+        "--quiescent-hours",
+        type=float,
+        metavar="H",
+        default=24.0,
+        help="free a client's state after H hours of inactivity to cap memory "
+        "(default: %(default)s; 0 disables)",
+    )
 
 
 _TOP_DESCRIPTION = """\
@@ -244,6 +252,7 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
     robots_note = robots_doc.note() if robots_doc is not None else None
 
     verifier = BotVerifier() if args.verify_bots else None
+    quiescent = args.quiescent_hours * 3600 if args.quiescent_hours > 0 else None
 
     result = pipeline.analyze(
         args.logfiles,
@@ -253,6 +262,7 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
         verifier=verifier,
         unknown_threshold=args.unknown_threshold,
         keep_signals=args.command == "inspect",
+        quiescent_seconds=quiescent,
     )
     return _RunContext(parser=parser, strategy=strategy, result=result, robots_note=robots_note)
 

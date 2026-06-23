@@ -124,9 +124,7 @@ def _peak_rpm(times: Sequence[float]) -> int:
     return max(buckets.values())
 
 
-def _merge_counts(
-    left: dict[_K, int] | None, right: dict[_K, int] | None
-) -> dict[_K, int] | None:
+def _merge_counts(left: dict[_K, int] | None, right: dict[_K, int] | None) -> dict[_K, int] | None:
     if right is None:
         return left
     merged = dict(left) if left is not None else {}

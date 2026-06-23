@@ -11,7 +11,7 @@ cheap second pass via :func:`collect_entries`.
 from __future__ import annotations
 
 import gzip
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,11 +19,30 @@ from typing import Protocol
 
 from . import uas
 from .classify import DEFAULT_UNKNOWN_THRESHOLD, classify_client
+from .dataload import load_tokens
 from .features import DisallowedCheck, FeatureAccumulator
 from .identity import ClientKeyStrategy
 from .model import BotVerification, ClientId, ClientProfile, LogEntry, VerificationStatus
 from .parsing.base import LogParser
 from .robots import RobotsRules, report_from_signals
+
+# Default inactivity gap after which a client is considered finished and evicted.
+DEFAULT_QUIESCENT_SECONDS = 24 * 60 * 60
+
+_CRAWLER_TOKENS: tuple[tuple[str, tuple[str, ...]], ...] | None = None
+
+
+def _declares_crawler(ua: str | None) -> bool:
+    """True if the UA names any known crawler (kept resident, never evicted)."""
+    global _CRAWLER_TOKENS  # pylint: disable=global-statement
+    if _CRAWLER_TOKENS is None:
+        _CRAWLER_TOKENS = (
+            load_tokens("search_engines.txt")
+            + load_tokens("social_preview.txt")
+            + load_tokens("ai_crawlers.txt")
+            + load_tokens("seo_marketing.txt")
+        )
+    return uas.match_known(ua, _CRAWLER_TOKENS) is not None
 
 
 class BotVerifier(Protocol):
@@ -88,14 +107,6 @@ def _disallowed_check(rules: RobotsRules, token: str | None) -> DisallowedCheck:
     return check
 
 
-def _identity_stats(
-    accumulators: dict[ClientId, FeatureAccumulator], uas_by_ip: dict[str, set[str | None]]
-) -> IdentityStats:
-    singletons = sum(1 for acc in accumulators.values() if acc.count == 1)
-    multi = sum(1 for agents in uas_by_ip.values() if len(agents) > 1)
-    return IdentityStats(len(accumulators), singletons, multi)
-
-
 def _matched_domain(verification: BotVerification) -> str:
     host = (verification.resolved_host or "").lower().rstrip(".")
     for domain in verification.expected_domains:
@@ -143,7 +154,7 @@ def _merge_verified(
     return member_ips
 
 
-def analyze(
+def analyze(  # pylint: disable=too-many-locals
     logs: Path | Sequence[Path],
     parser: LogParser,
     strategy: ClientKeyStrategy,
@@ -152,74 +163,56 @@ def analyze(
     verifier: BotVerifier | None = None,
     unknown_threshold: float = DEFAULT_UNKNOWN_THRESHOLD,
     keep_signals: bool = True,
+    quiescent_seconds: float | None = None,
 ) -> AnalysisResult:
     """Stream one or more log files into per-client profiles.
 
     Multiple files are read in order as one stream and pooled, so a client that
     appears across rotated logs is treated as one. Entries are not retained;
     pass the result to :func:`collect_entries` if you need raw request traces.
-    ``keep_signals=False`` drops the per-client classifier signals (which only
-    inspect mode reads), saving memory on the analyze path.
+
+    With ``quiescent_seconds`` set, a client that has been silent for that long
+    (relative to the latest log timestamp) is finalised and its live accumulator
+    freed mid-stream, so peak memory tracks the active window rather than the
+    whole run. Declared crawlers are kept resident so their IPs can still be
+    merged. ``keep_signals=False`` drops per-client classifier signals (only
+    inspect reads them).
     """
     paths = [logs] if isinstance(logs, Path) else list(logs)
-    accumulators: dict[ClientId, FeatureAccumulator] = {}
+    resident: dict[ClientId, FeatureAccumulator] = {}
+    evictable: OrderedDict[ClientId, FeatureAccumulator] = OrderedDict()
     tokens: dict[ClientId, str | None] = {}
-    uas_by_ip: dict[str, set[str | None]] = defaultdict(set)
+    uas_by_ip: dict[str, set[str | None]] = {}
+    ip_refs: dict[str, int] = defaultdict(int)
+    profiles: list[ClientProfile] = []
     total = parsed = skipped = 0
+    client_count = singleton_count = multi_ua_ips = 0
+    latest_ts: float | None = None
     reasons: dict[str, int] = defaultdict(int)
 
-    for outcome in parser.parse_lines(read_many(paths)):
-        total += 1
-        entry = outcome.entry
-        if entry is None:
-            skipped += 1
-            reasons[outcome.skip_reason or "unknown"] += 1
-            continue
-        parsed += 1
-        key = strategy.key(entry)
-        accumulator = accumulators.get(key)
-        if accumulator is None:
-            token = uas.product_token(entry.user_agent) if robots is not None else None
-            tokens[key] = token
-            check = _disallowed_check(robots, token) if robots is not None else None
-            accumulator = accumulators[key] = FeatureAccumulator(disallowed_check=check)
-        accumulator.add(entry)
-        uas_by_ip[entry.remote_host].add(entry.user_agent)
-
-    skips = SkipStats(total, parsed, skipped, dict(reasons))
-    identity_stats = _identity_stats(accumulators, uas_by_ip)
-    ua_counts = {ip: len(agents) for ip, agents in uas_by_ip.items()}
-
-    # DNS-verify declared crawlers as one deduped, concurrent batch.
-    verifications: dict[ClientId, BotVerification] = {}
-    member_ips: dict[ClientId, tuple[str, ...]] = {}
-    if verifier is not None:
-        candidates = [
-            (key, acc.user_agent)
-            for key, acc in accumulators.items()
-            if verifier.needs(acc.user_agent)
-        ]
-        verifications = verifier.verify_all(candidates)
-        # Collapse each verified bot's many IPs into one entry keyed by its domain.
-        member_ips = _merge_verified(accumulators, tokens, verifications)
-
-    profiles: list[ClientProfile] = []
-    while accumulators:
-        key, accumulator = accumulators.popitem()
-        features = accumulator.finalize(ua_count_for_ip=ua_counts.get(key.ip, 1))
+    def emit(
+        key: ClientId,
+        acc: FeatureAccumulator,
+        verification: BotVerification | None,
+        member: tuple[str, ...],
+    ) -> None:
+        nonlocal singleton_count
+        ua_count = len(uas_by_ip.get(key.ip) or (None,))
+        features = acc.finalize(ua_count_for_ip=ua_count)
+        if features.request_count == 1:
+            singleton_count += 1
         compliance = None
         if robots is not None:
             compliance = report_from_signals(
                 robots,
                 tokens.get(key),
-                disallowed_hits=accumulator.disallowed_hits,
-                sample_disallowed=tuple(accumulator.disallowed_sample or ()),
-                fetched_robots_first=accumulator.robots_fetched_first,
+                disallowed_hits=acc.disallowed_hits,
+                sample_disallowed=tuple(acc.disallowed_sample or ()),
+                fetched_robots_first=acc.robots_fetched_first,
                 fetched_robots_txt=features.fetched_robots_txt,
                 request_count=features.request_count,
                 median_interval=features.inter_arrival_median,
             )
-        verification = verifications.get(key)
         classification = classify_client(
             features,
             compliance=compliance,
@@ -235,16 +228,88 @@ def analyze(
                 classification=classification,
                 compliance=compliance,
                 verification=verification,
-                member_ips=member_ips.get(key, ()),
+                member_ips=member,
             )
         )
+
+    def evict(cutoff: float) -> None:
+        while evictable:
+            key = next(iter(evictable))
+            last_seen = evictable[key].last_seen
+            if last_seen is None or last_seen.timestamp() >= cutoff:
+                break
+            _, acc = evictable.popitem(last=False)
+            emit(key, acc, None, ())
+            tokens.pop(key, None)
+            remaining = ip_refs.get(key.ip, 0) - 1
+            if remaining <= 0:
+                ip_refs.pop(key.ip, None)
+                uas_by_ip.pop(key.ip, None)
+            else:
+                ip_refs[key.ip] = remaining
+
+    for outcome in parser.parse_lines(read_many(paths)):
+        total += 1
+        entry = outcome.entry
+        if entry is None:
+            skipped += 1
+            reasons[outcome.skip_reason or "unknown"] += 1
+            continue
+        parsed += 1
+        key = strategy.key(entry)
+        acc = resident.get(key)
+        if acc is None:
+            acc = evictable.get(key)
+            if acc is not None:
+                evictable.move_to_end(key)
+        if acc is None:
+            client_count += 1
+            ip_refs[key.ip] += 1
+            token = uas.product_token(entry.user_agent) if robots is not None else None
+            tokens[key] = token
+            check = _disallowed_check(robots, token) if robots is not None else None
+            acc = FeatureAccumulator(disallowed_check=check)
+            if quiescent_seconds is not None and not _declares_crawler(entry.user_agent):
+                evictable[key] = acc
+            else:
+                resident[key] = acc
+        acc.add(entry)
+
+        agents = uas_by_ip.get(entry.remote_host)
+        if agents is None:
+            uas_by_ip[entry.remote_host] = {entry.user_agent}
+        elif entry.user_agent not in agents:
+            agents.add(entry.user_agent)
+            if len(agents) == 2:
+                multi_ua_ips += 1
+
+        if quiescent_seconds is not None and entry.timestamp is not None:
+            ts = entry.timestamp.timestamp()
+            if latest_ts is None or ts > latest_ts:
+                latest_ts = ts
+            evict(latest_ts - quiescent_seconds)
+
+    # DNS-verify declared crawlers (all resident) as one deduped, concurrent batch.
+    verifications: dict[ClientId, BotVerification] = {}
+    member_ips: dict[ClientId, tuple[str, ...]] = {}
+    if verifier is not None:
+        candidates = [
+            (key, acc.user_agent) for key, acc in resident.items() if verifier.needs(acc.user_agent)
+        ]
+        verifications = verifier.verify_all(candidates)
+        member_ips = _merge_verified(resident, tokens, verifications)
+
+    for key, acc in resident.items():
+        emit(key, acc, verifications.get(key), member_ips.get(key, ()))
+    for key, acc in evictable.items():
+        emit(key, acc, None, ())
 
     profiles.sort(key=lambda p: p.features.request_count, reverse=True)
     return AnalysisResult(
         profiles=tuple(profiles),
-        skips=skips,
+        skips=SkipStats(total, parsed, skipped, dict(reasons)),
         identity_strategy=strategy.name,
-        identity_stats=identity_stats,
+        identity_stats=IdentityStats(client_count, singleton_count, multi_ua_ips),
     )
 
 

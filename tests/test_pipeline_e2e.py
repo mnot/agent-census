@@ -87,6 +87,36 @@ def test_inspect_renders_rationale() -> None:
     assert "Request trace" in text
 
 
+def test_eviction_matches_no_eviction(tmp_path: Path) -> None:
+    # A 3-day log where every client is active within a single day; with a 12h
+    # gap, day-1/2 clients are evicted before day-3, but the result must be
+    # identical to running with no eviction (no client returns after the gap).
+    lines = []
+    for day in (1, 2, 3):
+        for client in range(6):
+            for req in range(3):
+                lines.append(
+                    f"10.0.{day}.{client} - - [0{day}/Oct/2023:12:0{req}:00 +0000] "
+                    f'"GET /p{client} HTTP/1.1" 200 100 "-" "agent-{client}"'
+                )
+    log = tmp_path / "multiday.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    strategy = identity.get_strategy("ip_ua")
+
+    def summary(result: pipeline.AnalysisResult) -> dict[object, tuple[int, Kind]]:
+        return {
+            p.client_id: (p.features.request_count, p.classification.primary)
+            for p in result.profiles
+        }
+
+    base = pipeline.analyze(log, parser, strategy)
+    evicted = pipeline.analyze(log, parser, strategy, quiescent_seconds=12 * 3600)
+    assert summary(base) == summary(evicted)
+    assert evicted.identity_stats == base.identity_stats
+    assert len(evicted.profiles) == 18
+
+
 def test_collect_entries_only_for_requested_keys() -> None:
     result = _run()
     scanner = next(p for p in result.profiles if p.classification.primary is Kind.VULN_SCANNER)

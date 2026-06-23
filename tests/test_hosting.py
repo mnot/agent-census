@@ -8,15 +8,16 @@ from agent_census import hosting, iprange
 from agent_census.hosting import is_datacenter_ip
 
 
-def test_inline_range_matches_offline() -> None:
-    # Whatever ranges are bundled inline, an address inside the first is
-    # recognised as datacenter with no network fetch. (Avoids hard-coding a
-    # provider, since the inline list is hand-curated and changes.)
+def test_inline_ranges_match_offline_when_present() -> None:
+    # If any ranges are bundled inline, an address inside one is recognised as
+    # datacenter with no network fetch. Detection is feed-based by default, so
+    # there may be no inline ranges -- nothing to assert then.
     from agent_census.dataload import load_range_sources
     from agent_census.iprange import parse_networks
 
     inline = [cidr for source in load_range_sources("datacenter_ranges") for cidr in source.ranges]
-    assert inline, "expected a bundled offline range list"
+    if not inline:
+        pytest.skip("no inline datacenter ranges bundled (detection is feed-based)")
     first = parse_networks((inline[0],))[0]
     assert is_datacenter_ip(str(first.network_address))
 

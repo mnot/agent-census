@@ -45,11 +45,12 @@ def _header(result: AnalysisResult, source: str, robots_note: str | None) -> lis
 
 def _summary_table(result: AnalysisResult, groups: dict[Kind, list[ClientProfile]]) -> list[str]:
     total_requests = sum(p.features.request_count for p in result.profiles) or 1
+    total_bytes = sum(p.features.total_bytes for p in result.profiles) or 1
     lines = [
         "## Summary by kind",
         "",
-        "| Kind | Clients | Requests | % | Bandwidth | Avg req/client | robots |",
-        "| --- | --: | --: | --: | --: | --: | :-: |",
+        "| Kind | Clients | Requests | Req % | Bandwidth | BW % | Avg req/client | robots |",
+        "| --- | --: | --: | --: | --: | --: | --: | :-: |",
     ]
     for kind in KIND_ORDER:
         group = groups.get(kind)
@@ -58,11 +59,11 @@ def _summary_table(result: AnalysisResult, groups: dict[Kind, list[ClientProfile
         clients = len(group)
         requests = sum(p.features.request_count for p in group)
         byte_total = sum(p.features.total_bytes for p in group)
-        share = requests / total_requests
         avg = requests / clients if clients else 0
         lines.append(
-            f"| {kind.value} | {clients:,} | {requests:,} | {share:.0%} | "
-            f"{human_bytes(byte_total)} | {avg:,.0f} | {_robots_summary(group)} |"
+            f"| {kind.value} | {clients:,} | {requests:,} | {requests / total_requests:.0%} | "
+            f"{human_bytes(byte_total)} | {byte_total / total_bytes:.0%} | "
+            f"{avg:,.0f} | {_robots_summary(group)} |"
         )
     lines.append("")
     return lines

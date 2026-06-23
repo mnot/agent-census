@@ -122,12 +122,20 @@ def _meta_list(result: AnalysisResult, source: str, robots_note: str | None) -> 
     return '<ul class="meta">' + "".join(f"<li>{item}</li>" for item in items) + "</ul>"
 
 
+def _share_bar(fraction: float) -> str:
+    return (
+        f'<div class="bar" style="width:{fraction * 100:.1f}%"></div>'
+        f'<span class="muted">{fraction:.0%}</span>'
+    )
+
+
 def _summary_table(result: AnalysisResult, groups: dict[Kind, list[ClientProfile]]) -> str:
     total = sum(p.features.request_count for p in result.profiles) or 1
+    total_bytes = sum(p.features.total_bytes for p in result.profiles) or 1
     head = (
         "<tr><th>Kind</th><th class='num'>Clients</th><th class='num'>Requests</th>"
-        "<th>Share</th><th class='num'>Bandwidth</th><th class='num'>Avg/client</th>"
-        "<th>robots</th></tr>"
+        "<th>Req share</th><th class='num'>Bandwidth</th><th>BW share</th>"
+        "<th class='num'>Avg/client</th><th>robots</th></tr>"
     )
     rows = []
     for kind in KIND_ORDER:
@@ -136,19 +144,16 @@ def _summary_table(result: AnalysisResult, groups: dict[Kind, list[ClientProfile
             continue
         requests = sum(p.features.request_count for p in group)
         byte_total = sum(p.features.total_bytes for p in group)
-        share = requests / total
         respects, ignores = robots_counts(group)
         robots = (
             f"{respects}✓ / {ignores}✗" if (respects or ignores) else '<span class="muted">–</span>'
         )
-        share_bar = (
-            f'<div class="bar" style="width:{share * 100:.1f}%"></div>'
-            f'<span class="muted">{share:.0%}</span>'
-        )
         rows.append(
             f'<tr><td><a href="#{kind.value}">{_kind_badge(kind)}</a></td>'
             f"<td class='num'>{len(group):,}</td><td class='num'>{requests:,}</td>"
-            f"<td>{share_bar}</td><td class='num'>{human_bytes(byte_total)}</td>"
+            f"<td>{_share_bar(requests / total)}</td>"
+            f"<td class='num'>{human_bytes(byte_total)}</td>"
+            f"<td>{_share_bar(byte_total / total_bytes)}</td>"
             f"<td class='num'>{requests / len(group):,.0f}</td><td>{robots}</td></tr>"
         )
     return f"<h2>Summary by kind</h2>\n<table>{head}{''.join(rows)}</table>"

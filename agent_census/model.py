@@ -157,6 +157,7 @@ class ClientFeatures:  # pylint: disable=too-many-instance-attributes
     coverage: float = 0.0  # distinct_paths / request_count
     breadth_ratio: float = 0.0  # fraction of consecutive hops that change subtree
     referer_following_ratio: float = 0.0  # referer is a path this client fetched earlier
+    self_referer_ratio: float = 0.0  # referer == the requested path (fabricated; browsers never do)
 
     # asset co-loading (the browser fingerprint)
     asset_coload_ratio: float = 0.0  # HTML responses followed by sub-resource fetches

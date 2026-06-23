@@ -49,6 +49,22 @@ def test_browser_fires_on_coloading() -> None:
     assert signals[0].confidence >= 0.45
 
 
+def test_self_referer_browser_is_demoted_and_tagged() -> None:
+    # Chrome UA, but every request's Referer is the requested URL itself (fabricated
+    # navigation). Not a real browser; the forged referers must not pass as
+    # link-following, and the pattern is tagged.
+    feats = ClientFeatures(
+        request_count=30,
+        ua_looks_like_browser=True,
+        asset_coload_ratio=0.0,
+        referer_following_ratio=0.0,  # self-referers are excluded from this
+        self_referer_ratio=1.0,
+    )
+    result = classify_client(feats)
+    assert result.primary is not Kind.BROWSER
+    assert "forged-referer" in result.tags
+
+
 def test_probing_browser_is_not_a_confident_browser() -> None:
     # Headless-browser automation co-loads assets like a real browser, but a
     # person never fetches attack paths -- probing must sink the browser verdict.

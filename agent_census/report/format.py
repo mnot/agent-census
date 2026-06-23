@@ -136,6 +136,7 @@ def feature_rows(feats: ClientFeatures) -> list[tuple[str, str]]:
         ("asset co-load", pct(feats.asset_coload_ratio)),
         ("static ratio", pct(feats.static_ratio)),
         ("referer-following", pct(feats.referer_following_ratio)),
+        ("self-referer (fabricated)", pct(feats.self_referer_ratio)),
         ("breadth", pct(feats.breadth_ratio)),
         ("methods", methods),
         (

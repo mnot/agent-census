@@ -129,4 +129,7 @@ def derive_tags(
     if features.vuln_path_hits > 0 or features.traversal_hits > 0:
         tags.add("probing")  # badly behaved, but not necessarily a forged identity
 
+    if features.self_referer_ratio >= 0.5 and features.request_count >= 4:
+        tags.add("forged-referer")  # Referer set to the requested URL -- faked navigation
+
     return tags

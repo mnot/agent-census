@@ -58,6 +58,13 @@ class BrowserClassifier(Classifier):
             confidence = min(confidence, 0.3)
             evidence.append("but probes attack paths — not human browsing")
 
+        # Fabricated referers (the Referer is the requested URL itself) are
+        # impossible from real navigation; a client doing this systematically is
+        # faking organic traffic, not browsing.
+        if features.self_referer_ratio >= 0.5 and features.request_count >= 4:
+            confidence = min(confidence, 0.3)
+            evidence.append("but referers are fabricated (Referer = the requested URL)")
+
         if not evidence:
             return []
         return [self._signal(confidence, evidence)]

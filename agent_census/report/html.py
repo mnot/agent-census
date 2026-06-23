@@ -54,6 +54,7 @@ _TAG_COLORS: dict[str, str] = {
     "fake-browser": "#ea580c",  # browser costume, no browser behaviour -> orange
     "datacenter": "#9333ea",  # origin is hosting, not an eyeball network -> purple
     "ua-rotating": "#d97706",  # many UAs from a hosting/non-browser source -> amber
+    "forged-referer": "#dc2626",  # Referer faked to mimic navigation -> red
     "icloud-private-relay": "#0284c7",  # privacy relay; a positive browser signal -> blue
     "tor-exit": "#6d28d9",  # Tor exit node; anonymised egress -> violet
     # 'shared-ip' is left neutral (grey): many UAs but a benign shared egress.
@@ -79,6 +80,8 @@ _TAG_HELP: dict[str, str] = {
     "crawler identity.",
     "declares-known-bot": "User-Agent names a known crawler (identity verified separately).",
     "probing": "Requested known-vulnerable paths or used directory-traversal patterns.",
+    "forged-referer": "Sends a Referer equal to the requested URL — fabricated "
+    "navigation, not something a real browser produces.",
     "fetches-non-feeds": "A feed reader that also requested non-feed resources.",
 }
 

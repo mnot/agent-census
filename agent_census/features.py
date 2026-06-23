@@ -187,7 +187,8 @@ class FeatureAccumulator:
         "paths_404", "vuln_hits", "vuln_sample", "traversal_hits", "methods",
         "distinct_paths", "static_count", "fetched_robots", "user_agent", "first_seen",
         "last_seen", "_has_prev", "_prev_top", "breadth_changes",
-        "breadth_pairs", "ref_total", "ref_onsite", "pages_total", "pages_satisfied",
+        "breadth_pairs", "ref_total", "ref_onsite", "self_referer_hits", "pages_total",
+        "pages_satisfied",
         "_pending_pages", "disallowed_hits", "disallowed_sample", "robots_fetched_first",
         "_content_seen", "feed_requests",
         # Inter-arrival timing, summarised in bounded memory (no per-request array).
@@ -213,6 +214,7 @@ class FeatureAccumulator:
         self.breadth_pairs = 0
         self.ref_total = 0
         self.ref_onsite = 0
+        self.self_referer_hits = 0
         self.pages_total = 0
         self.pages_satisfied = 0
         self.disallowed_hits = 0
@@ -302,10 +304,13 @@ class FeatureAccumulator:
     def _track_referer(self, entry: LogEntry) -> None:
         if entry.referer:
             self.ref_total += 1
-            if (
-                self.distinct_paths is not None
-                and _referer_path(entry.referer) in self.distinct_paths
-            ):
+            referer_path = _referer_path(entry.referer)
+            if referer_path == entry.path:
+                # Referer equals the requested URL -- impossible from real
+                # navigation (you don't arrive at a page from itself), so it is a
+                # fabricated referer, not evidence of on-site link following.
+                self.self_referer_hits += 1
+            elif self.distinct_paths is not None and referer_path in self.distinct_paths:
                 self.ref_onsite += 1
 
     def _track_breadth(self, path: str) -> None:
@@ -408,6 +413,7 @@ class FeatureAccumulator:
         self.breadth_pairs += other.breadth_pairs
         self.ref_total += other.ref_total
         self.ref_onsite += other.ref_onsite
+        self.self_referer_hits += other.self_referer_hits
         self.pages_total += other.pages_total
         self.pages_satisfied += other.pages_satisfied
         self.feed_requests += other.feed_requests
@@ -507,6 +513,7 @@ class FeatureAccumulator:
             coverage=_ratio(distinct, self.count),
             breadth_ratio=_ratio(self.breadth_changes, self.breadth_pairs),
             referer_following_ratio=_ratio(self.ref_onsite, self.ref_total),
+            self_referer_ratio=_ratio(self.self_referer_hits, self.ref_total),
             asset_coload_ratio=_ratio(self.pages_satisfied, self.pages_total),
             static_ratio=_ratio(self.static_count, self.count),
             method_counts=dict(methods),

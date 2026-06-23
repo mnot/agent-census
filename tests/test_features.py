@@ -91,6 +91,18 @@ def test_high_volume_timing_is_bounded_but_accurate() -> None:
     assert feats.peak_requests_per_minute >= 6  # ~6 requests per 60s minute
 
 
+def test_self_referential_referer_not_counted_as_following() -> None:
+    # Referer == the requested URL (apex or www): fabricated, not link-following.
+    entries = [
+        entry("/blog/index.atom", referer="https://mnot.net/blog/index.atom", offset=0),
+        entry("/blog/index.atom", referer="https://www.mnot.net/blog/index.atom", offset=1),
+        entry("/", referer="https://mnot.net/", offset=2),
+    ]
+    feats = extract_features(entries)
+    assert feats.self_referer_ratio == 1.0
+    assert feats.referer_following_ratio == 0.0
+
+
 def test_referer_following_ratio() -> None:
     entries = [
         entry("/", offset=0),

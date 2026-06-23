@@ -4,7 +4,33 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from ..model import ClientFeatures
+from ..model import ClientFeatures, ClientProfile, Kind
+
+
+def elide_ua(ua: str | None, *, is_browser: bool = False) -> str | None:
+    """Trim a bot UA's ``Mozilla/... compatible;`` boilerplate to the agent token.
+
+    e.g. ``Mozilla/5.0 (compatible; Googlebot/2.1; +http://.../bot.html)`` becomes
+    ``Googlebot/2.1; +http://.../bot.html``. Left untouched for browsers (whose
+    Mozilla preamble is meaningful) and for UAs without the ``compatible;`` marker.
+    """
+    if not ua or is_browser:
+        return ua
+    pos = ua.lower().find("compatible;")
+    if pos == -1:
+        return ua
+    rest = ua[pos + len("compatible;") :].strip()
+    if rest.endswith(")"):  # drop the now-orphaned closing paren of the preamble
+        rest = rest[:-1].rstrip()
+    return rest or ua
+
+
+def client_label(profile: ClientProfile) -> str:
+    """The ``identity | user-agent`` label, with bot UA boilerplate elided."""
+    cid = profile.client_id
+    prefix = cid.subnet if cid.subnet is not None else cid.ip
+    ua = elide_ua(cid.user_agent, is_browser=profile.classification.primary is Kind.BROWSER)
+    return f"{prefix} | {ua if ua is not None else '-'}"
 
 
 def human_bytes(num: int) -> str:

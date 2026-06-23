@@ -7,9 +7,17 @@ robots-compliance finding, and the actual requests.
 
 from __future__ import annotations
 
-from ..model import ClientProfile
+from ..model import ClientProfile, Kind
 from ..pipeline import AnalysisResult
-from .format import feature_rows, fmt_ts, human_bytes, human_duration, md_escape
+from .format import (
+    client_label,
+    elide_ua,
+    feature_rows,
+    fmt_ts,
+    human_bytes,
+    human_duration,
+    md_escape,
+)
 
 
 def select_profiles(
@@ -31,13 +39,14 @@ def _identity_block(profile: ClientProfile) -> list[str]:
     feats = profile.features
     cls = profile.classification
     return [
-        f"## {md_escape(profile.client_id.display)}",
+        f"## {md_escape(client_label(profile))}",
         "",
         f"- **Classified:** `{cls.primary.value}` (confidence {cls.confidence:.0%})",
         f"- **Tags:** {', '.join(sorted(cls.tags)) or '–'}",
         f"- **IP:** {profile.client_id.ip}"
         + (f" ({len(profile.member_ips)} verified IPs)" if profile.member_ips else ""),
-        f"- **User-Agent:** {md_escape(feats.user_agent or '–')}",
+        f"- **User-Agent:** "
+        f"{md_escape(elide_ua(feats.user_agent, is_browser=cls.primary is Kind.BROWSER) or '–')}",
         f"- **Requests:** {feats.request_count:,} · "
         f"**Bandwidth:** {human_bytes(feats.total_bytes)} · "
         f"**Span:** {human_duration(feats.duration_seconds)}",

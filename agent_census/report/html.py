@@ -12,7 +12,7 @@ import html
 from ..model import ClientProfile, Kind
 from ..pipeline import AnalysisResult
 from .aggregate import KIND_BLURB, KIND_ORDER, by_kind, robots_counts, time_range
-from .format import feature_rows, fmt_ts, human_bytes, human_duration
+from .format import client_label, elide_ua, feature_rows, fmt_ts, human_bytes, human_duration
 
 _KIND_COLORS: dict[Kind, str] = {
     Kind.BROWSER: "#2563eb",
@@ -166,7 +166,7 @@ def _kind_section(kind: Kind, group: list[ClientProfile], top: int) -> str:
         cls = profile.classification
         evidence = _esc(cls.evidence[0]) if cls.evidence else "–"
         rows.append(
-            f'<tr><td class="mono">{_esc(profile.client_id.display[:90])}</td>'
+            f'<tr><td class="mono">{_esc(client_label(profile)[:90])}</td>'
             f"<td class='num'>{profile.features.request_count:,}</td>"
             f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
             f"<td class='num'>{cls.confidence:.0%}</td>"
@@ -277,10 +277,10 @@ def _profile_card(profile: ClientProfile, limit: int, full: bool) -> str:
     feats = profile.features
     cls = profile.classification
     conf = f"<span class='muted'>confidence {cls.confidence:.0%}</span>"
-    ua = _esc(feats.user_agent or "–")
+    ua = _esc(elide_ua(feats.user_agent, is_browser=cls.primary is Kind.BROWSER) or "–")
     seen = f"{_esc(fmt_ts(feats.first_seen))} → {_esc(fmt_ts(feats.last_seen))}"
     header = (
-        f'<h2 class="mono">{_esc(profile.client_id.display[:100])}</h2>'
+        f'<h2 class="mono">{_esc(client_label(profile)[:100])}</h2>'
         f'<ul class="meta">'
         f"<li>{_kind_badge(cls.primary)} {conf}</li>"
         f"<li><strong>Tags:</strong> {_tags_html(cls.tags)}</li>"

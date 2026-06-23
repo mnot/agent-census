@@ -5,7 +5,7 @@ from __future__ import annotations
 from ..model import ClientProfile, Kind
 from ..pipeline import AnalysisResult
 from .aggregate import KIND_BLURB, KIND_ORDER, by_kind, robots_counts, time_range
-from .format import fmt_ts, human_bytes, md_escape
+from .format import client_label, fmt_ts, human_bytes, md_escape
 
 
 def _robots_summary(group: list[ClientProfile]) -> str:
@@ -69,7 +69,7 @@ def _summary_table(result: AnalysisResult, groups: dict[Kind, list[ClientProfile
 
 
 def _client_label(profile: ClientProfile) -> str:
-    return md_escape(profile.client_id.display[:80])
+    return md_escape(client_label(profile)[:80])
 
 
 def _kind_section(kind: Kind, group: list[ClientProfile], top: int) -> list[str]:

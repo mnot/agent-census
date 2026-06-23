@@ -72,6 +72,11 @@ tr:hover td { background: #8881; }
 td.copy { cursor: pointer; }
 td.copy:hover { background: #8882; }
 td.copy.copied { background: #16a34a55; }
+details { margin: .25rem 0 1rem; }
+summary { cursor: pointer; color: #6b7280; font-size: .9rem; padding: .25rem 0; }
+input.filter { display: block; width: 100%; max-width: 30rem; margin: .5rem 0;
+  padding: .4rem .55rem; border: 1px solid #8886; border-radius: 6px;
+  background: Canvas; color: CanvasText; font: inherit; }
 footer { margin-top: 3rem; color: #6b7280; font-size: .85rem; }
 """.strip()
 
@@ -98,6 +103,18 @@ document.addEventListener('click', function (event) {
     navigator.clipboard.writeText(text).then(flash, fallback);
   } else {
     fallback();
+  }
+}, false);
+
+document.addEventListener('input', function (event) {
+  var input = event.target;
+  if (!input.classList || !input.classList.contains('filter')) return;
+  var scope = input.closest('details') || document;
+  var query = input.value.trim().toLowerCase();
+  var rows = scope.querySelectorAll('tr.frow');
+  for (var i = 0; i < rows.length; i++) {
+    var hay = rows[i].getAttribute('data-filter') || '';
+    rows[i].style.display = hay.indexOf(query) === -1 ? 'none' : '';
   }
 }, false);
 """.strip()
@@ -194,34 +211,60 @@ def _summary_table(result: AnalysisResult, groups: dict[Kind, list[ClientProfile
     )
 
 
+_SECTION_HEAD = (
+    "<tr><th>Client</th><th class='num'>Requests</th><th class='num'>Bandwidth</th>"
+    "<th class='num'>Conf.</th><th>Tags</th><th>Top evidence</th></tr>"
+)
+# Per-kind cap rendered into the HTML (visible rows + the expandable set).
+_EXPAND_LIMIT = 100
+
+
+def _client_row(profile: ClientProfile, *, filterable: bool = False) -> str:
+    cls = profile.classification
+    evidence = _esc(cls.evidence[0]) if cls.evidence else "–"
+    attrs = ""
+    if filterable:
+        haystack = f"{profile.client_id.ip} {profile.client_id.user_agent or ''}".lower()
+        attrs = f' class="frow" data-filter="{_esc(haystack)}"'
+    return (
+        f"<tr{attrs}>"
+        f'<td class="mono copy" data-copy="{_esc(profile.client_id.ip)}" '
+        f'title="Click to copy this id for: inspect --client">'
+        f"{_esc(client_label(profile)[:90])}</td>"
+        f"<td class='num'>{profile.features.request_count:,}</td>"
+        f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
+        f"<td class='num'>{cls.confidence:.0%}</td>"
+        f"<td>{_tags_html(cls.tags)}</td><td>{evidence}</td></tr>"
+    )
+
+
 def _kind_section(kind: Kind, group: list[ClientProfile], top: int) -> str:
     group = sorted(group, key=lambda p: p.features.request_count, reverse=True)
     requests = sum(p.features.request_count for p in group)
-    head = (
-        "<tr><th>Client</th><th class='num'>Requests</th><th class='num'>Bandwidth</th>"
-        "<th class='num'>Conf.</th><th>Tags</th><th>Top evidence</th></tr>"
-    )
-    rows = []
-    for profile in group[:top]:
-        cls = profile.classification
-        evidence = _esc(cls.evidence[0]) if cls.evidence else "–"
-        rows.append(
-            f'<tr><td class="mono copy" data-copy="{_esc(profile.client_id.ip)}" '
-            f'title="Click to copy this id for: inspect --client">'
-            f"{_esc(client_label(profile)[:90])}</td>"
-            f"<td class='num'>{profile.features.request_count:,}</td>"
-            f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
-            f"<td class='num'>{cls.confidence:.0%}</td>"
-            f"<td>{_tags_html(cls.tags)}</td><td>{evidence}</td></tr>"
-        )
-    if len(group) > top:
-        rows.append(f'<tr><td class="muted" colspan="6">…and {len(group) - top:,} more</td></tr>')
     title = f"{_kind_badge(kind)} {len(group):,} clients · {requests:,} requests"
-    return (
-        f'<h2 id="{kind.value}">{title}</h2>\n'
-        f'<p class="blurb">{_esc(KIND_BLURB.get(kind, ""))}</p>\n'
-        f"<table>{head}{''.join(rows)}</table>"
-    )
+    parts = [
+        f'<h2 id="{kind.value}">{title}</h2>',
+        f'<p class="blurb">{_esc(KIND_BLURB.get(kind, ""))}</p>',
+        f"<table>{_SECTION_HEAD}{''.join(_client_row(p) for p in group[:top])}</table>",
+    ]
+    extra = group[top:_EXPAND_LIMIT]
+    if extra:
+        extra_rows = "".join(_client_row(p, filterable=True) for p in extra)
+        parts.append(
+            "<details><summary>"
+            f"Show {len(extra):,} more</summary>"
+            '<input class="filter" type="search" '
+            'placeholder="filter these by IP or User-Agent…" aria-label="filter clients">'
+            f"<table>{_SECTION_HEAD}{extra_rows}</table>"
+            "</details>"
+        )
+    remaining = len(group) - _EXPAND_LIMIT
+    if remaining > 0:
+        parts.append(
+            f'<p class="muted">…and {remaining:,} more — '
+            f"<code>agent-census inspect --kind {kind.value}</code></p>"
+        )
+    return "\n".join(parts)
 
 
 def render_report_html(

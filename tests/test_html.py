@@ -38,6 +38,25 @@ def test_report_html_client_cells_are_copyable() -> None:
     assert "inspect --client" in html  # the tip
 
 
+def test_kind_section_disclosure_and_filter(tmp_path: Path) -> None:
+    # 8 one-off clients -> one 'unknown' kind; top 5 shown, 3 behind a disclosure.
+    lines = [
+        f"10.0.0.{i} - - [10/Oct/2023:12:00:0{i} +0000] "
+        f'"GET / HTTP/1.1" 200 10 "-" "agent-{i}"'
+        for i in range(8)
+    ]
+    log = tmp_path / "many.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
+    html = render_report_html(result, source="x", top=5)
+
+    assert "<details>" in html
+    assert "Show 3 more" in html
+    assert 'class="filter"' in html  # filter input revealed in the disclosure
+    assert html.count('class="frow"') == 3  # the 3 extra rows are filterable
+
+
 def test_report_html_escapes_user_agent() -> None:
     # Inject a script payload via the UA; it must be escaped, not rendered.
     payload = "<script>alert(1)</script>"

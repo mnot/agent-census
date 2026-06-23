@@ -243,15 +243,16 @@ class BotVerifier:
 
         networks = self._networks_for(spec)
 
-        # A ranges_url is authoritative: the published list is the whole truth,
-        # so an IP outside it is an impersonator (no DNS fallback). If we could
-        # not obtain the list, we cannot judge -- unverified rather than guess.
-        if spec.ranges_url:
+        # Published ranges -- inline and/or fetched -- are authoritative: the IP
+        # is verified iff it falls in them, and an out-of-range IP under this UA
+        # is an impersonator (no DNS fallback). If a ranges_url could not be
+        # fetched and there are no inline ranges, we cannot judge -- unverified.
+        if spec.ranges or spec.ranges_url:
             if not networks:
                 return BotVerification(
                     VerificationStatus.UNVERIFIED,
                     expected_domains=spec.domains,
-                    evidence=(f"could not fetch the published {substring} IP ranges",),
+                    evidence=(f"could not obtain the published {substring} IP ranges",),
                 )
             match = _ip_in(ip, networks)
             if match is not None:
@@ -266,24 +267,6 @@ class BotVerifier:
                 expected_domains=spec.domains,
                 evidence=(f"{ip} is not in any published {substring} range (authoritative)",),
             )
-
-        # Inline ranges without a ranges_url are a positive signal but not
-        # exhaustive, so a miss falls back to DNS when domains are configured.
-        if networks:
-            match = _ip_in(ip, networks)
-            if match is not None:
-                return BotVerification(
-                    VerificationStatus.VERIFIED,
-                    resolved_host=str(match),
-                    expected_domains=spec.domains,
-                    evidence=(f"{ip} is within {match}, a published {substring} range",),
-                )
-            if not spec.domains:
-                return BotVerification(
-                    VerificationStatus.IMPERSONATOR,
-                    expected_domains=spec.domains,
-                    evidence=(f"{ip} is not in any published {substring} range",),
-                )
 
         # Reverse/forward DNS. A crawler verified this way is expected to have a
         # PTR record, so its absence under this UA is treated as impersonation.

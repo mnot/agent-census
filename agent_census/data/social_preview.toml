@@ -15,6 +15,7 @@ ua_substring = "LinkedInBot"
 domains = ["linkedin.com"]
 
 [[agent]]
+# https://api.slack.com/robots
 ua_substring = "Slackbot"
 domains = ["slack.com"]
 
@@ -43,20 +44,23 @@ ua_substring = "Pinterest"
 domains = ["pinterest.com"]
 
 [[agent]]
+# https://help.pinterest.com/en/business/article/pinterestbot
 ua_substring = "Pinterestbot"
-domains = ["pinterest.com"]
+domains = ["pinterest.com", "pinterestcrawler.com"]
 
 [[agent]]
 ua_substring = "redditbot"
 domains = ["reddit.com"]
 
 [[agent]]
+# https://docs.embed.ly/reference/faq
 ua_substring = "Embedly"
-domains = ["embed.ly"]
+ranges = ["107.21.253.49", "54.204.20.249", "54.204.20.250", "54.221.198.105", "54.221.199.147", "54.225.104.196", "2600:1f18:100d:9f00::/52"]
 
 [[agent]]
+# https://iframely.com/docs/about
 ua_substring = "Iframely"
-domains = ["embed.ly", "iframe.ly"]
+domains = ["iframe.ly"]
 
 [[agent]]
 ua_substring = "vkShare"
@@ -65,9 +69,6 @@ domains = ["vk.com"]
 [[agent]]
 ua_substring = "HatenaBookmark"
 domains = ["hatena.ne.jp"]
-
-[[agent]]
-ua_substring = "SkypeUriPreview"
 
 [[agent]]
 ua_substring = "Mastodon"

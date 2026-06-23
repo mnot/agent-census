@@ -102,6 +102,18 @@ def test_ip_outside_only_range_is_impersonator(monkeypatch: pytest.MonkeyPatch) 
     assert BotVerifier().verify("203.0.113.9", "RangeBot/1.0").status is VerificationStatus.IMPERSONATOR
 
 
+def test_inline_range_authoritative_over_domains(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Inline ranges rank equally with ranges_url: out-of-range is an impersonator
+    # even when rDNS would match a domain (DNS is not consulted).
+    _patch_spec(monkeypatch, "RangeBot", CrawlerSpec(domains=("example.com",), ranges=("10.0.0.0/24",)))
+
+    def fail(_arg: str) -> None:
+        raise AssertionError("DNS must not be consulted when ranges are authoritative")
+
+    monkeypatch.setattr(netverify, "_reverse_dns", fail)
+    assert BotVerifier().verify("203.0.113.9", "RangeBot/1.0").status is VerificationStatus.IMPERSONATOR
+
+
 def test_ranges_url_fetched_and_used(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_spec(monkeypatch, "FetchBot", CrawlerSpec(ranges_url="https://example.test/r.json"))
     monkeypatch.setattr(

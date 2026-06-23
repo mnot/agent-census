@@ -1,0 +1,9 @@
+global-include py.typed
+recursive-include agent_census/data *.txt
+prune build
+prune dist
+prune test
+prune tools
+prune src
+prune *.egg-info
+exclude .gitignore .editorconfig .dockerignore .coveragerc

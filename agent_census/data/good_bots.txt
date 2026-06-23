@@ -1,0 +1,21 @@
+# Declared "good" bots: search engines and social-preview fetchers.
+# Format: <UA-token> <verifying-domain> [more-domains...]
+# The token is matched case-insensitively as a substring of the User-Agent.
+# Domains are the rDNS suffixes that confirm the client when --verify-bots is on.
+
+Googlebot googlebot.com google.com
+Googlebot-Image googlebot.com google.com
+Bingbot search.msn.com
+BingPreview search.msn.com
+Slurp crawl.yahoo.net
+DuckDuckBot duckduckgo.com
+DuckDuckGo duckduckgo.com
+Baiduspider crawl.baidu.com baidu.jp
+YandexBot yandex.com yandex.net yandex.ru
+YandexImages yandex.com yandex.net yandex.ru
+Applebot applebot.apple.com
+facebookexternalhit facebook.com fbsv.net
+Twitterbot twitter.com
+LinkedInBot linkedin.com
+Sogou sogou.com
+Exabot exabot.com

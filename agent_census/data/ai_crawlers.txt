@@ -1,0 +1,26 @@
+# AI / LLM data-gathering crawlers and assistants.
+# Format: <UA-token> <verifying-domain> [more-domains...]
+# Same matching rules as good_bots.txt. Verifying domains are best-effort; many
+# AI crawlers publish IP ranges rather than supporting reverse DNS.
+
+GPTBot openai.com
+ChatGPT-User openai.com
+OAI-SearchBot openai.com
+ClaudeBot anthropic.com claude.ai
+Claude-Web anthropic.com
+anthropic-ai anthropic.com
+CCBot commoncrawl.org
+Google-Extended google.com googlebot.com
+PerplexityBot perplexity.ai
+Amazonbot amazon.com crawl.amazonbot.amazon
+Bytespider bytedance.com
+Applebot-Extended apple.com applebot.apple.com
+Diffbot diffbot.com
+cohere-ai cohere.com
+cohere-training-data-crawler cohere.com
+ImagesiftBot imagesift.com
+Omgilibot omgili.com
+YouBot you.com
+meta-externalagent facebook.com
+Meta-ExternalAgent facebook.com
+Timpibot timpi.io

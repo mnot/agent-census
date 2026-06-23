@@ -1,0 +1,13 @@
+"""Declared AI / LLM data-gathering crawlers (GPTBot, ClaudeBot, CCBot, ...)."""
+
+from __future__ import annotations
+
+from ..model import Kind
+from .known_bot import KnownBotClassifier
+
+
+class AiCrawlerClassifier(KnownBotClassifier):
+    label = Kind.AI_CRAWLER
+    name = "ai_crawler"
+    data_file = "ai_crawlers.txt"
+    descriptor = "AI / LLM crawler"

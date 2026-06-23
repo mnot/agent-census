@@ -1,0 +1,62 @@
+[project]
+name = "agent-census"
+dynamic = ["version"]
+authors = [
+    {name="Mark Nottingham", email="mnot@mnot.net"}
+]
+description = "Characterize the clients hitting a web site by analyzing its access logs."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE.md"]
+classifiers = [
+    "Operating System :: OS Independent",
+    "Development Status :: 4 - Beta"
+]
+dependencies = [
+]
+
+[project.optional-dependencies]
+dev = ["mypy", "black", "isort", "pylint", "pytest", "pytest-md", "validate-pyproject", "build"]
+
+[project.urls]
+homepage = "https://github.com/mnot/agent-census"
+
+[project.scripts]
+agent-census = "agent_census.cli:main"
+
+
+[build-system]
+requires = [
+    "setuptools>=82.0.1",
+    "wheel"
+]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.dynamic]
+version = {attr = "agent_census.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["agent_census", "agent_census.*"]
+exclude = ["build*", "dist*"]
+namespaces = false
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+agent_census = ["py.typed", "classify/data/*.txt"]
+
+# Most tool configuration lives in dedicated files (managed by the template):
+#   mypy   → mypy.ini
+#   pylint → .pylintrc
+#   isort  → .isort.cfg
+# Black is the exception: it only reads pyproject.toml, so its config
+# stays here and is project-owned.
+
+[tool.black]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -13,13 +13,18 @@ from importlib.resources import files
 
 @lru_cache(maxsize=None)
 def load_list(name: str) -> tuple[str, ...]:
-    """Return the non-comment, non-blank lines of data file ``name``."""
+    """Return the data lines of file ``name``, stripped of comments.
+
+    Everything from a ``#`` to end of line is a comment -- whole-line or inline
+    (e.g. ``ClaudeBot anthropic.com 1.2.3.0/24  # source``). Blank lines (and
+    lines that are only a comment) are dropped.
+    """
     text = (files("agent_census.data") / name).read_text(encoding="utf-8")
     out: list[str] = []
     for line in text.splitlines():
-        stripped = line.strip()
-        if stripped and not stripped.startswith("#"):
-            out.append(stripped)
+        code = line.split("#", 1)[0].strip()
+        if code:
+            out.append(code)
     return tuple(out)
 
 

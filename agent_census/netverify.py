@@ -16,6 +16,7 @@ keeps a dead resolver from stalling the run or delaying exit. Enabled only with
 
 from __future__ import annotations
 
+import ipaddress
 import socket
 import threading
 from collections.abc import Callable, Sequence
@@ -30,6 +31,30 @@ _MAX_WORKERS = 32
 _DNS_TIMEOUT = 5.0  # seconds per individual lookup
 
 _T = TypeVar("_T")
+_Network = ipaddress.IPv4Network | ipaddress.IPv6Network
+
+
+def _split_hints(hints: tuple[str, ...]) -> tuple[tuple[str, ...], tuple[_Network, ...]]:
+    """Separate a token's verifying hints into rDNS domains and CIDR networks."""
+    domains: list[str] = []
+    networks: list[_Network] = []
+    for hint in hints:
+        if "/" in hint:
+            try:
+                networks.append(ipaddress.ip_network(hint, strict=False))
+            except ValueError:
+                continue
+        else:
+            domains.append(hint)
+    return tuple(domains), tuple(networks)
+
+
+def _ip_in(ip: str, networks: tuple[_Network, ...]) -> _Network | None:
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return None
+    return next((net for net in networks if addr in net), None)
 
 
 def _bounded(func: Callable[[], _T]) -> _T | None:
@@ -105,18 +130,38 @@ class BotVerifier:
             self._forward[host] = ips
         return ips
 
-    def verify(self, ip: str, ua: str | None) -> BotVerification:
+    def verify(  # pylint: disable=too-many-return-statements
+        self, ip: str, ua: str | None
+    ) -> BotVerification:
         """Verify whether ``ip`` genuinely belongs to the crawler ``ua`` declares."""
         known = _known_crawler(ua)
         if known is None:
             return BotVerification(VerificationStatus.NOT_APPLICABLE)
-        token, domains = known
-        if not domains:
+        token, hints = known
+        domains, networks = _split_hints(hints)
+        if not domains and not networks:
             return BotVerification(
                 VerificationStatus.UNVERIFIED,
-                expected_domains=domains,
-                evidence=(f"no verifying domain known for {token}",),
+                evidence=(f"no verifying domain or IP range known for {token}",),
             )
+
+        # IP-range membership is authoritative and needs no DNS.
+        if networks:
+            match = _ip_in(ip, networks)
+            if match is not None:
+                return BotVerification(
+                    VerificationStatus.VERIFIED,
+                    resolved_host=str(match),
+                    expected_domains=domains,
+                    evidence=(f"{ip} is within {match}, a published {token} range",),
+                )
+            if not domains:
+                return BotVerification(
+                    VerificationStatus.IMPERSONATOR,
+                    expected_domains=domains,
+                    evidence=(f"{ip} is not in any published {token} IP range",),
+                )
+
         host = self._cached_reverse(ip)
         if host is None:
             return BotVerification(

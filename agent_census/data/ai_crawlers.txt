@@ -1,12 +1,12 @@
 # AI / LLM data-gathering crawlers and assistants.
-# Format: <UA-token> <verifying-domain> [more-domains...]
-# Same matching rules as search_engines.txt. Verifying domains are best-effort; many
-# AI crawlers publish IP ranges rather than supporting reverse DNS.
+# Format: <UA-token> [verifying-domain | CIDR-range ...]   # trailing comments allowed
+# A CIDR range (e.g. 160.79.104.0/21) verifies by IP membership -- no DNS needed,
+# and the right signal for crawlers that publish ranges instead of reverse DNS.
 
 GPTBot openai.com
 ChatGPT-User openai.com
 OAI-SearchBot openai.com
-ClaudeBot anthropic.com claude.ai
+ClaudeBot anthropic.com claude.ai 160.79.104.0/21  # https://platform.claude.com/docs/en/api/ip-addresses
 Claude-Web anthropic.com
 anthropic-ai anthropic.com
 CCBot commoncrawl.org

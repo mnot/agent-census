@@ -65,6 +65,24 @@ def test_verify_all_empty() -> None:
     assert BotVerifier().verify_all([]) == {}
 
 
+def test_cidr_range_verifies_without_dns(monkeypatch: pytest.MonkeyPatch) -> None:
+    # ClaudeBot publishes 160.79.104.0/21; an IP in range verifies with no lookup.
+    def fail(_arg: str) -> None:
+        raise AssertionError("DNS must not be called for a CIDR match")
+
+    monkeypatch.setattr(netverify, "_reverse_dns", fail)
+    result = BotVerifier().verify("160.79.104.5", "Mozilla/5.0 (ClaudeBot/1.0; +claudebot@anthropic.com)")
+    assert result.status is VerificationStatus.VERIFIED
+    assert "160.79.104.0/21" in result.resolved_host  # type: ignore[operator]
+
+
+def test_ip_outside_only_range_is_impersonator(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A token verified solely by IP range: an out-of-range IP is an impersonator.
+    monkeypatch.setattr(netverify, "load_tokens", lambda name: (("RangeBot", ("10.0.0.0/24",)),))
+    result = BotVerifier().verify("203.0.113.9", "RangeBot/1.0")
+    assert result.status is VerificationStatus.IMPERSONATOR
+
+
 def test_verified_bot_ips_merge_into_one_entry(monkeypatch: pytest.MonkeyPatch) -> None:
     from pathlib import Path
 

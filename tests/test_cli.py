@@ -19,7 +19,7 @@ def test_analyze_writes_output(tmp_path: Path) -> None:
     out = tmp_path / "report.md"
     rc = main(["analyze", LOG, OFFLINE, "-o", str(out)])
     assert rc == 0
-    assert "# Client Census" in out.read_text(encoding="utf-8")
+    assert "# Agent Census" in out.read_text(encoding="utf-8")
 
 
 def test_options_intermixed_with_logfiles(tmp_path: Path) -> None:

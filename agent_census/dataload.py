@@ -29,6 +29,16 @@ class CrawlerSpec:
     ranges_url: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class RangeSource:
+    """One provider's IP ranges: inline CIDRs and/or a fetchable published list."""
+
+    name: str = ""
+    ranges: tuple[str, ...] = ()
+    ranges_url: str | None = None
+    fmt: str = "prefixes"  # how to parse ranges_url (see iprange.extract_cidrs)
+
+
 @lru_cache(maxsize=None)
 def _load(name: str) -> dict[str, Any]:
     text = (files("agent_census.data") / f"{name}.toml").read_text(encoding="utf-8")
@@ -53,3 +63,19 @@ def load_tokens(category: str) -> tuple[tuple[str, CrawlerSpec], ...]:
         )
         pairs.append((entry["ua_substring"], spec))
     return tuple(pairs)
+
+
+@lru_cache(maxsize=None)
+def load_range_sources(name: str) -> tuple[RangeSource, ...]:
+    """Return the ``[[source]]`` range stanzas from ``<name>.toml``."""
+    sources: list[RangeSource] = []
+    for entry in _load(name).get("source", []):
+        sources.append(
+            RangeSource(
+                name=entry.get("name", ""),
+                ranges=tuple(entry.get("ranges", [])),
+                ranges_url=entry.get("ranges_url"),
+                fmt=entry.get("format", "prefixes"),
+            )
+        )
+    return tuple(sources)

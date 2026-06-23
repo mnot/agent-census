@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import __version__, identity, pipeline
+from . import __version__, hosting, identity, pipeline
 from .classify import DEFAULT_UNKNOWN_THRESHOLD
 from .errors import AgentCensusError
 from .identity import ClientKeyStrategy
@@ -111,6 +111,12 @@ def _add_shared(parser: argparse.ArgumentParser) -> None:
         default=True,
         help="DNS / IP-range verification of declared crawlers "
         "(default: on; --no-verify-bots skips its network lookups)",
+    )
+    robots_group.add_argument(
+        "--fetch-ranges",
+        action="store_true",
+        help="opt in to fetching providers' published datacenter IP ranges "
+        "(cached weekly; sharpens datacenter / spoofed_browser detection)",
     )
 
     out_group = parser.add_argument_group("output")
@@ -258,6 +264,8 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
     robots_note = robots_doc.note() if robots_doc is not None else None
 
     verifier = BotVerifier() if args.verify_bots else None
+    if args.fetch_ranges:
+        hosting.enable_remote_ranges()
     quiescent = args.quiescent_hours * 3600 if args.quiescent_hours > 0 else None
 
     result = pipeline.analyze(

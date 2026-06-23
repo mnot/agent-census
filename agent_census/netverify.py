@@ -21,105 +21,25 @@ keeps a dead resolver from stalling the run or delaying exit. Enabled only with
 
 from __future__ import annotations
 
-import hashlib
-import ipaddress
-import json
-import os
 import socket
 import threading
-import time
-import urllib.request
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 from typing import TypeVar
 
 from . import uas
 from .dataload import CrawlerSpec, load_tokens
+from .iprange import Network as _Network
+from .iprange import fetch_ranges_text as _fetch_ranges_text
+from .iprange import ip_in as _ip_in
+from .iprange import parse_networks as _parse_networks
+from .iprange import parse_prefixes as _parse_prefixes
 from .model import BotVerification, ClientId, VerificationStatus
 
 _MAX_WORKERS = 32
 _DNS_TIMEOUT = 5.0  # seconds per individual lookup
-_RANGES_TTL = 7 * 24 * 60 * 60  # refresh fetched IP-range files weekly
-_FETCH_TIMEOUT = 10
 
 _T = TypeVar("_T")
-_Network = ipaddress.IPv4Network | ipaddress.IPv6Network
-
-
-def _parse_networks(cidrs: tuple[str, ...]) -> tuple[_Network, ...]:
-    nets: list[_Network] = []
-    for cidr in cidrs:
-        try:
-            nets.append(ipaddress.ip_network(cidr, strict=False))
-        except ValueError:
-            continue
-    return tuple(nets)
-
-
-def _ip_in(ip: str, networks: tuple[_Network, ...]) -> _Network | None:
-    try:
-        addr = ipaddress.ip_address(ip)
-    except ValueError:
-        return None
-    return next((net for net in networks if addr in net), None)
-
-
-def _ranges_cache_path(url: str) -> Path:
-    base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
-    directory = Path(base) / "agent-census" / "ranges"
-    directory.mkdir(parents=True, exist_ok=True)
-    return directory / (hashlib.sha1(url.encode("utf-8")).hexdigest() + ".json")
-
-
-def _http_get(url: str) -> str | None:
-    request = urllib.request.Request(url, headers={"User-Agent": "agent-census"})
-    try:
-        with urllib.request.urlopen(request, timeout=_FETCH_TIMEOUT) as response:  # noqa: S310
-            return str(response.read().decode("utf-8", "replace"))
-    except (OSError, ValueError):
-        return None
-
-
-def _fetch_ranges_text(url: str) -> str | None:
-    """Return the ranges JSON for ``url``, backed by a weekly on-disk cache."""
-    path = _ranges_cache_path(url)
-    try:
-        fresh = path.exists() and (time.time() - path.stat().st_mtime) < _RANGES_TTL
-    except OSError:
-        fresh = False
-    if fresh:
-        try:
-            return path.read_text(encoding="utf-8")
-        except OSError:
-            pass
-    text = _http_get(url)
-    if text is not None:
-        try:
-            path.write_text(text, encoding="utf-8")
-        except OSError:
-            pass
-        return text
-    try:  # fetch failed -- fall back to a stale cached copy if we have one
-        return path.read_text(encoding="utf-8")
-    except OSError:
-        return None
-
-
-def _parse_prefixes(text: str) -> tuple[str, ...]:
-    """Extract CIDRs from the Google/OpenAI ``{"prefixes": [...]}`` schema."""
-    try:
-        data = json.loads(text)
-    except (ValueError, TypeError):
-        return ()
-    prefixes = data.get("prefixes", []) if isinstance(data, dict) else []
-    out: list[str] = []
-    for prefix in prefixes:
-        if isinstance(prefix, dict):
-            cidr = prefix.get("ipv4Prefix") or prefix.get("ipv6Prefix")
-            if cidr:
-                out.append(cidr)
-    return tuple(out)
 
 
 def _bounded(func: Callable[[], _T]) -> _T | None:

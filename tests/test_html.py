@@ -23,7 +23,7 @@ def test_report_html_is_a_full_page() -> None:
     assert html.startswith("<!doctype html>")
     assert "<style>" in html
     assert html.rstrip().endswith("</html>")
-    assert "Client Census" in html
+    assert "Agent Census" in html
     assert "Summary by kind" in html
     # kind sections are anchored for the summary links
     assert 'id="vuln_scanner"' in html

@@ -291,7 +291,7 @@ def render_report_html(
     """Render the full analysis report as a standalone HTML page."""
     groups = by_kind(result.profiles)
     parts = [
-        "<h1>Client Census</h1>",
+        "<h1>Agent Census</h1>",
         _meta_list(result, source, robots_note),
         _summary_table(result, groups),
     ]
@@ -299,7 +299,7 @@ def render_report_html(
         group = groups.get(kind)
         if group:
             parts.append(_kind_section(kind, group, top))
-    return _page("Client Census", "\n".join(parts))
+    return _page("Agent Census", "\n".join(parts))
 
 
 # --- inspect mode ----------------------------------------------------------

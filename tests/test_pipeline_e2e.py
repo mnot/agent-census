@@ -74,7 +74,7 @@ def test_gptbot_ignores_robots_but_stays_ai_crawler() -> None:
 
 def test_report_renders_markdown() -> None:
     text = render_report(_run(), source="sample")
-    assert "# Client Census" in text
+    assert "# Agent Census" in text
     assert "## Summary by kind" in text
     assert "vuln_scanner" in text
 

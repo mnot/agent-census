@@ -1,37 +1,45 @@
 """Heuristic: does an IP belong to a datacenter / cloud hosting range?
 
 A browser User-Agent arriving from hosting infrastructure (rather than an ISP or
-mobile network) is the signature of spoofed-browser automation. The range list
-in ``data/datacenter_ranges.toml`` is a hand-maintained starter set, not an
-exhaustive registry -- a miss means "not known to be hosted", not "residential".
+mobile network) is the signature of spoofed-browser automation. Ranges come from
+``data/datacenter_ranges.toml``: inline CIDRs are always used (offline); each
+source's ``ranges_url`` is fetched and merged only after :func:`enable_remote_ranges`
+(wired to the ``--fetch-ranges`` flag), so a default run stays offline. A miss
+means "not known to be hosted", not "residential" -- the inline list is a small
+starter set.
 """
 
 from __future__ import annotations
 
-import ipaddress
 from functools import lru_cache
 
-from .dataload import load_list
+from .dataload import load_range_sources
+from .iprange import Network, extract_cidrs, fetch_ranges_text, ip_in, parse_networks
 
-_Network = ipaddress.IPv4Network | ipaddress.IPv6Network
+_DATA = "datacenter_ranges"
+_state = {"fetch_remote": False}  # mutable so enable_remote_ranges can flip it
+
+
+def enable_remote_ranges() -> None:
+    """Opt in to fetching each source's published ``ranges_url`` (cached weekly)."""
+    _state["fetch_remote"] = True
+    _networks.cache_clear()
+    is_datacenter_ip.cache_clear()
 
 
 @lru_cache(maxsize=None)
-def _networks() -> tuple[_Network, ...]:
-    nets: list[_Network] = []
-    for cidr in load_list("datacenter_ranges"):
-        try:
-            nets.append(ipaddress.ip_network(cidr, strict=False))
-        except ValueError:
-            continue  # skip a malformed entry rather than abort the whole run
+def _networks() -> tuple[Network, ...]:
+    nets: list[Network] = []
+    for source in load_range_sources(_DATA):
+        nets.extend(parse_networks(source.ranges))
+        if _state["fetch_remote"] and source.ranges_url:
+            text = fetch_ranges_text(source.ranges_url)
+            if text:
+                nets.extend(parse_networks(extract_cidrs(text, source.fmt)))
     return tuple(nets)
 
 
 @lru_cache(maxsize=None)
 def is_datacenter_ip(ip: str) -> bool:
     """True if ``ip`` falls in a known hosting range. Unparseable IPs are False."""
-    try:
-        addr = ipaddress.ip_address(ip)
-    except ValueError:
-        return False
-    return any(addr in net for net in _networks() if net.version == addr.version)
+    return ip_in(ip, _networks()) is not None

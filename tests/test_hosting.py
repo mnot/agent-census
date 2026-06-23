@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import pytest
+
+from agent_census import hosting
 from agent_census.hosting import is_datacenter_ip
 
 
@@ -17,3 +20,16 @@ def test_non_hosting_ip_does_not_match() -> None:
 def test_garbage_ip_is_false() -> None:
     assert not is_datacenter_ip("not-an-ip")
     assert not is_datacenter_ip("")
+
+
+def test_remote_ranges_are_used_only_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    # An IP only present in a fetched list is invisible until --fetch-ranges.
+    monkeypatch.setattr(hosting, "fetch_ranges_text", lambda url: "203.0.113.0/24")
+    try:
+        assert not is_datacenter_ip("203.0.113.7")  # default run is offline
+        hosting.enable_remote_ranges()
+        assert is_datacenter_ip("203.0.113.7")  # now merged from the fetched list
+    finally:  # reset module/cache state so other tests stay offline
+        hosting._state["fetch_remote"] = False  # pylint: disable=protected-access
+        hosting._networks.cache_clear()  # pylint: disable=protected-access
+        is_datacenter_ip.cache_clear()

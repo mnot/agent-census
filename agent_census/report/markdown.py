@@ -20,7 +20,7 @@ def _header(result: AnalysisResult, source: str, robots_note: str | None) -> lis
     stats = result.identity_stats
     start, end = time_range(result.profiles)
     lines = [
-        "# Client Census",
+        "# Agent Census",
         "",
         f"- **Source:** `{source}`",
         f"- **Lines:** {skips.total_lines:,} total · {skips.parsed:,} parsed · "

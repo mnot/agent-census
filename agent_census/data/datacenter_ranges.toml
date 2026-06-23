@@ -4,41 +4,61 @@
 # User-Agent is almost certainly automation in disguise, not a person -- see the
 # `datacenter` tag and the `spoofed_browser` kind.
 #
-# This is a deliberately SMALL, hand-maintained starter list, not an exhaustive
-# registry. It covers providers seen abusing this site plus a few of the usual
-# suspects. Extend it as you spot more. The hyperscalers (AWS, GCP, Azure)
-# publish machine-readable range lists that are better fetched than pinned here;
-# wiring that up the way crawler `ranges_url` works is a future improvement.
+# Each [[source]] is one provider. `ranges` are inline CIDRs, always used and
+# requiring no network. `ranges_url` points at a provider's published list and
+# is fetched (and cached for a week) ONLY when `--fetch-ranges` is passed;
+# `format` says how to parse it (prefixes | aws | azure | text | csv -- see
+# iprange.extract_cidrs). A source may carry both: the inline `ranges` act as an
+# offline fallback for when the URL can't be fetched.
 
-datacenter_ranges = [
-  # DigitalOcean (https://www.digitalocean.com)
-  "170.64.0.0/16",      # incl. 170.64.128.0/17, AP/Sydney
-  "104.131.0.0/16",
-  "134.209.0.0/16",
-  "138.197.0.0/16",
-  "143.198.0.0/16",
-  "146.190.0.0/16",
-  "157.245.0.0/16",
-  "159.65.0.0/16",
-  "165.227.0.0/16",
-  "167.99.0.0/16",
-  "188.166.0.0/16",
-
+# Hand-maintained inline ranges (offline default). Non-exhaustive; extend freely.
+[[source]]
+name = "static"
+ranges = [
+  # DigitalOcean
+  "170.64.0.0/16", "104.131.0.0/16", "134.209.0.0/16", "138.197.0.0/16",
+  "143.198.0.0/16", "146.190.0.0/16", "157.245.0.0/16", "159.65.0.0/16",
+  "165.227.0.0/16", "167.99.0.0/16", "188.166.0.0/16",
   # SberCloud / Cloud.ru (SBRF-UCLOUD, RU)
   "91.217.194.0/24",
-
-  # OVH (https://www.ovhcloud.com)
-  "51.68.0.0/16",
-  "51.75.0.0/16",
-  "51.255.0.0/16",
-  "147.135.0.0/16",
-
-  # Hetzner (https://www.hetzner.com)
-  "5.75.0.0/16",
-  "65.108.0.0/16",
-  "78.46.0.0/15",
-  "88.198.0.0/16",
-  "95.216.0.0/15",
-  "116.202.0.0/15",
-  "138.201.0.0/16",
+  # OVH
+  "51.68.0.0/16", "51.75.0.0/16", "51.255.0.0/16", "147.135.0.0/16",
+  # Hetzner
+  "5.75.0.0/16", "65.108.0.0/16", "78.46.0.0/15", "88.198.0.0/16",
+  "95.216.0.0/15", "116.202.0.0/15", "138.201.0.0/16",
 ]
+
+# Authoritative published lists, fetched only with --fetch-ranges (cached weekly).
+[[source]]
+name = "Amazon AWS"
+ranges_url = "https://ip-ranges.amazonaws.com/ip-ranges.json"
+format = "aws"
+
+[[source]]
+name = "Google Cloud"
+ranges_url = "https://www.gstatic.com/ipranges/cloud.json"
+format = "prefixes"
+
+[[source]]
+name = "Cloudflare (IPv4)"
+ranges_url = "https://www.cloudflare.com/ips-v4"
+format = "text"
+
+[[source]]
+name = "Cloudflare (IPv6)"
+ranges_url = "https://www.cloudflare.com/ips-v6"
+format = "text"
+
+[[source]]
+name = "DigitalOcean"
+ranges_url = "https://www.digitalocean.com/geo/google.csv"
+format = "csv"
+
+# Microsoft Azure publishes its ranges as a weekly "Service Tags" download whose
+# URL embeds a rotating date, so there is no stable URL to pin here; the inline
+# fallback above does not cover Azure. Add a current Service Tags URL by hand if
+# you need Azure coverage:
+# [[source]]
+# name = "Microsoft Azure"
+# ranges_url = "https://download.microsoft.com/.../ServiceTags_Public_YYYYMMDD.json"
+# format = "azure"

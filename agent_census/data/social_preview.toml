@@ -59,7 +59,7 @@ ranges = ["107.21.253.49", "54.204.20.249", "54.204.20.250", "54.221.198.105", "
 [[agent]]
 # https://iframely.com/docs/about
 ua_substring = "Iframely"
-domains = ["iframe.ly"]
+domains = ["iframe.ly", "iframely.com"]
 
 [[agent]]
 ua_substring = "vkShare"

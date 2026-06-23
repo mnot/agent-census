@@ -132,7 +132,11 @@ def derive_tags(
     if (
         features.self_referer_ratio >= 0.5
         and features.request_count >= 4
-        and not identifies_as_known_agent(features)  # only meaningful for would-be browsers
+        # Only meaningful for a client posing as a browser: a Referer faked to mimic
+        # navigation. A non-browser UA (or a declared agent) self-referring is not
+        # faking browser traffic, so the tag says nothing there.
+        and features.ua_looks_like_browser
+        and not identifies_as_known_agent(features)
     ):
         tags.add("forged-referer")  # Referer set to the requested URL -- faked navigation
 

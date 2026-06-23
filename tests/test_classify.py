@@ -65,6 +65,17 @@ def test_self_referer_browser_is_demoted_and_tagged() -> None:
     assert "forged-referer" in result.tags
 
 
+def test_self_referer_on_non_browser_ua_is_not_tagged() -> None:
+    # A non-browser UA self-referring isn't faking browser navigation -> no tag.
+    feats = ClientFeatures(
+        request_count=30,
+        ua_looks_like_browser=False,
+        self_referer_ratio=1.0,
+        user_agent="python-requests/2.31.0",
+    )
+    assert "forged-referer" not in classify_client(feats).tags
+
+
 def test_probing_browser_is_not_a_confident_browser() -> None:
     # Headless-browser automation co-loads assets like a real browser, but a
     # person never fetches attack paths -- probing must sink the browser verdict.

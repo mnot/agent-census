@@ -87,6 +87,36 @@ def test_inspect_renders_rationale() -> None:
     assert "Request trace" in text
 
 
+def _rotation_result(tmp_path: Path, ua_count: int) -> pipeline.AnalysisResult:
+    lines = [
+        f'2.2.2.2 - - [10/Oct/2023:12:0{i}:00 +0000] "GET / HTTP/1.1" 200 100 "-" "rot-agent-{i}"'
+        for i in range(ua_count)
+    ]
+    log = tmp_path / "rotation.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    return pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
+
+
+def test_inspect_rolls_up_ua_rotating_ip(tmp_path: Path) -> None:
+    # An IP with many rotating UAs is summarised, not dumped one full block each.
+    result = _rotation_result(tmp_path, ua_count=6)
+    selected = select_profiles(result, client="2.2.2.2", kind=None)
+    text = render_inspect(selected)
+    assert "6 clients on one IP" in text
+    assert "user-agent rotation" in text
+    assert "**Total**" in text
+    assert "Why this classification" not in text  # summarised, not full blocks
+
+
+def test_inspect_below_rollup_threshold_shows_full_blocks(tmp_path: Path) -> None:
+    result = _rotation_result(tmp_path, ua_count=3)
+    selected = select_profiles(result, client="2.2.2.2", kind=None)
+    text = render_inspect(selected)
+    assert "clients on one IP" not in text
+    assert "Why this classification" in text  # full per-client detail
+
+
 def test_eviction_matches_no_eviction(tmp_path: Path) -> None:
     # A 3-day log where every client is active within a single day; with a 12h
     # gap, day-1/2 clients are evicted before day-3, but the result must be
@@ -115,6 +145,39 @@ def test_eviction_matches_no_eviction(tmp_path: Path) -> None:
     assert summary(base) == summary(evicted)
     assert evicted.identity_stats == base.identity_stats
     assert len(evicted.profiles) == 18
+
+
+def test_returning_client_coalesces_after_eviction(tmp_path: Path) -> None:
+    # One client (one ip+ua) requests on day 1, then again on day 3. A filler
+    # client on day 2 advances the clock past the 12h quiescent window, so the
+    # day-1 stretch is evicted before day 3 arrives. The returning client must
+    # stay a SINGLE coalesced profile -- not fragment into one-per-stretch.
+    solo = [
+        f"10.0.0.1 - - [0{day}/Oct/2023:12:0{req}:00 +0000] "
+        f'"GET /p HTTP/1.1" 200 100 "-" "solo-agent"'
+        for day in (1, 3)
+        for req in range(3)
+    ]
+    filler = ['10.0.9.9 - - [02/Oct/2023:12:00:00 +0000] "GET /f HTTP/1.1" 200 100 "-" "filler"']
+    lines = solo[:3] + filler + solo[3:]
+    log = tmp_path / "returning.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    strategy = identity.get_strategy("ip_ua")
+
+    result = pipeline.analyze(log, parser, strategy, quiescent_seconds=12 * 3600)
+    assert result.identity_stats.client_count == 2  # solo + filler, counted once each
+    solo_profiles = [p for p in result.profiles if p.client_id.ip == "10.0.0.1"]
+    assert len(solo_profiles) == 1
+    assert solo_profiles[0].features.request_count == 6
+
+    # With the park capped at zero, the day-1 stretch is finalised for real when
+    # evicted, so the day-3 return can no longer coalesce -> the solo client
+    # fragments into two profiles.
+    fragmented = pipeline.analyze(
+        log, parser, strategy, quiescent_seconds=12 * 3600, retired_cap=0
+    )
+    assert len([p for p in fragmented.profiles if p.client_id.ip == "10.0.0.1"]) == 2
 
 
 def test_collect_entries_only_for_requested_keys() -> None:

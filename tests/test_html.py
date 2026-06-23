@@ -87,5 +87,20 @@ def test_inspect_html_empty_selection() -> None:
     assert "No matching clients" in html
 
 
+def test_inspect_html_rolls_up_ua_rotating_ip(tmp_path: Path) -> None:
+    lines = [
+        f'2.2.2.2 - - [10/Oct/2023:12:0{i}:00 +0000] "GET / HTTP/1.1" 200 100 "-" "rot-{i}"'
+        for i in range(6)
+    ]
+    log = tmp_path / "rotation.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
+    selected = select_profiles(result, client="2.2.2.2", kind=None)
+    html = render_inspect_html(selected)
+    assert "6 clients on one IP" in html
+    assert "Request trace" not in html  # rolled up, not full per-client cards
+
+
 def test_esc_quotes() -> None:
     assert _esc('a"b<c>') == "a&quot;b&lt;c&gt;"

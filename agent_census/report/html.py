@@ -21,6 +21,7 @@ from .format import (
     human_duration,
     truncate,
 )
+from .inspect import ROLLUP_MIN_CLIENTS
 
 _KIND_COLORS: dict[Kind, str] = {
     Kind.BROWSER: "#2563eb",
@@ -403,6 +404,43 @@ def _profile_card(profile: ClientProfile, limit: int, full: bool) -> str:
     return f'<section class="card">{body}</section>'
 
 
+def _rollup_card(profiles: list[ClientProfile]) -> str:
+    ip = profiles[0].client_id.ip
+    total_requests = sum(p.features.request_count for p in profiles)
+    total_bytes = sum(p.features.total_bytes for p in profiles)
+    head = (
+        "<tr><th>User-Agent</th><th>Kind</th><th class='num'>Conf.</th>"
+        "<th class='num'>Requests</th><th class='num'>Bandwidth</th><th>Tags</th></tr>"
+    )
+    rows = []
+    for profile in profiles:
+        cls = profile.classification
+        ua = elide_ua(profile.features.user_agent, is_browser=cls.primary is Kind.BROWSER) or "–"
+        rows.append(
+            f'<tr><td class="mono">{_esc(truncate(ua, 80))}</td>'
+            f"<td>{_kind_badge(cls.primary)}</td>"
+            f"<td class='num'>{cls.confidence:.0%}</td>"
+            f"<td class='num'>{profile.features.request_count:,}</td>"
+            f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
+            f"<td>{_tags_html(cls.tags)}</td></tr>"
+        )
+    rows.append(
+        f"<tr><td><strong>Total</strong></td><td></td><td></td>"
+        f"<td class='num'>{total_requests:,}</td>"
+        f"<td class='num'>{human_bytes(total_bytes)}</td><td></td></tr>"
+    )
+    intro = (
+        f"<p>This IP presents {len(profiles):,} distinct user-agents (user-agent rotation). "
+        "Per-client summary below; inspect one by passing a distinctive part of its "
+        "user-agent to <code>--client</code>.</p>"
+    )
+    return (
+        f'<section class="card"><h2 class="mono">{_esc(ip)} — '
+        f"{len(profiles):,} clients on one IP</h2>"
+        f"{intro}<table>{head}{''.join(rows)}</table></section>"
+    )
+
+
 def render_inspect_html(
     selected: list[ClientProfile], *, limit: int = 20, full: bool = False
 ) -> str:
@@ -410,5 +448,7 @@ def render_inspect_html(
     if not selected:
         return _page("Client Inspection", "<h1>Client Inspection</h1><p>No matching clients.</p>")
     selected = sorted(selected, key=lambda p: p.features.request_count, reverse=True)
+    if len(selected) >= ROLLUP_MIN_CLIENTS and len({p.client_id.ip for p in selected}) == 1:
+        return _page("Client Inspection", f"<h1>Client Inspection</h1>{_rollup_card(selected)}")
     cards = "".join(_profile_card(p, limit, full) for p in selected)
     return _page("Client Inspection", f"<h1>Client Inspection</h1>{cards}")

@@ -17,7 +17,13 @@ from .format import (
     human_bytes,
     human_duration,
     md_escape,
+    truncate,
 )
+
+# Inspecting a single IP that carries at least this many distinct clients (a
+# user-agent-rotating host) prints a per-client summary instead of one full
+# block each, which would otherwise be near-identical and unreadably long.
+ROLLUP_MIN_CLIENTS = 5
 
 
 def select_profiles(
@@ -127,12 +133,48 @@ def _trace_block(profile: ClientProfile, limit: int, full: bool) -> list[str]:
     return lines
 
 
+def _is_rotation(profiles: list[ClientProfile]) -> bool:
+    """True when every selected profile is the same IP and there are enough to roll up."""
+    return len(profiles) >= ROLLUP_MIN_CLIENTS and len({p.client_id.ip for p in profiles}) == 1
+
+
+def _rollup_block(profiles: list[ClientProfile]) -> list[str]:
+    ip = profiles[0].client_id.ip
+    total_requests = sum(p.features.request_count for p in profiles)
+    total_bytes = sum(p.features.total_bytes for p in profiles)
+    lines = [
+        f"## {ip} — {len(profiles):,} clients on one IP",
+        "",
+        f"This IP presents {len(profiles):,} distinct user-agents (user-agent rotation). "
+        "Per-client summary below; inspect one by passing a distinctive part of its "
+        "user-agent to `--client`.",
+        "",
+        "| User-Agent | Kind | Conf. | Requests | Bandwidth | Tags |",
+        "| --- | --- | --: | --: | --: | --- |",
+    ]
+    for profile in profiles:
+        cls = profile.classification
+        ua = elide_ua(profile.features.user_agent, is_browser=cls.primary is Kind.BROWSER) or "–"
+        tags = ", ".join(sorted(cls.tags)) or "–"
+        lines.append(
+            f"| {md_escape(truncate(ua, 70))} | {cls.primary.value} | {cls.confidence:.0%} | "
+            f"{profile.features.request_count:,} | {human_bytes(profile.features.total_bytes)} | "
+            f"{tags} |"
+        )
+    lines.append(f"| **Total** | | | {total_requests:,} | {human_bytes(total_bytes)} | |")
+    lines.append("")
+    return lines
+
+
 def render_inspect(selected: list[ClientProfile], *, limit: int = 20, full: bool = False) -> str:
     """Render inspection output for already-selected client profiles."""
     if not selected:
         return "_No matching clients._\n"
     selected = sorted(selected, key=lambda p: p.features.request_count, reverse=True)
     out: list[str] = ["# Client Inspection", ""]
+    if _is_rotation(selected):
+        out += _rollup_block(selected)
+        return "\n".join(out).rstrip() + "\n"
     for profile in selected:
         out += _identity_block(profile)
         out += _rationale_block(profile)

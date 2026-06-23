@@ -29,6 +29,13 @@ from .robots import RobotsRules, report_from_signals
 # Default inactivity gap after which a client is considered finished and evicted.
 DEFAULT_QUIESCENT_SECONDS = 24 * 60 * 60
 
+# Evicted (quiescent) clients are parked here rather than finalised outright, so a
+# client that goes quiet and later returns is coalesced into one profile instead of
+# fragmenting. The park is a bounded LRU: only when more than this many distinct
+# clients are dormant at once do the longest-dormant get finalised for real (and a
+# later return from one of those would re-fragment -- the memory ceiling's cost).
+DEFAULT_RETIRED_CAP = 50_000
+
 _CRAWLER_TOKENS: tuple[tuple[str, CrawlerSpec], ...] | None = None
 
 
@@ -164,6 +171,7 @@ def analyze(  # pylint: disable=too-many-locals
     unknown_threshold: float = DEFAULT_UNKNOWN_THRESHOLD,
     keep_signals: bool = True,
     quiescent_seconds: float | None = None,
+    retired_cap: int = DEFAULT_RETIRED_CAP,
 ) -> AnalysisResult:
     """Stream one or more log files into per-client profiles.
 
@@ -181,6 +189,7 @@ def analyze(  # pylint: disable=too-many-locals
     paths = [logs] if isinstance(logs, Path) else list(logs)
     resident: dict[ClientId, FeatureAccumulator] = {}
     evictable: OrderedDict[ClientId, FeatureAccumulator] = OrderedDict()
+    retired: OrderedDict[ClientId, FeatureAccumulator] = OrderedDict()
     tokens: dict[ClientId, str | None] = {}
     uas_by_ip: dict[str, set[str | None]] = {}
     ip_refs: dict[str, int] = defaultdict(int)
@@ -232,21 +241,27 @@ def analyze(  # pylint: disable=too-many-locals
             )
         )
 
+    def drop_client(key: ClientId) -> None:
+        tokens.pop(key, None)
+        remaining = ip_refs.get(key.ip, 0) - 1
+        if remaining <= 0:
+            ip_refs.pop(key.ip, None)
+            uas_by_ip.pop(key.ip, None)
+        else:
+            ip_refs[key.ip] = remaining
+
     def evict(cutoff: float) -> None:
         while evictable:
             key = next(iter(evictable))
             last_seen = evictable[key].last_seen
             if last_seen is None or last_seen.timestamp() >= cutoff:
                 break
-            _, acc = evictable.popitem(last=False)
-            emit(key, acc, None, ())
-            tokens.pop(key, None)
-            remaining = ip_refs.get(key.ip, 0) - 1
-            if remaining <= 0:
-                ip_refs.pop(key.ip, None)
-                uas_by_ip.pop(key.ip, None)
-            else:
-                ip_refs[key.ip] = remaining
+            # Park, don't finalise: a return visit reanimates this accumulator.
+            retired[key] = evictable.pop(key)
+        while len(retired) > retired_cap:
+            old_key, acc = retired.popitem(last=False)
+            emit(old_key, acc, None, ())
+            drop_client(old_key)
 
     for outcome in parser.parse_lines(read_many(paths)):
         total += 1
@@ -262,6 +277,10 @@ def analyze(  # pylint: disable=too-many-locals
             acc = evictable.get(key)
             if acc is not None:
                 evictable.move_to_end(key)
+        if acc is None and key in retired:
+            # A dormant client is back: resume its accumulator, don't recount it.
+            acc = retired.pop(key)
+            evictable[key] = acc
         if acc is None:
             client_count += 1
             ip_refs[key.ip] += 1
@@ -302,6 +321,8 @@ def analyze(  # pylint: disable=too-many-locals
     for key, acc in resident.items():
         emit(key, acc, verifications.get(key), member_ips.get(key, ()))
     for key, acc in evictable.items():
+        emit(key, acc, None, ())
+    for key, acc in retired.items():
         emit(key, acc, None, ())
 
     profiles.sort(key=lambda p: p.features.request_count, reverse=True)

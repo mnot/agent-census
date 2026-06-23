@@ -8,6 +8,7 @@ import pytest
 
 from agent_census import identity, pipeline
 from agent_census.parsing import resolve
+from agent_census.pipeline import RESIDENTIAL_NETWORK
 from agent_census.parsing.apache import PRESETS
 from agent_census.report import render_inspect_html, render_report_html, select_profiles
 from agent_census.report.html import _esc
@@ -129,6 +130,8 @@ def test_network_table_renders_with_providers(
     html = render_report_html(result, source="x")
     assert "Requests by kind and network" in html
     assert "Amazon AWS" in html
+    # The residential (non-hosting) column carries the grey-wash class on its header.
+    assert f"class='num netbg'>{_esc(RESIDENTIAL_NETWORK)}</th>" in html
 
 
 def test_tags_have_hover_descriptions() -> None:

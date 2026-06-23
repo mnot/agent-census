@@ -118,6 +118,7 @@ table { border-collapse: collapse; width: 100%; margin: .5rem 0 1rem; font-size:
 th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid #8884; vertical-align: top; }
 th { font-weight: 600; border-bottom: 2px solid #8886; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.netbg { background: #8881; }
 tr:hover td { background: #8881; }
 .badge { display: inline-block; padding: .08rem .5rem; border-radius: 999px;
   color: #fff; font-size: .8rem; font-weight: 600; white-space: nowrap; }
@@ -289,9 +290,15 @@ def _network_table(result: AnalysisResult) -> str:
     matrix = network_matrix(result.network_rollups, result.network_categories)
     if matrix is None:
         return ""
+
+    # Non-hosting columns (egress networks, residential) get a faint grey wash so
+    # the eye separates "came through someone else's network" from named hosting.
+    def klass(net: str) -> str:
+        return "num" if matrix.is_hosting(net) else "num netbg"
+
     head = (
         "<tr><th>Kind</th>"
-        + "".join(f"<th class='num'>{_esc(net)}</th>" for net in matrix.networks)
+        + "".join(f"<th class='{klass(net)}'>{_esc(net)}</th>" for net in matrix.networks)
         + "<th class='num'>Total</th></tr>"
     )
 
@@ -301,13 +308,16 @@ def _network_table(result: AnalysisResult) -> str:
     rows = []
     for kind in matrix.kinds:
         cells = "".join(
-            f"<td class='num'>{cell(matrix.cell(net, kind))}</td>" for net in matrix.networks
+            f"<td class='{klass(net)}'>{cell(matrix.cell(net, kind))}</td>"
+            for net in matrix.networks
         )
         rows.append(
             f'<tr><td><a href="#{kind.value}">{_kind_badge(kind)}</a></td>'
             f"{cells}<td class='num'>{matrix.row_totals[kind]:,}</td></tr>"
         )
-    totals = "".join(f"<td class='num'>{matrix.col_totals[net]:,}</td>" for net in matrix.networks)
+    totals = "".join(
+        f"<td class='{klass(net)}'>{matrix.col_totals[net]:,}</td>" for net in matrix.networks
+    )
     rows.append(
         f"<tr class='totals'><td><strong>All kinds</strong></td>"
         f"{totals}<td class='num'>{matrix.total:,}</td></tr>"

@@ -30,9 +30,11 @@ def test_collapses_smallest_datacenter_providers_into_other() -> None:
     assert OTHER_HOSTING in matrix.networks
     # Folded cell is the sum of the two dropped providers' requests.
     assert matrix.cell(OTHER_HOSTING, Kind.SCRAPER) == (100 - 6) + (100 - 7)
-    # Catch-all columns are pinned to the right; named networks read first.
-    assert matrix.networks[-1] == OTHER_HOSTING
-    assert matrix.networks[-2] == RESIDENTIAL_NETWORK
+    # Hosting reads first (named providers, then the Other-hosting catch-all);
+    # the residential bucket is pinned far right.
+    assert matrix.networks[-1] == RESIDENTIAL_NETWORK
+    assert matrix.networks[-2] == OTHER_HOSTING
+    assert matrix.is_hosting(OTHER_HOSTING) and not matrix.is_hosting(RESIDENTIAL_NETWORK)
     # Totals are exact.
     assert matrix.row_totals[Kind.BROWSER] == 500
     assert matrix.total == sum(100 - i for i in range(8)) + 500
@@ -52,6 +54,27 @@ def test_egress_networks_are_never_collapsed() -> None:
     assert matrix is not None
     assert "iCloud Private Relay" in matrix.networks  # egress stays even at cap 0
     assert OTHER_HOSTING not in matrix.networks
+
+
+def test_other_hosting_sits_left_of_egress_and_residential() -> None:
+    rollups = {
+        "DC0": {Kind.SCRAPER: _rollup(100)},
+        "DC1": {Kind.SCRAPER: _rollup(90)},
+        "iCloud Private Relay": {Kind.BROWSER: _rollup(50)},
+        RESIDENTIAL_NETWORK: {Kind.BROWSER: _rollup(200)},
+    }
+    categories = {
+        "DC0": "datacenter",
+        "DC1": "datacenter",
+        "iCloud Private Relay": "egress",
+        RESIDENTIAL_NETWORK: "residential",
+    }
+    matrix = network_matrix(rollups, categories, max_datacenter=1)  # DC1 folds
+
+    cols = list(matrix.networks)  # type: ignore[union-attr]
+    assert cols.index(OTHER_HOSTING) < cols.index("iCloud Private Relay")  # hosting first
+    assert cols.index("iCloud Private Relay") < cols.index(RESIDENTIAL_NETWORK)
+    assert cols == ["DC0", OTHER_HOSTING, "iCloud Private Relay", RESIDENTIAL_NETWORK]
 
 
 def test_none_when_only_residential() -> None:

@@ -82,9 +82,14 @@ class NetworkMatrix:
     col_totals: dict[str, int]
     row_totals: dict[Kind, int]
     total: int
+    categories: dict[str, str]  # column -> datacenter | egress | residential
 
     def cell(self, network: str, kind: Kind) -> int:
         return self.requests.get((network, kind), 0)
+
+    def is_hosting(self, network: str) -> bool:
+        """True for datacenter/hosting columns; False for egress and residential."""
+        return self.categories.get(network) == "datacenter"
 
 
 def network_matrix(
@@ -119,17 +124,25 @@ def network_matrix(
     requests: dict[tuple[str, Kind], int] = defaultdict(int)
     col_totals: dict[str, int] = defaultdict(int)
     row_totals: dict[Kind, int] = defaultdict(int)
+    categories: dict[str, str] = {OTHER_HOSTING: "datacenter"}
     for net, kinds in network_rollups.items():
         col = column_of(net)
+        categories.setdefault(col, network_categories.get(net, "residential"))
         for kind, rollup in kinds.items():
             requests[(col, kind)] += rollup.requests
             col_totals[col] += rollup.requests
             row_totals[kind] += rollup.requests
 
-    # Columns biggest-first, with the residential and Other-hosting catch-alls
-    # pinned to the right so the named networks read first.
+    # Group hosting on the left (named providers biggest-first, then the Other
+    # hosting catch-all), then the non-hosting columns: egress networks, then the
+    # residential bucket pinned far right.
     def column_sort(col: str) -> tuple[int, int]:
-        rank = 2 if col == OTHER_HOSTING else 1 if col == RESIDENTIAL_NETWORK else 0
+        if col == OTHER_HOSTING:
+            rank = 1
+        elif col == RESIDENTIAL_NETWORK:
+            rank = 3
+        else:
+            rank = 0 if categories[col] == "datacenter" else 2  # 2 = egress
         return (rank, -col_totals[col])
 
     columns = tuple(sorted(col_totals, key=column_sort))
@@ -141,4 +154,5 @@ def network_matrix(
         col_totals=dict(col_totals),
         row_totals=dict(row_totals),
         total=sum(col_totals.values()),
+        categories=categories,
     )

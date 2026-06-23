@@ -160,6 +160,40 @@ def test_eviction_matches_no_eviction(tmp_path: Path) -> None:
     assert len(evicted.profiles) == 18
 
 
+def test_datacenter_fleet_merges_by_subnet_and_ua(tmp_path: Path) -> None:
+    # 170.64.0.0/16 is DigitalOcean (an inline range, so no fetch needed). Two
+    # IPs in the same /24 with one UA collapse; a third /24 and a different UA
+    # stay separate.
+    ua = "python-requests/2.31.0"
+    rows = [
+        ("170.64.1.5", ua),
+        ("170.64.1.9", ua),  # same /24 + UA -> merges with the above
+        ("170.64.2.5", ua),  # different /24 -> its own entry
+        ("170.64.1.20", "curl/8.0"),  # same /24, different UA -> its own entry
+    ]
+    lines = [
+        f'{ip} - - [10/Oct/2023:12:0{i}:00 +0000] "GET /p HTTP/1.1" 200 100 "-" "{agent}"'
+        for i, (ip, agent) in enumerate(rows)
+    ]
+    log = tmp_path / "dc.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
+
+    merged = [
+        p
+        for p in result.profiles
+        if p.client_id.ip == "170.64.1.0/24" and p.client_id.user_agent == ua
+    ]
+    assert len(merged) == 1
+    assert set(merged[0].member_ips) == {"170.64.1.5", "170.64.1.9"}
+    assert "datacenter" in merged[0].classification.tags
+    ids = {p.client_id.ip for p in result.profiles}
+    assert "170.64.2.0/24" in ids  # the other subnet stayed separate
+    # three groups: 1.0/24+requests, 2.0/24+requests, 1.0/24+curl
+    assert result.identity_stats.client_count == 3
+
+
 def test_returning_client_coalesces_after_eviction(tmp_path: Path) -> None:
     # One client (one ip+ua) requests on day 1, then again on day 3. A filler
     # client on day 2 advances the clock past the 12h quiescent window, so the

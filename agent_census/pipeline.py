@@ -21,7 +21,7 @@ from . import egress, uas
 from .classify import DEFAULT_UNKNOWN_THRESHOLD, classify_client
 from .dataload import CrawlerSpec, load_tokens
 from .features import DisallowedCheck, FeatureAccumulator
-from .hosting import is_datacenter_ip
+from .hosting import datacenter_subnet, is_datacenter_ip
 from .identity import ClientKeyStrategy
 from .model import BotVerification, ClientId, ClientProfile, LogEntry, VerificationStatus
 from .parsing.base import LogParser
@@ -198,6 +198,11 @@ def analyze(  # pylint: disable=too-many-locals
     egress_token: dict[tuple[str, str | None], str | None] = {}
     egress_members: dict[tuple[str, str | None], set[str]] = {}
     egress_tag: dict[str, str] = {}
+    # Datacenter clients sharing a /24 (or /48) and UA are lumped into one entry,
+    # keyed by (subnet, UA), the same way -- an adjacent VM fleet is one actor.
+    dc_acc: OrderedDict[tuple[str, str | None], FeatureAccumulator] = OrderedDict()
+    dc_token: dict[tuple[str, str | None], str | None] = {}
+    dc_members: dict[tuple[str, str | None], set[str]] = {}
     tokens: dict[ClientId, str | None] = {}
     uas_by_ip: dict[str, set[str | None]] = {}
     ip_refs: dict[str, int] = defaultdict(int)
@@ -213,6 +218,7 @@ def analyze(  # pylint: disable=too-many-locals
         verification: BotVerification | None,
         member: tuple[str, ...],
         extra_tags: frozenset[str] = frozenset(),
+        datacenter: bool | None = None,
     ) -> None:
         nonlocal singleton_count
         ua_count = len(uas_by_ip.get(key.ip) or (None,))
@@ -231,11 +237,12 @@ def analyze(  # pylint: disable=too-many-locals
                 request_count=features.request_count,
                 median_interval=features.inter_arrival_median,
             )
+        in_datacenter = is_datacenter_ip(key.ip) if datacenter is None else datacenter
         classification = classify_client(
             features,
             compliance=compliance,
             verification=verification,
-            datacenter=is_datacenter_ip(key.ip),
+            datacenter=in_datacenter,
             unknown_threshold=unknown_threshold,
             keep_signals=keep_signals,
         )
@@ -275,6 +282,25 @@ def analyze(  # pylint: disable=too-many-locals
             emit(old_key, acc, None, ())
             drop_client(old_key)
 
+    def fold(
+        store: "OrderedDict[tuple[str, str | None], FeatureAccumulator]",
+        token_store: dict[tuple[str, str | None], str | None],
+        members: dict[tuple[str, str | None], set[str]],
+        gkey: tuple[str, str | None],
+        entry: LogEntry,
+    ) -> None:
+        """Collapse a request into a shared (group, UA) accumulator, tracking its IPs."""
+        acc = store.get(gkey)
+        if acc is None:
+            token = uas.product_token(entry.user_agent) if robots is not None else None
+            check = _disallowed_check(robots, token) if robots is not None else None
+            acc = FeatureAccumulator(disallowed_check=check)
+            store[gkey] = acc
+            token_store[gkey] = token
+            members[gkey] = set()
+        acc.add(entry)
+        members[gkey].add(entry.remote_host)
+
     for outcome in parser.parse_lines(read_many(paths)):
         total += 1
         entry = outcome.entry
@@ -284,21 +310,15 @@ def analyze(  # pylint: disable=too-many-locals
             continue
         parsed += 1
         network = egress.lookup(entry.remote_host)
+        subnet = None if network is not None else datacenter_subnet(entry.remote_host)
         if network is not None:
-            # Fold this request into the network's per-UA bucket; the source IP
-            # is a throwaway relay address, so it is not its own client.
-            gkey = (network.name, entry.user_agent)
-            acc = egress_acc.get(gkey)
-            if acc is None:
-                token = uas.product_token(entry.user_agent) if robots is not None else None
-                check = _disallowed_check(robots, token) if robots is not None else None
-                acc = FeatureAccumulator(disallowed_check=check)
-                egress_acc[gkey] = acc
-                egress_token[gkey] = token
-                egress_members[gkey] = set()
-                egress_tag[network.name] = network.tag
-            acc.add(entry)
-            egress_members[gkey].add(entry.remote_host)
+            # A relay/proxy egress IP is a throwaway; fold by network + UA.
+            fold(egress_acc, egress_token, egress_members, (network.name, entry.user_agent), entry)
+            egress_tag.setdefault(network.name, network.tag)
+        elif subnet is not None and not _declares_crawler(entry.user_agent):
+            # An adjacent datacenter fleet (same /24 or /48 + UA) is one actor.
+            # Declared crawlers are left out so they still reach DNS verification.
+            fold(dc_acc, dc_token, dc_members, (subnet, entry.user_agent), entry)
         else:
             key = strategy.key(entry)
             acc = resident.get(key)
@@ -364,6 +384,12 @@ def analyze(  # pylint: disable=too-many-locals
             tuple(sorted(egress_members[(name, user_agent)])),
             extra_tags=frozenset({egress_tag[name]}),
         )
+        client_count += 1
+    for (subnet, user_agent), acc in dc_acc.items():
+        # One client per datacenter (subnet, UA); the subnet is its identity.
+        did = ClientId(ip=subnet, user_agent=user_agent)
+        tokens[did] = dc_token[(subnet, user_agent)]
+        emit(did, acc, None, tuple(sorted(dc_members[(subnet, user_agent)])), datacenter=True)
         client_count += 1
 
     profiles.sort(key=lambda p: p.features.request_count, reverse=True)

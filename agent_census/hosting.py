@@ -11,6 +11,7 @@ small starter set.
 
 from __future__ import annotations
 
+import ipaddress
 from functools import lru_cache
 
 from .dataload import load_range_sources
@@ -38,3 +39,20 @@ def _index() -> RangeIndex:
 def is_datacenter_ip(ip: str) -> bool:
     """True if ``ip`` falls in a known hosting range. Unparseable IPs are False."""
     return _index().contains(ip)
+
+
+@lru_cache(maxsize=None)
+def datacenter_subnet(ip: str) -> str | None:
+    """The /24 (v4) or /48 (v6) of a datacenter IP, or None if it isn't one.
+
+    Used to lump an adjacent VM fleet -- same subnet, same client -- into one
+    entry rather than scattering it across near-identical addresses.
+    """
+    if not is_datacenter_ip(ip):
+        return None
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return None
+    prefix = 24 if addr.version == 4 else 48
+    return format(ipaddress.ip_network(f"{ip}/{prefix}", strict=False))

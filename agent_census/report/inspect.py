@@ -52,7 +52,7 @@ def _identity_block(profile: ClientProfile) -> list[str]:
         f"- **Classified:** `{kind_label(cls.primary)}` (confidence {cls.confidence:.0%})",
         f"- **Tags:** {', '.join(sorted(cls.tags)) or '–'}",
         f"- **IP:** {profile.client_id.ip}"
-        + (f" ({len(profile.member_ips)} verified IPs)" if profile.member_ips else ""),
+        + (f" ({len(profile.member_ips)} IPs merged)" if profile.member_ips else ""),
         f"- **User-Agent:** "
         f"{md_escape(elide_ua(feats.user_agent, is_browser=cls.primary is Kind.BROWSER) or '–')}",
         f"- **Requests:** {feats.request_count:,} · "

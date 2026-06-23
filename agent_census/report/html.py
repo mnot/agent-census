@@ -8,7 +8,9 @@ file you can open in a browser -- no external assets, no dependencies.
 from __future__ import annotations
 
 import html
+from functools import lru_cache
 
+from ..dataload import load_egress_networks
 from ..model import ClientProfile, Kind
 from ..pipeline import AnalysisResult
 from .aggregate import KIND_BLURB, KIND_ORDER, by_kind, robots_counts, time_range
@@ -53,6 +55,45 @@ _TAG_COLORS: dict[str, str] = {
     # 'shared-ip' is left neutral (grey): many UAs but a benign shared egress.
 }
 
+# Hover descriptions for the tags (rendered as a native title= tooltip). Egress
+# network tags are described from the data file, so new networks get tooltips
+# without touching this table.
+_TAG_HELP: dict[str, str] = {
+    "datacenter": "Source IP is in a known datacenter / cloud hosting range, "
+    "not a consumer or ISP network.",
+    "fake-browser": "Presents a browser User-Agent but shows no browser behaviour: "
+    "no asset co-loading, no referer-following.",
+    "checked-robots": "Requested /robots.txt at some point.",
+    "no-user-agent": "Sent no User-Agent header.",
+    "ua-rotating": "Many distinct User-Agents from one IP, paired with a hosting origin "
+    "or non-browser behaviour — likely UA rotation to evade limits.",
+    "shared-ip": "Many distinct User-Agents from one IP but behaving normally — a shared "
+    "egress such as NAT, VPN, proxy, or carrier gateway.",
+    "respects-robots": "Requested no paths disallowed by the applicable robots.txt group.",
+    "ignores-robots": "Requested paths disallowed by the applicable robots.txt group.",
+    "verified": "Reverse/forward DNS or a published IP range confirmed the declared "
+    "crawler identity.",
+    "declares-known-bot": "User-Agent names a known crawler (identity verified separately).",
+    "probing": "Requested known-vulnerable paths or used directory-traversal patterns.",
+    "fetches-non-feeds": "A feed reader that also requested non-feed resources.",
+}
+
+
+@lru_cache(maxsize=None)
+def _egress_tag_help() -> dict[str, str]:
+    return {
+        net.tag: f"{net.name}: a shared-egress network (privacy relay / proxy). "
+        "Its requests are folded into one entry per User-Agent."
+        for net in load_egress_networks()
+        if net.tag
+    }
+
+
+def _tag_title(tag: str) -> str:
+    """Hover description for a tag, or '' if none is known."""
+    return _TAG_HELP.get(tag) or _egress_tag_help().get(tag, "")
+
+
 _CSS = """
 :root { color-scheme: light dark; }
 * { box-sizing: border-box; }
@@ -74,7 +115,7 @@ tr:hover td { background: #8881; }
 .badge { display: inline-block; padding: .08rem .5rem; border-radius: 999px;
   color: #fff; font-size: .8rem; font-weight: 600; white-space: nowrap; }
 .tag { display: inline-block; padding: .05rem .45rem; margin: 0 .2rem .2rem 0;
-  border-radius: 6px; background: #8883; font-size: .78rem; white-space: nowrap; }
+  border-radius: 6px; background: #8883; font-size: .78rem; white-space: nowrap; cursor: help; }
 .blurb { color: #6b7280; margin: .15rem 0 .6rem; }
 .bar { background: #8883; border-radius: 4px; height: .7rem; min-width: 2px; }
 .card { border: 1px solid #8884; border-radius: 10px; padding: 1rem 1.1rem; margin: 1rem 0; }
@@ -162,7 +203,9 @@ def _tags_html(tags: frozenset[str]) -> str:
     for tag in sorted(tags):
         color = _TAG_COLORS.get(tag)
         style = f' style="background:{color};color:#fff"' if color else ""
-        spans.append(f'<span class="tag"{style}>{_esc(tag)}</span>')
+        description = _tag_title(tag)
+        title = f' title="{_esc(description)}"' if description else ""
+        spans.append(f'<span class="tag"{style}{title}>{_esc(tag)}</span>')
     return "".join(spans)
 
 

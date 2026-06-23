@@ -102,5 +102,12 @@ def test_inspect_html_rolls_up_ua_rotating_ip(tmp_path: Path) -> None:
     assert "Request trace" not in html  # rolled up, not full per-client cards
 
 
+def test_tags_have_hover_descriptions() -> None:
+    # The 203.0.113.66 zgrab scanner is tagged 'probing'; it should carry a tooltip.
+    html = render_report_html(_run(), source="sample")
+    assert "<span class=\"tag\"" in html
+    assert 'title="Requested known-vulnerable paths' in html
+
+
 def test_esc_quotes() -> None:
     assert _esc('a"b<c>') == "a&quot;b&lt;c&gt;"

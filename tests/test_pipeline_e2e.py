@@ -8,8 +8,7 @@ from agent_census import identity, pipeline
 from agent_census.model import Kind
 from agent_census.parsing import resolve
 from agent_census.parsing.apache import PRESETS
-from agent_census.report import render_inspect, render_report
-from agent_census.robots import make_compliance_fn
+from agent_census.report import render_inspect, render_report, select_profiles
 from agent_census.robots.parser import RobotsRules
 
 DATA = Path(__file__).parent / "data"
@@ -23,7 +22,7 @@ def _run() -> pipeline.AnalysisResult:
         DATA / "sample_access.log",
         parser,
         strategy,
-        compliance_fn=make_compliance_fn(RobotsRules(robots)),
+        robots=RobotsRules(robots),
     )
 
 
@@ -81,7 +80,20 @@ def test_report_renders_markdown() -> None:
 
 
 def test_inspect_renders_rationale() -> None:
-    text = render_inspect(_run(), kind="vuln_scanner")
+    selected = select_profiles(_run(), client=None, kind="vuln_scanner")
+    text = render_inspect(selected)
     assert "Why this classification" in text
     assert "known probe paths" in text
     assert "Request trace" in text
+
+
+def test_collect_entries_only_for_requested_keys() -> None:
+    result = _run()
+    scanner = next(p for p in result.profiles if p.classification.primary is Kind.VULN_SCANNER)
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    strategy = identity.get_strategy("ip_ua")
+    collected = pipeline.collect_entries(
+        DATA / "sample_access.log", parser, strategy, {scanner.client_id}
+    )
+    assert set(collected) == {scanner.client_id}
+    assert len(collected[scanner.client_id]) == scanner.features.request_count

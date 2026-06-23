@@ -50,7 +50,10 @@ def test_inspect_by_kind(tmp_path: Path) -> None:
     out = tmp_path / "i.md"
     rc = main(["inspect", LOG, "--robots-file", ROBOTS, "--kind", "vuln_scanner", "-o", str(out)])
     assert rc == 0
-    assert "Why this classification" in out.read_text(encoding="utf-8")
+    text = out.read_text(encoding="utf-8")
+    assert "Why this classification" in text
+    # the second-pass entry collection populated the request trace
+    assert "/.env" in text and "Request trace" in text
 
 
 def test_config_error_returns_2(tmp_path: Path) -> None:

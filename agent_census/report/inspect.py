@@ -117,19 +117,11 @@ def _trace_block(profile: ClientProfile, limit: int, full: bool) -> list[str]:
     return lines
 
 
-def render_inspect(
-    result: AnalysisResult,
-    *,
-    client: str | None = None,
-    kind: str | None = None,
-    limit: int = 20,
-    full: bool = False,
-) -> str:
-    """Render inspection output for the selected client(s)."""
-    selected = select_profiles(result, client=client, kind=kind)
+def render_inspect(selected: list[ClientProfile], *, limit: int = 20, full: bool = False) -> str:
+    """Render inspection output for already-selected client profiles."""
     if not selected:
         return "_No matching clients._\n"
-    selected.sort(key=lambda p: p.features.request_count, reverse=True)
+    selected = sorted(selected, key=lambda p: p.features.request_count, reverse=True)
     out: list[str] = ["# Client Inspection", ""]
     for profile in selected:
         out += _identity_block(profile)

@@ -1,8 +1,11 @@
-"""Orchestration: parse -> group -> features -> classify -> profiles.
+"""Orchestration: parse -> accumulate per client -> classify -> profiles.
 
-This is the seam that turns a log file into a list of :class:`ClientProfile`.
-robots-compliance and bot-verification are injected as optional callables so the
-pipeline stays independent of how they are obtained (local file vs network).
+This is the seam that turns log files into a list of :class:`ClientProfile`. It
+streams: each parsed line is folded into its client's feature accumulator and
+discarded, so peak memory is bounded by the number of distinct clients (plus a
+compact per-client accumulator), not the number of log lines. Raw entries are
+never retained here -- ``inspect`` collects them for the selected clients in a
+cheap second pass via :func:`collect_entries`.
 """
 
 from __future__ import annotations
@@ -13,20 +16,14 @@ from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import uas
 from .classify import DEFAULT_UNKNOWN_THRESHOLD, classify_client
-from .features import extract_features
+from .features import DisallowedCheck, FeatureAccumulator
 from .identity import ClientKeyStrategy
-from .model import (
-    BotVerification,
-    ClientFeatures,
-    ClientId,
-    ClientProfile,
-    ComplianceReport,
-    LogEntry,
-)
+from .model import BotVerification, ClientFeatures, ClientId, ClientProfile, LogEntry
 from .parsing.base import LogParser
+from .robots import RobotsRules, report_from_signals
 
-ComplianceFn = Callable[[ClientId, Sequence[LogEntry], ClientFeatures], ComplianceReport | None]
 VerifyFn = Callable[[ClientId, ClientFeatures], BotVerification | None]
 
 
@@ -75,61 +72,82 @@ def read_many(paths: Sequence[Path]) -> Iterator[str]:
         yield from read_lines(path)
 
 
-def group_entries(
-    parser: LogParser, lines: Iterator[str], strategy: ClientKeyStrategy
-) -> tuple[dict[ClientId, list[LogEntry]], SkipStats]:
-    """Parse lines and group successful entries by client identity."""
-    grouped: dict[ClientId, list[LogEntry]] = defaultdict(list)
+def _disallowed_check(rules: RobotsRules, token: str | None) -> DisallowedCheck:
+    def check(path: str) -> bool:
+        return not rules.can_fetch(token, path)
+
+    return check
+
+
+def _identity_stats(
+    accumulators: dict[ClientId, FeatureAccumulator], uas_by_ip: dict[str, set[str | None]]
+) -> IdentityStats:
+    singletons = sum(1 for acc in accumulators.values() if acc.count == 1)
+    multi = sum(1 for agents in uas_by_ip.values() if len(agents) > 1)
+    return IdentityStats(len(accumulators), singletons, multi)
+
+
+def analyze(
+    logs: Path | Sequence[Path],
+    parser: LogParser,
+    strategy: ClientKeyStrategy,
+    *,
+    robots: RobotsRules | None = None,
+    verify_fn: VerifyFn | None = None,
+    unknown_threshold: float = DEFAULT_UNKNOWN_THRESHOLD,
+) -> AnalysisResult:
+    """Stream one or more log files into per-client profiles.
+
+    Multiple files are read in order as one stream and pooled, so a client that
+    appears across rotated logs is treated as one. Entries are not retained;
+    pass the result to :func:`collect_entries` if you need raw request traces.
+    """
+    paths = [logs] if isinstance(logs, Path) else list(logs)
+    accumulators: dict[ClientId, FeatureAccumulator] = {}
+    tokens: dict[ClientId, str | None] = {}
+    uas_by_ip: dict[str, set[str | None]] = defaultdict(set)
     total = parsed = skipped = 0
     reasons: dict[str, int] = defaultdict(int)
-    for outcome in parser.parse_lines(lines):
+
+    for outcome in parser.parse_lines(read_many(paths)):
         total += 1
-        if outcome.entry is None:
+        entry = outcome.entry
+        if entry is None:
             skipped += 1
             reasons[outcome.skip_reason or "unknown"] += 1
             continue
         parsed += 1
-        grouped[strategy.key(outcome.entry)].append(outcome.entry)
-    return grouped, SkipStats(total, parsed, skipped, dict(reasons))
+        key = strategy.key(entry)
+        accumulator = accumulators.get(key)
+        if accumulator is None:
+            token = uas.product_token(entry.user_agent) if robots is not None else None
+            tokens[key] = token
+            check = _disallowed_check(robots, token) if robots is not None else None
+            accumulator = accumulators[key] = FeatureAccumulator(disallowed_check=check)
+        accumulator.add(entry)
+        uas_by_ip[entry.remote_host].add(entry.user_agent)
 
+    skips = SkipStats(total, parsed, skipped, dict(reasons))
+    identity_stats = _identity_stats(accumulators, uas_by_ip)
+    ua_counts = {ip: len(agents) for ip, agents in uas_by_ip.items()}
 
-def _ua_counts_by_ip(grouped: dict[ClientId, list[LogEntry]]) -> dict[str, int]:
-    """Map each connecting IP to the number of distinct UAs seen from it."""
-    uas_by_ip: dict[str, set[str | None]] = defaultdict(set)
-    for entries in grouped.values():
-        for entry in entries:
-            uas_by_ip[entry.remote_host].add(entry.user_agent)
-    return {ip: len(uas) for ip, uas in uas_by_ip.items()}
-
-
-def _identity_stats(grouped: dict[ClientId, list[LogEntry]]) -> IdentityStats:
-    singletons = sum(1 for entries in grouped.values() if len(entries) == 1)
-    multi = sum(1 for count in _ua_counts_by_ip(grouped).values() if count > 1)
-    return IdentityStats(len(grouped), singletons, multi)
-
-
-def build_profiles(
-    grouped: dict[ClientId, list[LogEntry]],
-    *,
-    keep_entries: bool = True,
-    compliance_fn: ComplianceFn | None = None,
-    verify_fn: VerifyFn | None = None,
-    unknown_threshold: float = DEFAULT_UNKNOWN_THRESHOLD,
-) -> list[ClientProfile]:
-    """Extract features, classify, and assemble a profile for each client.
-
-    The grouping dict is drained as it goes, so each client's entries become
-    collectable once its features are computed. With ``keep_entries=False`` (the
-    default for ``analyze``, which never shows raw requests) the entries are not
-    retained at all, keeping only the compact features and verdict.
-    """
-    ua_counts = _ua_counts_by_ip(grouped)
     profiles: list[ClientProfile] = []
-    while grouped:
-        client_id, entries = grouped.popitem()
-        features = extract_features(entries, ua_count_for_ip=ua_counts.get(client_id.ip, 1))
-        compliance = compliance_fn(client_id, entries, features) if compliance_fn else None
-        verification = verify_fn(client_id, features) if verify_fn else None
+    while accumulators:
+        key, accumulator = accumulators.popitem()
+        features = accumulator.finalize(ua_count_for_ip=ua_counts.get(key.ip, 1))
+        compliance = None
+        if robots is not None:
+            compliance = report_from_signals(
+                robots,
+                tokens.get(key),
+                disallowed_hits=accumulator.disallowed_hits,
+                sample_disallowed=tuple(accumulator.disallowed_sample or ()),
+                fetched_robots_first=accumulator.robots_fetched_first,
+                fetched_robots_txt=features.fetched_robots_txt,
+                request_count=features.request_count,
+                median_interval=features.inter_arrival_median,
+            )
+        verification = verify_fn(key, features) if verify_fn else None
         classification = classify_client(
             features,
             compliance=compliance,
@@ -138,45 +156,15 @@ def build_profiles(
         )
         profiles.append(
             ClientProfile(
-                client_id=client_id,
-                entries=tuple(entries) if keep_entries else (),
+                client_id=key,
+                entries=(),
                 features=features,
                 classification=classification,
                 compliance=compliance,
                 verification=verification,
             )
         )
-    return profiles
 
-
-def analyze(
-    logs: Path | Sequence[Path],
-    parser: LogParser,
-    strategy: ClientKeyStrategy,
-    *,
-    keep_entries: bool = True,
-    compliance_fn: ComplianceFn | None = None,
-    verify_fn: VerifyFn | None = None,
-    unknown_threshold: float = DEFAULT_UNKNOWN_THRESHOLD,
-) -> AnalysisResult:
-    """Run the full pipeline over one or more log files.
-
-    Multiple files are read in order as a single stream and pooled before
-    grouping, so a client that appears across rotated logs is treated as one.
-    Pass ``keep_entries=False`` when the raw request traces are not needed (the
-    ``analyze`` report) to avoid retaining every parsed entry.
-    """
-    paths = [logs] if isinstance(logs, Path) else list(logs)
-    grouped, skips = group_entries(parser, read_many(paths), strategy)
-    # Identity stats must be read before build_profiles drains the dict.
-    identity_stats = _identity_stats(grouped)
-    profiles = build_profiles(
-        grouped,
-        keep_entries=keep_entries,
-        compliance_fn=compliance_fn,
-        verify_fn=verify_fn,
-        unknown_threshold=unknown_threshold,
-    )
     profiles.sort(key=lambda p: p.features.request_count, reverse=True)
     return AnalysisResult(
         profiles=tuple(profiles),
@@ -184,3 +172,29 @@ def analyze(
         identity_strategy=strategy.name,
         identity_stats=identity_stats,
     )
+
+
+def collect_entries(
+    logs: Path | Sequence[Path],
+    parser: LogParser,
+    strategy: ClientKeyStrategy,
+    keys: set[ClientId],
+) -> dict[ClientId, tuple[LogEntry, ...]]:
+    """Re-read the logs, keeping raw entries only for the given client keys.
+
+    Used by ``inspect`` after analysis has identified which clients to show, so
+    only the selected clients' requests are held in memory.
+    """
+    if not keys:
+        return {}
+    paths = [logs] if isinstance(logs, Path) else list(logs)
+    collected: dict[ClientId, list[LogEntry]] = {key: [] for key in keys}
+    for outcome in parser.parse_lines(read_many(paths)):
+        entry = outcome.entry
+        if entry is None:
+            continue
+        key = strategy.key(entry)
+        bucket = collected.get(key)
+        if bucket is not None:
+            bucket.append(entry)
+    return {key: tuple(entries) for key, entries in collected.items()}

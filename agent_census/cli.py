@@ -6,15 +6,18 @@ import argparse
 import dataclasses
 import sys
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import __version__, identity, pipeline
 from .classify import DEFAULT_UNKNOWN_THRESHOLD
 from .errors import AgentCensusError
+from .identity import ClientKeyStrategy
 from .netverify import make_verify_fn
 from .parsing import resolve
 from .parsing.apache import PRESETS
-from .pipeline import AnalysisResult, ComplianceFn, VerifyFn
+from .parsing.base import LogParser
+from .pipeline import AnalysisResult, VerifyFn, collect_entries
 from .report import (
     render_inspect,
     render_inspect_html,
@@ -22,7 +25,7 @@ from .report import (
     render_report_html,
     select_profiles,
 )
-from .robots import from_file, from_network, make_compliance_fn
+from .robots import from_file, from_network
 from .robots.parser import RobotsRules
 from .robots.source import RobotsDoc, url_for_host
 
@@ -219,7 +222,15 @@ def _load_robots(args: argparse.Namespace) -> RobotsDoc | None:
     return None
 
 
-def _run_pipeline(args: argparse.Namespace) -> tuple[AnalysisResult, str | None]:
+@dataclass
+class _RunContext:
+    parser: LogParser
+    strategy: ClientKeyStrategy
+    result: AnalysisResult
+    robots_note: str | None
+
+
+def _run_pipeline(args: argparse.Namespace) -> _RunContext:
     if args.server != "apache":
         log_format = args.log_format or ""
     else:
@@ -228,11 +239,8 @@ def _run_pipeline(args: argparse.Namespace) -> tuple[AnalysisResult, str | None]
     strategy = identity.get_strategy(args.identity)
 
     robots_doc = _load_robots(args)
-    compliance_fn: ComplianceFn | None = None
-    robots_note: str | None = None
-    if robots_doc is not None:
-        compliance_fn = make_compliance_fn(RobotsRules(robots_doc.text))
-        robots_note = robots_doc.note()
+    rules = RobotsRules(robots_doc.text) if robots_doc is not None else None
+    robots_note = robots_doc.note() if robots_doc is not None else None
 
     verify_fn: VerifyFn | None = make_verify_fn() if args.verify_bots else None
 
@@ -240,12 +248,22 @@ def _run_pipeline(args: argparse.Namespace) -> tuple[AnalysisResult, str | None]
         args.logfiles,
         parser,
         strategy,
-        keep_entries=args.command == "inspect",
-        compliance_fn=compliance_fn,
+        robots=rules,
         verify_fn=verify_fn,
         unknown_threshold=args.unknown_threshold,
     )
-    return result, robots_note
+    return _RunContext(parser=parser, strategy=strategy, result=result, robots_note=robots_note)
+
+
+def _inspect_text(ctx: _RunContext, args: argparse.Namespace) -> str:
+    """Render inspect output, collecting raw entries only for the matched clients."""
+    selected = select_profiles(ctx.result, client=args.client, kind=args.kind)
+    keys = {profile.client_id for profile in selected}
+    entries = collect_entries(args.logfiles, ctx.parser, ctx.strategy, keys)
+    selected = [dataclasses.replace(p, entries=entries.get(p.client_id, ())) for p in selected]
+    if args.html:
+        return render_inspect_html(selected, limit=args.limit, full=args.full)
+    return render_inspect(selected, limit=args.limit, full=args.full)
 
 
 def _source_label(args: argparse.Namespace) -> str:
@@ -273,8 +291,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = subcommands[raw[0]].parse_intermixed_args(raw[1:])
     args.command = raw[0]
     try:
-        result, robots_note = _run_pipeline(args)
+        ctx = _run_pipeline(args)
         if args.command == "analyze":
+            result = ctx.result
             if args.min_requests > 1:
                 kept = tuple(
                     p for p in result.profiles if p.features.request_count >= args.min_requests
@@ -283,17 +302,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             source = _source_label(args)
             if args.html:
                 text = render_report_html(
-                    result, source=source, top=args.top, robots_note=robots_note
+                    result, source=source, top=args.top, robots_note=ctx.robots_note
                 )
             else:
-                text = render_report(result, source=source, top=args.top, robots_note=robots_note)
-        elif args.html:
-            selected = select_profiles(result, client=args.client, kind=args.kind)
-            text = render_inspect_html(selected, limit=args.limit, full=args.full)
+                text = render_report(
+                    result, source=source, top=args.top, robots_note=ctx.robots_note
+                )
         else:
-            text = render_inspect(
-                result, client=args.client, kind=args.kind, limit=args.limit, full=args.full
-            )
+            text = _inspect_text(ctx, args)
         _emit(text, args.output)
     except KeyboardInterrupt:
         print("\ninterrupted", file=sys.stderr)

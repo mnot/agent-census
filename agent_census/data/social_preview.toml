@@ -13,6 +13,8 @@ domains = ["twitter.com", "twttr.com"]
 [[agent]]
 ua_substring = "LinkedInBot"
 domains = ["linkedin.com"]
+# https://sourcecidr.com/linkedin/
+ranges_url = "https://sourcecidr.com/feeds/linkedin.json"
 
 [[agent]]
 # https://api.slack.com/robots

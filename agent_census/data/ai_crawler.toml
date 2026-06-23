@@ -63,6 +63,11 @@ domains = ["perplexity.ai"]
 ranges_url = "https://www.perplexity.com/perplexity-user.json"
 
 [[agent]]
+# https://docs.mistral.ai/robots
+ua_substring = "MistralAI-User"
+ranges_url = "https://mistral.ai/mistralai-user-ips.json"
+
+[[agent]]
 # https://developer.amazon.com/amazonbot
 ua_substring = "Amazonbot"
 domains = ["amazon.com", "crawl.amazonbot.amazon"]
@@ -70,7 +75,6 @@ domains = ["amazon.com", "crawl.amazonbot.amazon"]
 
 [[agent]]
 ua_substring = "Bytespider"
-domains = ["bytedance.com"]
 
 [[agent]]
 ua_substring = "TikTokSpider"

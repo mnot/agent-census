@@ -49,6 +49,22 @@ def test_browser_fires_on_coloading() -> None:
     assert signals[0].confidence >= 0.45
 
 
+def test_probing_browser_is_not_a_confident_browser() -> None:
+    # Headless-browser automation co-loads assets like a real browser, but a
+    # person never fetches attack paths -- probing must sink the browser verdict.
+    feats = ClientFeatures(
+        request_count=1000,
+        ua_looks_like_browser=True,
+        asset_coload_ratio=0.5,
+        traversal_hits=3,
+        vuln_path_hits=5,
+    )
+    assert classify_client(feats).primary is not Kind.BROWSER
+    # plain co-loading browser with no probing stays a browser
+    clean = ClientFeatures(request_count=1000, ua_looks_like_browser=True, asset_coload_ratio=0.5)
+    assert classify_client(clean).primary is Kind.BROWSER
+
+
 def test_combiner_unknown_below_threshold() -> None:
     signals = [Signal(Kind.BROWSER, 0.3, ("weak",), "browser")]
     result = combine(signals, ClientFeatures(request_count=5), unknown_threshold=0.45)

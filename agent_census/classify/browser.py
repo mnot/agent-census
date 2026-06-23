@@ -48,6 +48,16 @@ class BrowserClassifier(Classifier):
             confidence += 0.05
             evidence.append(f"{features.static_ratio:.0%} static-asset requests")
 
+        # A person at a browser never fetches attack paths. Vuln probing or
+        # directory traversal means this is automation wearing a browser engine
+        # (e.g. headless Chrome), so cap the browser hypothesis below the unknown
+        # threshold rather than let asset co-loading carry it to a confident
+        # verdict. (Ignoring robots.txt is NOT penalised -- it does not bind a
+        # human browsing by hand.)
+        if features.traversal_hits > 0 or features.vuln_path_hits >= 2:
+            confidence = min(confidence, 0.3)
+            evidence.append("but probes attack paths — not human browsing")
+
         if not evidence:
             return []
         return [self._signal(confidence, evidence)]

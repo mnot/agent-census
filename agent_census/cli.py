@@ -13,11 +13,11 @@ from . import __version__, identity, pipeline
 from .classify import DEFAULT_UNKNOWN_THRESHOLD
 from .errors import AgentCensusError
 from .identity import ClientKeyStrategy
-from .netverify import make_verify_fn
+from .netverify import BotVerifier
 from .parsing import resolve
 from .parsing.apache import PRESETS
 from .parsing.base import LogParser
-from .pipeline import AnalysisResult, VerifyFn, collect_entries
+from .pipeline import AnalysisResult, collect_entries
 from .report import (
     render_inspect,
     render_inspect_html,
@@ -242,14 +242,14 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
     rules = RobotsRules(robots_doc.text) if robots_doc is not None else None
     robots_note = robots_doc.note() if robots_doc is not None else None
 
-    verify_fn: VerifyFn | None = make_verify_fn() if args.verify_bots else None
+    verifier = BotVerifier() if args.verify_bots else None
 
     result = pipeline.analyze(
         args.logfiles,
         parser,
         strategy,
         robots=rules,
-        verify_fn=verify_fn,
+        verifier=verifier,
         unknown_threshold=args.unknown_threshold,
         keep_signals=args.command == "inspect",
     )

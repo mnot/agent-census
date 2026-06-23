@@ -12,19 +12,28 @@ from __future__ import annotations
 
 import gzip
 from collections import defaultdict
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Protocol
 
 from . import uas
 from .classify import DEFAULT_UNKNOWN_THRESHOLD, classify_client
 from .features import DisallowedCheck, FeatureAccumulator
 from .identity import ClientKeyStrategy
-from .model import BotVerification, ClientFeatures, ClientId, ClientProfile, LogEntry
+from .model import BotVerification, ClientId, ClientProfile, LogEntry
 from .parsing.base import LogParser
 from .robots import RobotsRules, report_from_signals
 
-VerifyFn = Callable[[ClientId, ClientFeatures], BotVerification | None]
+
+class BotVerifier(Protocol):
+    """Verifies declared crawlers (implemented by :class:`agent_census.netverify.BotVerifier`)."""
+
+    def needs(self, ua: str | None) -> bool: ...
+
+    def verify_all(
+        self, items: Sequence[tuple[ClientId, str | None]]
+    ) -> dict[ClientId, BotVerification]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,7 +102,7 @@ def analyze(
     strategy: ClientKeyStrategy,
     *,
     robots: RobotsRules | None = None,
-    verify_fn: VerifyFn | None = None,
+    verifier: BotVerifier | None = None,
     unknown_threshold: float = DEFAULT_UNKNOWN_THRESHOLD,
     keep_signals: bool = True,
 ) -> AnalysisResult:
@@ -134,6 +143,16 @@ def analyze(
     identity_stats = _identity_stats(accumulators, uas_by_ip)
     ua_counts = {ip: len(agents) for ip, agents in uas_by_ip.items()}
 
+    # DNS-verify declared crawlers as one deduped, concurrent batch.
+    verifications: dict[ClientId, BotVerification] = {}
+    if verifier is not None:
+        candidates = [
+            (key, acc.user_agent)
+            for key, acc in accumulators.items()
+            if verifier.needs(acc.user_agent)
+        ]
+        verifications = verifier.verify_all(candidates)
+
     profiles: list[ClientProfile] = []
     while accumulators:
         key, accumulator = accumulators.popitem()
@@ -150,7 +169,7 @@ def analyze(
                 request_count=features.request_count,
                 median_interval=features.inter_arrival_median,
             )
-        verification = verify_fn(key, features) if verify_fn else None
+        verification = verifications.get(key)
         classification = classify_client(
             features,
             compliance=compliance,

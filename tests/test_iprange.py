@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agent_census.iprange import extract_cidrs, ip_in, parse_networks
+from agent_census.iprange import RangeIndex, extract_cidrs, ip_in, parse_networks
 
 
 def test_parse_prefixes_gcp_schema() -> None:
@@ -49,6 +49,20 @@ def test_parse_oracle_schema() -> None:
 def test_unknown_format_falls_back_to_prefixes() -> None:
     text = '{"prefixes": [{"ipv4Prefix": "9.9.9.0/24"}]}'
     assert extract_cidrs(text, "bogus") == ("9.9.9.0/24",)
+
+
+def test_range_index_membership() -> None:
+    idx = RangeIndex(parse_networks(("10.0.0.0/8", "192.168.0.0/16", "2001:db8::/32")))
+    assert idx.contains("10.1.2.3")
+    assert idx.contains("192.168.5.5")
+    assert idx.contains("2001:db8::1")
+    assert not idx.contains("11.0.0.1")
+    assert not idx.contains("8.8.8.8")
+    assert not idx.contains("not-an-ip")
+
+
+def test_range_index_empty_is_false() -> None:
+    assert not RangeIndex(()).contains("1.2.3.4")
 
 
 def test_ip_in_respects_version_and_membership() -> None:

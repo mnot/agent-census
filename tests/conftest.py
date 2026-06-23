@@ -19,7 +19,7 @@ def _reset_range_state() -> Iterator[None]:
     """
     yield
     iprange._remote["enabled"] = False  # pylint: disable=protected-access
-    hosting._networks.cache_clear()  # pylint: disable=protected-access
+    hosting._index.cache_clear()  # pylint: disable=protected-access
     hosting.is_datacenter_ip.cache_clear()
     egress._networks.cache_clear()  # pylint: disable=protected-access
     egress.lookup.cache_clear()

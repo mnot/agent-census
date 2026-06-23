@@ -9,15 +9,61 @@ dispatches on a declared format.
 
 from __future__ import annotations
 
+import bisect
 import hashlib
 import ipaddress
 import json
 import os
 import time
 import urllib.request
+from collections.abc import Iterable
 from pathlib import Path
 
 Network = ipaddress.IPv4Network | ipaddress.IPv6Network
+
+
+class RangeIndex:
+    """Fast membership over many CIDRs: O(log n) per query instead of a scan.
+
+    Ranges are stored as integer intervals (split by IP version), sorted by start
+    with a running max-end alongside. A query bisects for the last range starting
+    at or before the address, then checks whether any range up to there reaches
+    it (via the prefix max-end) -- correct even when ranges overlap, with no need
+    to merge them. Built once per provider set; the difference between
+    milliseconds and microseconds per IP on large logs.
+    """
+
+    __slots__ = ("_starts4", "_maxend4", "_starts6", "_maxend6")
+
+    def __init__(self, networks: tuple[Network, ...]) -> None:
+        self._starts4, self._maxend4 = self._index(n for n in networks if n.version == 4)
+        self._starts6, self._maxend6 = self._index(n for n in networks if n.version == 6)
+
+    @staticmethod
+    def _index(nets: Iterable[Network]) -> tuple[list[int], list[int]]:
+        pairs = sorted((int(n.network_address), int(n.broadcast_address)) for n in nets)
+        starts = [start for start, _ in pairs]
+        maxend: list[int] = []
+        running = -1
+        for _, end in pairs:
+            running = max(running, end)
+            maxend.append(running)
+        return starts, maxend
+
+    def contains(self, ip: str) -> bool:
+        """True if ``ip`` falls in any indexed range. Unparseable IPs are False."""
+        try:
+            addr = ipaddress.ip_address(ip)
+        except ValueError:
+            return False
+        if addr.version == 4:
+            starts, maxend = self._starts4, self._maxend4
+        else:
+            starts, maxend = self._starts6, self._maxend6
+        value = int(addr)
+        idx = bisect.bisect_right(starts, value) - 1
+        return idx >= 0 and maxend[idx] >= value
+
 
 _RANGES_TTL = 7 * 24 * 60 * 60  # refresh fetched range files weekly
 _FETCH_TIMEOUT = 10

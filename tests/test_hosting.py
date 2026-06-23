@@ -28,10 +28,10 @@ def test_remote_ranges_are_used_only_when_enabled(monkeypatch: pytest.MonkeyPatc
     try:
         assert not is_datacenter_ip("203.0.113.7")  # default run is offline
         iprange.enable_remote()
-        hosting._networks.cache_clear()  # pylint: disable=protected-access
+        hosting._index.cache_clear()  # pylint: disable=protected-access
         is_datacenter_ip.cache_clear()
         assert is_datacenter_ip("203.0.113.7")  # now merged from the fetched list
     finally:  # reset module/cache state so other tests stay offline
         iprange._remote["enabled"] = False  # pylint: disable=protected-access
-        hosting._networks.cache_clear()  # pylint: disable=protected-access
+        hosting._index.cache_clear()  # pylint: disable=protected-access
         is_datacenter_ip.cache_clear()

@@ -16,9 +16,9 @@ from functools import lru_cache
 from .dataload import load_range_sources
 from .iprange import (
     Network,
+    RangeIndex,
     extract_cidrs,
     fetch_ranges_text,
-    ip_in,
     parse_networks,
     remote_enabled,
 )
@@ -27,7 +27,7 @@ _DATA = "datacenter_ranges"
 
 
 @lru_cache(maxsize=None)
-def _networks() -> tuple[Network, ...]:
+def _index() -> RangeIndex:
     nets: list[Network] = []
     for source in load_range_sources(_DATA):
         nets.extend(parse_networks(source.ranges))
@@ -35,10 +35,10 @@ def _networks() -> tuple[Network, ...]:
             text = fetch_ranges_text(source.ranges_url)
             if text:
                 nets.extend(parse_networks(extract_cidrs(text, source.fmt)))
-    return tuple(nets)
+    return RangeIndex(tuple(nets))
 
 
 @lru_cache(maxsize=None)
 def is_datacenter_ip(ip: str) -> bool:
     """True if ``ip`` falls in a known hosting range. Unparseable IPs are False."""
-    return ip_in(ip, _networks()) is not None
+    return _index().contains(ip)

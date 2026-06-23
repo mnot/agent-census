@@ -30,6 +30,11 @@ def test_report_html_is_a_full_page() -> None:
     assert 'href="#vuln_scanner"' in html
 
 
+def test_report_html_shows_elapsed_note() -> None:
+    html = render_report_html(_run(), source="sample", elapsed=7.25)
+    assert "<em>Analysed in 7.2s</em>" in html
+
+
 def test_report_html_client_cells_are_copyable() -> None:
     # The 203.0.113.66 scanner row should be click-to-copy with its id.
     html = render_report_html(_run(), source="sample")

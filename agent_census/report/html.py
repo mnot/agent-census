@@ -216,7 +216,9 @@ def _tags_html(tags: frozenset[str]) -> str:
     return "".join(spans)
 
 
-def _meta_list(result: AnalysisResult, source: str, robots_note: str | None) -> str:
+def _meta_list(
+    result: AnalysisResult, source: str, robots_note: str | None, elapsed: float | None
+) -> str:
     skips = result.skips
     stats = result.identity_stats
     start, end = time_range(result.rollups)
@@ -232,6 +234,8 @@ def _meta_list(result: AnalysisResult, source: str, robots_note: str | None) -> 
     if robots_note:
         cls = "warn" if "differ" in robots_note else ""
         items.append(f'<strong>robots.txt:</strong> <span class="{cls}">{_esc(robots_note)}</span>')
+    if elapsed is not None:
+        items.append(f"<em>Analysed in {elapsed:.1f}s</em>")
     return '<ul class="meta">' + "".join(f"<li>{item}</li>" for item in items) + "</ul>"
 
 
@@ -338,13 +342,18 @@ def _kind_section(kind: Kind, group: list[ClientProfile], rollup: KindRollup, to
 
 
 def render_report_html(
-    result: AnalysisResult, *, source: str = "stdin", top: int = 5, robots_note: str | None = None
+    result: AnalysisResult,
+    *,
+    source: str = "stdin",
+    top: int = 5,
+    robots_note: str | None = None,
+    elapsed: float | None = None,
 ) -> str:
     """Render the full analysis report as a standalone HTML page."""
     groups = by_kind(result.profiles)
     parts = [
         "<h1>Agent Census</h1>",
-        _meta_list(result, source, robots_note),
+        _meta_list(result, source, robots_note, elapsed),
         _summary_table(result),
     ]
     for kind in KIND_ORDER:

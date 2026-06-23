@@ -13,6 +13,7 @@ whole list (timestamp-sorted) into one accumulator.
 from __future__ import annotations
 
 import math
+import re
 from array import array
 from collections import Counter, deque
 from collections.abc import Callable, Sequence
@@ -35,8 +36,11 @@ _EXOTIC_METHODS = frozenset("PUT DELETE PROPFIND PROPPATCH CONNECT TRACE PATCH M
 
 _COLOAD_WINDOW_SECONDS = 10.0
 
-# Loaded once, shared by every accumulator (not stored per instance).
+# Loaded once, shared by every accumulator (not stored per instance). Compiled into
+# one alternation each so a request is one regex search, not N substring scans.
 _VULN_PATTERNS = tuple(p.lower() for p in load_list("vuln_paths"))
+_VULN_RE = re.compile("|".join(re.escape(p) for p in _VULN_PATTERNS)) if _VULN_PATTERNS else None
+_TRAVERSAL_RE = re.compile("|".join(re.escape(m) for m in _TRAVERSAL_MARKERS))
 
 # Predicate the robots stage injects to flag a path the client may not fetch.
 DisallowedCheck = Callable[[str], bool]
@@ -259,14 +263,14 @@ class FeatureAccumulator:
                 self.paths_404.add(path)
 
         low = path.lower()
-        if any(pattern in low for pattern in _VULN_PATTERNS):
+        if _VULN_RE is not None and _VULN_RE.search(low):
             self.vuln_hits += 1
             if self.vuln_sample is None:
                 self.vuln_sample = []
             if len(self.vuln_sample) < 5 and path not in self.vuln_sample:
                 self.vuln_sample.append(path)
         haystack = low + (entry.query or "").lower()
-        if any(marker in haystack for marker in _TRAVERSAL_MARKERS):
+        if _TRAVERSAL_RE.search(haystack):
             self.traversal_hits += 1
 
         if entry.method:

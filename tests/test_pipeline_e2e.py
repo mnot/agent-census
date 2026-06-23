@@ -81,6 +81,13 @@ def test_report_renders_markdown() -> None:
     assert "vuln scanner" in text  # category names display without underscores
 
 
+def test_report_shows_elapsed_note() -> None:
+    text = render_report(_run(), source="x", elapsed=7.25)
+    assert "_Analysed in 7.2s._" in text
+    # omitted when not provided
+    assert "Analysed in" not in render_report(_run(), source="x")
+
+
 def test_category_names_display_without_underscores() -> None:
     result = _run()
     text = render_report(result, source="x")

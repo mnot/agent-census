@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import sys
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -163,9 +164,10 @@ also checks robots.txt compliance and verifies declared crawlers by DNS / IP
 range (on by default; --no-verify-bots to skip the network lookups).
 
 Client kinds:
-  browser       crawler        search_engine  social_preview  ai_crawler
-  seo_marketing scraper        vuln_scanner   spam_bot        feed_reader
-  monitor       impersonator   unknown
+  browser       feed_reader    social_preview  search_engine  archiver
+  ai_crawler    seo_marketing  monitor         crawler        scraper
+  spoofed_browser  spam_bot    vuln_scanner    impersonator   singleton
+  unknown
 
 Output is Markdown (default) or a self-contained HTML page.
 """
@@ -260,6 +262,7 @@ class _RunContext:
     strategy: ClientKeyStrategy
     result: AnalysisResult
     robots_note: str | None
+    elapsed: float
 
 
 def _run_pipeline(args: argparse.Namespace) -> _RunContext:
@@ -279,6 +282,7 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
         iprange.enable_remote()
     quiescent = args.quiescent_hours * 3600 if args.quiescent_hours > 0 else None
 
+    start = time.monotonic()
     result = pipeline.analyze(
         args.logfiles,
         parser,
@@ -290,7 +294,10 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
         quiescent_seconds=quiescent,
         max_per_kind=args.max_per_kind,
     )
-    return _RunContext(parser=parser, strategy=strategy, result=result, robots_note=robots_note)
+    elapsed = time.monotonic() - start
+    return _RunContext(
+        parser=parser, strategy=strategy, result=result, robots_note=robots_note, elapsed=elapsed
+    )
 
 
 def _inspect_text(ctx: _RunContext, args: argparse.Namespace) -> str:
@@ -339,11 +346,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             source = _source_label(args)
             if args.html:
                 text = render_report_html(
-                    result, source=source, top=args.top, robots_note=ctx.robots_note
+                    result,
+                    source=source,
+                    top=args.top,
+                    robots_note=ctx.robots_note,
+                    elapsed=ctx.elapsed,
                 )
             else:
                 text = render_report(
-                    result, source=source, top=args.top, robots_note=ctx.robots_note
+                    result,
+                    source=source,
+                    top=args.top,
+                    robots_note=ctx.robots_note,
+                    elapsed=ctx.elapsed,
                 )
         else:
             text = _inspect_text(ctx, args)

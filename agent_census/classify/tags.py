@@ -13,6 +13,8 @@ tag; a genuine crawler can misbehave without forging its identity.
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 from .. import uas
 from ..dataload import load_list
 from ..model import (
@@ -26,10 +28,22 @@ from ..model import (
 _UA_ROTATION_THRESHOLD = 4
 # Declared-crawler data categories, checked individually so per-UA results cache.
 _CRAWLER_CATEGORIES = ("search_engine", "social_preview", "archiver", "ai_crawler", "seo_marketing")
+_FEED_TOKENS = tuple(token.lower() for token in load_list("feed_readers"))
+
+
+@lru_cache(maxsize=16384)
+def _ua_names_crawler(ua: str | None) -> bool:
+    return any(uas.match_category(ua, category) for category in _CRAWLER_CATEGORIES)
+
+
+@lru_cache(maxsize=16384)
+def _ua_names_feed_reader(ua: str | None) -> bool:
+    low = (ua or "").lower()
+    return any(token in low for token in _FEED_TOKENS)
 
 
 def _declares_known_crawler(features: ClientFeatures) -> bool:
-    return any(uas.match_category(features.user_agent, c) for c in _CRAWLER_CATEGORIES)
+    return _ua_names_crawler(features.user_agent)
 
 
 def impersonation(verification: BotVerification | None) -> tuple[bool, tuple[str, ...]]:
@@ -55,10 +69,11 @@ def identifies_as_known_agent(features: ClientFeatures) -> bool:
     sub-resources like one), and the browser-specific signals -- fake-browser,
     forged-referer -- don't apply to it; its declared identity decides the kind.
     """
-    if features.ua_declares_bot or _declares_known_crawler(features):
-        return True
-    ua = (features.user_agent or "").lower()
-    return any(token.lower() in ua for token in load_list("feed_readers"))
+    return (
+        features.ua_declares_bot
+        or _ua_names_crawler(features.user_agent)
+        or _ua_names_feed_reader(features.user_agent)
+    )
 
 
 def looks_like_fake_browser(features: ClientFeatures) -> bool:

@@ -22,7 +22,9 @@ def _robots_summary(rollup: KindRollup) -> str:
     return f"{rollup.respects_robots}✓ / {rollup.ignores_robots}✗"
 
 
-def _header(result: AnalysisResult, source: str, robots_note: str | None) -> list[str]:
+def _header(
+    result: AnalysisResult, source: str, robots_note: str | None, elapsed: float | None
+) -> list[str]:
     skips = result.skips
     stats = result.identity_stats
     start, end = time_range(result.rollups)
@@ -46,6 +48,9 @@ def _header(result: AnalysisResult, source: str, robots_note: str | None) -> lis
     )
     if robots_note:
         lines.append(f"- **robots.txt:** {robots_note}")
+    if elapsed is not None:
+        lines.append("")
+        lines.append(f"_Analysed in {elapsed:.1f}s._")
     lines.append("")
     return lines
 
@@ -119,11 +124,16 @@ def _kind_section(
 
 
 def render_report(
-    result: AnalysisResult, *, source: str = "stdin", top: int = 5, robots_note: str | None = None
+    result: AnalysisResult,
+    *,
+    source: str = "stdin",
+    top: int = 5,
+    robots_note: str | None = None,
+    elapsed: float | None = None,
 ) -> str:
     """Render the full Markdown report for an analysis run."""
     groups = by_kind(result.profiles)
-    lines = _header(result, source, robots_note)
+    lines = _header(result, source, robots_note, elapsed)
     lines += _summary_table(result)
     for kind in KIND_ORDER:
         rollup = result.rollups.get(kind)

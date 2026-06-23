@@ -65,6 +65,8 @@ class RangeIndex:
 
     def contains(self, ip: str) -> bool:
         """True if ``ip`` falls in any indexed range. Unparseable IPs are False."""
+        if not self._starts4 and not self._starts6:
+            return False  # no ranges loaded -- skip parsing the address at all
         try:
             addr = ipaddress.ip_address(ip)
         except ValueError:

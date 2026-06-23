@@ -162,6 +162,35 @@ def test_eviction_matches_no_eviction(tmp_path: Path) -> None:
     assert len(evicted.profiles) == 18
 
 
+def test_max_per_kind_caps_detail_but_keeps_summary_exact(tmp_path: Path) -> None:
+    # 40 distinct unknown clients; cap detail at 5 per kind. The kept profiles
+    # are bounded, but the rollup still counts all 40 with exact request totals.
+    lines = [
+        f"10.0.0.{i} - - [10/Oct/2023:12:00:00 +0000] "
+        f'"GET / HTTP/1.1" 200 {100 + i} "-" "agent-{i}"'
+        for i in range(40)
+    ]
+    log = tmp_path / "many.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    strategy = identity.get_strategy("ip_ua")
+
+    result = pipeline.analyze(log, parser, strategy, max_per_kind=5)
+    kept = [p for p in result.profiles if p.client_id.ip.startswith("10.0.0.")]
+    assert len(kept) == 5  # detail bounded
+    rollup = result.rollups[Kind.SINGLETON]
+    assert rollup.clients == 40  # but the rollup counts every client
+    assert rollup.requests == 40  # and exact request total
+    # the kept five are the highest-volume (here, highest byte ids tie on requests)
+    text = render_report(result, source="x")
+    assert "40 clients" in text  # section header from the rollup
+    assert "…and 35 more" in text  # 40 total - 5 shown
+
+    # unlimited keeps every profile
+    full = pipeline.analyze(log, parser, strategy, max_per_kind=0)
+    assert len([p for p in full.profiles if p.client_id.ip.startswith("10.0.0.")]) == 40
+
+
 def test_datacenter_fleet_merges_by_subnet_and_ua(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

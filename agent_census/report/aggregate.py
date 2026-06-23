@@ -6,6 +6,7 @@ from collections import defaultdict
 from datetime import datetime
 
 from ..model import ClientProfile, Kind
+from ..pipeline import KindRollup
 
 # Order kinds appear in reports: a rough good -> bad gradient, with the
 # can't-say buckets (singleton, unknown) at the very end.
@@ -56,15 +57,10 @@ def by_kind(profiles: tuple[ClientProfile, ...]) -> dict[Kind, list[ClientProfil
     return groups
 
 
-def time_range(profiles: tuple[ClientProfile, ...]) -> tuple[datetime | None, datetime | None]:
-    """Earliest first-seen and latest last-seen across all profiles."""
-    firsts = [p.features.first_seen for p in profiles if p.features.first_seen]
-    lasts = [p.features.last_seen for p in profiles if p.features.last_seen]
+def time_range(
+    rollups: dict[Kind, KindRollup],
+) -> tuple[datetime | None, datetime | None]:
+    """Earliest first-seen and latest last-seen across all clients (exact)."""
+    firsts = [r.first_seen for r in rollups.values() if r.first_seen]
+    lasts = [r.last_seen for r in rollups.values() if r.last_seen]
     return (min(firsts) if firsts else None, max(lasts) if lasts else None)
-
-
-def robots_counts(group: list[ClientProfile]) -> tuple[int, int]:
-    """Return (respects, ignores) counts for a group of profiles."""
-    respects = sum(1 for p in group if "respects-robots" in p.classification.tags)
-    ignores = sum(1 for p in group if "ignores-robots" in p.classification.tags)
-    return respects, ignores

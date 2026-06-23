@@ -143,6 +143,15 @@ def _add_shared(parser: argparse.ArgumentParser) -> None:
         help="free a client's state after H hours of inactivity to cap memory "
         "(default: %(default)s; 0 disables)",
     )
+    out_group.add_argument(
+        "--max-per-kind",
+        type=int,
+        metavar="N",
+        default=pipeline.DEFAULT_MAX_PER_KIND,
+        help="keep at most N detailed client profiles per kind to cap memory; "
+        "summary stats stay exact regardless (default: %(default)s; 0 = unlimited, "
+        "needed to inspect a rare low-volume client)",
+    )
 
 
 _TOP_DESCRIPTION = """\
@@ -279,6 +288,7 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
         unknown_threshold=args.unknown_threshold,
         keep_signals=args.command == "inspect",
         quiescent_seconds=quiescent,
+        max_per_kind=args.max_per_kind,
     )
     return _RunContext(parser=parser, strategy=strategy, result=result, robots_note=robots_note)
 

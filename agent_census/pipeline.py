@@ -11,9 +11,12 @@ cheap second pass via :func:`collect_entries`.
 from __future__ import annotations
 
 import gzip
+import heapq
+import itertools
 from collections import OrderedDict, defaultdict
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field, replace
+from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -23,12 +26,25 @@ from .dataload import CrawlerSpec, load_tokens
 from .features import DisallowedCheck, FeatureAccumulator
 from .hosting import datacenter_subnet, is_datacenter_ip
 from .identity import ClientKeyStrategy
-from .model import BotVerification, ClientId, ClientProfile, LogEntry, VerificationStatus
+from .model import (
+    BotVerification,
+    ClientFeatures,
+    ClientId,
+    ClientProfile,
+    Kind,
+    LogEntry,
+    VerificationStatus,
+)
 from .parsing.base import LogParser
 from .robots import RobotsRules, report_from_signals
 
 # Default inactivity gap after which a client is considered finished and evicted.
 DEFAULT_QUIESCENT_SECONDS = 24 * 60 * 60
+
+# Default cap on detailed client profiles kept per kind. The per-kind summary
+# stays exact regardless (see KindRollup); only the lowest-volume clients beyond
+# the cap lose their individual row. 0 disables the cap (keep every profile).
+DEFAULT_MAX_PER_KIND = 1000
 
 # Evicted (quiescent) clients are parked here rather than finalised outright, so a
 # client that goes quiet and later returns is coalesced into one profile instead of
@@ -84,6 +100,58 @@ class IdentityStats:
 
 
 @dataclass(frozen=True, slots=True)
+class KindRollup:
+    """Exact per-kind totals over *every* client of a kind, including any whose
+    individual profile the per-kind cap dropped. Keeps the summary exact."""
+
+    clients: int = 0
+    requests: int = 0
+    total_bytes: int = 0
+    respects_robots: int = 0
+    ignores_robots: int = 0
+    first_seen: datetime | None = None
+    last_seen: datetime | None = None
+
+
+class _RollupAcc:
+    """Mutable per-kind accumulator, frozen into a :class:`KindRollup` at the end."""
+
+    __slots__ = (
+        "clients", "requests", "total_bytes", "respects", "ignores", "first_seen", "last_seen",
+    )  # fmt: skip
+
+    def __init__(self) -> None:
+        self.clients = self.requests = self.total_bytes = self.respects = self.ignores = 0
+        self.first_seen: datetime | None = None
+        self.last_seen: datetime | None = None
+
+    def add(self, features: ClientFeatures, tags: frozenset[str]) -> None:
+        self.clients += 1
+        self.requests += features.request_count
+        self.total_bytes += features.total_bytes
+        if "respects-robots" in tags:
+            self.respects += 1
+        elif "ignores-robots" in tags:
+            self.ignores += 1
+        first, last = features.first_seen, features.last_seen
+        if first is not None and (self.first_seen is None or first < self.first_seen):
+            self.first_seen = first
+        if last is not None and (self.last_seen is None or last > self.last_seen):
+            self.last_seen = last
+
+    def freeze(self) -> KindRollup:
+        return KindRollup(
+            clients=self.clients,
+            requests=self.requests,
+            total_bytes=self.total_bytes,
+            respects_robots=self.respects,
+            ignores_robots=self.ignores,
+            first_seen=self.first_seen,
+            last_seen=self.last_seen,
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class AnalysisResult:
     """The full output of an analysis run."""
 
@@ -91,6 +159,9 @@ class AnalysisResult:
     skips: SkipStats
     identity_strategy: str
     identity_stats: IdentityStats
+    # Exact per-kind totals over all clients; the summary reads these, so it stays
+    # exact even when `profiles` is capped to the top clients per kind.
+    rollups: dict[Kind, KindRollup] = field(default_factory=dict)
 
 
 def read_lines(path: Path) -> Iterator[str]:
@@ -174,6 +245,7 @@ def analyze(  # pylint: disable=too-many-locals
     keep_signals: bool = True,
     quiescent_seconds: float | None = None,
     retired_cap: int = DEFAULT_RETIRED_CAP,
+    max_per_kind: int = DEFAULT_MAX_PER_KIND,
 ) -> AnalysisResult:
     """Stream one or more log files into per-client profiles.
 
@@ -207,7 +279,11 @@ def analyze(  # pylint: disable=too-many-locals
     tokens: dict[ClientId, str | None] = {}
     uas_by_ip: dict[str, set[str | None]] = {}
     ip_refs: dict[str, int] = defaultdict(int)
-    profiles: list[ClientProfile] = []
+    # Output is bounded: exact per-kind rollups over all clients, plus a per-kind
+    # heap of the highest-volume profiles (the only ones kept in detail).
+    rollups: dict[Kind, _RollupAcc] = defaultdict(_RollupAcc)
+    kept: dict[Kind, list[tuple[int, int, ClientProfile]]] = defaultdict(list)
+    seq = itertools.count()
     total = parsed = skipped = 0
     client_count = singleton_count = multi_ua_ips = 0
     latest_ts: float | None = None
@@ -249,17 +325,25 @@ def analyze(  # pylint: disable=too-many-locals
         )
         if extra_tags:
             classification = replace(classification, tags=classification.tags | extra_tags)
-        profiles.append(
-            ClientProfile(
-                client_id=key,
-                entries=(),
-                features=features,
-                classification=classification,
-                compliance=compliance,
-                verification=verification,
-                member_ips=member,
-            )
+        profile = ClientProfile(
+            client_id=key,
+            entries=(),
+            features=features,
+            classification=classification,
+            compliance=compliance,
+            verification=verification,
+            member_ips=member,
         )
+        kind = classification.primary
+        rollups[kind].add(features, classification.tags)  # every client counts here
+        # Keep only the highest-volume profiles per kind in detail; the rest are
+        # already fully reflected in the rollup above.
+        heap = kept[kind]
+        item = (features.request_count, next(seq), profile)
+        if max_per_kind <= 0 or len(heap) < max_per_kind:
+            heapq.heappush(heap, item)
+        elif features.request_count > heap[0][0]:
+            heapq.heappushpop(heap, item)
 
     def drop_client(key: ClientId) -> None:
         tokens.pop(key, None)
@@ -393,12 +477,14 @@ def analyze(  # pylint: disable=too-many-locals
         emit(did, acc, None, tuple(sorted(dc_members[(subnet, user_agent)])), datacenter=True)
         client_count += 1
 
+    profiles = [profile for heap in kept.values() for (_, _, profile) in heap]
     profiles.sort(key=lambda p: p.features.request_count, reverse=True)
     return AnalysisResult(
         profiles=tuple(profiles),
         skips=SkipStats(total, parsed, skipped, dict(reasons)),
         identity_strategy=strategy.name,
         identity_stats=IdentityStats(client_count, singleton_count, multi_ua_ips),
+        rollups={kind: acc.freeze() for kind, acc in rollups.items()},
     )
 
 

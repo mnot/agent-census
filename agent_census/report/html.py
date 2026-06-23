@@ -12,8 +12,8 @@ from functools import lru_cache
 
 from ..dataload import load_egress_networks
 from ..model import ClientProfile, Kind
-from ..pipeline import AnalysisResult
-from .aggregate import KIND_BLURB, KIND_ORDER, by_kind, robots_counts, time_range
+from ..pipeline import AnalysisResult, KindRollup
+from .aggregate import KIND_BLURB, KIND_ORDER, by_kind, time_range
 from .format import (
     client_label,
     elide_ua,
@@ -216,7 +216,7 @@ def _tags_html(tags: frozenset[str]) -> str:
 def _meta_list(result: AnalysisResult, source: str, robots_note: str | None) -> str:
     skips = result.skips
     stats = result.identity_stats
-    start, end = time_range(result.profiles)
+    start, end = time_range(result.rollups)
     items = [
         f"<strong>Source:</strong> <code>{_esc(source)}</code>",
         f"<strong>Lines:</strong> {skips.total_lines:,} total · {skips.parsed:,} parsed · "
@@ -239,9 +239,10 @@ def _share_bar(fraction: float) -> str:
     )
 
 
-def _summary_table(result: AnalysisResult, groups: dict[Kind, list[ClientProfile]]) -> str:
-    total = sum(p.features.request_count for p in result.profiles) or 1
-    total_bytes = sum(p.features.total_bytes for p in result.profiles) or 1
+def _summary_table(result: AnalysisResult) -> str:
+    rollups = result.rollups
+    total = sum(r.requests for r in rollups.values()) or 1
+    total_bytes = sum(r.total_bytes for r in rollups.values()) or 1
     robots_help = (
         "✓ respect: requested no disallowed paths\n"
         "✗ ignore: requested disallowed paths\n"
@@ -254,22 +255,20 @@ def _summary_table(result: AnalysisResult, groups: dict[Kind, list[ClientProfile
     )
     rows = []
     for kind in KIND_ORDER:
-        group = groups.get(kind)
-        if not group:
+        rollup = rollups.get(kind)
+        if rollup is None or rollup.clients == 0:
             continue
-        requests = sum(p.features.request_count for p in group)
-        byte_total = sum(p.features.total_bytes for p in group)
-        respects, ignores = robots_counts(group)
+        respects, ignores = rollup.respects_robots, rollup.ignores_robots
         robots = (
             f"{respects}✓ / {ignores}✗" if (respects or ignores) else '<span class="muted">–</span>'
         )
         rows.append(
             f'<tr><td><a href="#{kind.value}">{_kind_badge(kind)}</a></td>'
-            f"<td class='num'>{len(group):,}</td><td class='num'>{requests:,}</td>"
-            f"<td>{_share_bar(requests / total)}</td>"
-            f"<td class='num'>{requests / len(group):,.0f}</td>"
-            f"<td class='num'>{human_bytes(byte_total)}</td>"
-            f"<td>{_share_bar(byte_total / total_bytes)}</td>"
+            f"<td class='num'>{rollup.clients:,}</td><td class='num'>{rollup.requests:,}</td>"
+            f"<td>{_share_bar(rollup.requests / total)}</td>"
+            f"<td class='num'>{rollup.requests / rollup.clients:,.0f}</td>"
+            f"<td class='num'>{human_bytes(rollup.total_bytes)}</td>"
+            f"<td>{_share_bar(rollup.total_bytes / total_bytes)}</td>"
             f"<td>{robots}</td></tr>"
         )
     return (
@@ -306,10 +305,9 @@ def _client_row(profile: ClientProfile, *, filterable: bool = False) -> str:
     )
 
 
-def _kind_section(kind: Kind, group: list[ClientProfile], top: int) -> str:
+def _kind_section(kind: Kind, group: list[ClientProfile], rollup: KindRollup, top: int) -> str:
     group = sorted(group, key=lambda p: p.features.request_count, reverse=True)
-    requests = sum(p.features.request_count for p in group)
-    title = f"{_kind_badge(kind)} {len(group):,} clients · {requests:,} requests"
+    title = f"{_kind_badge(kind)} {rollup.clients:,} clients · {rollup.requests:,} requests"
     parts = [
         f'<h2 id="{kind.value}">{title}</h2>',
         f'<p class="blurb">{_esc(KIND_BLURB.get(kind, ""))}</p>',
@@ -326,7 +324,8 @@ def _kind_section(kind: Kind, group: list[ClientProfile], top: int) -> str:
             f"<table>{_SECTION_HEAD}{extra_rows}</table>"
             "</details>"
         )
-    remaining = len(group) - _EXPAND_LIMIT
+    # rollup.clients is the exact total; only the highest-volume ones are detailed.
+    remaining = rollup.clients - min(len(group), _EXPAND_LIMIT)
     if remaining > 0:
         parts.append(
             f'<p class="muted">…and {remaining:,} more — '
@@ -343,12 +342,12 @@ def render_report_html(
     parts = [
         "<h1>Agent Census</h1>",
         _meta_list(result, source, robots_note),
-        _summary_table(result, groups),
+        _summary_table(result),
     ]
     for kind in KIND_ORDER:
-        group = groups.get(kind)
-        if group:
-            parts.append(_kind_section(kind, group, top))
+        rollup = result.rollups.get(kind)
+        if rollup and rollup.clients:
+            parts.append(_kind_section(kind, groups.get(kind, []), rollup, top))
     return _page("Agent Census", "\n".join(parts))
 
 

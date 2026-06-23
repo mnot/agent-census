@@ -1,0 +1,21 @@
+# Web-archiving / preservation crawlers (keep copies of the web, not index it).
+# One [[agent]] per crawler. ua_substring is matched case-insensitively against
+# the User-Agent. Verified by published IP ranges -- some Internet Archive
+# crawler IPs have no reverse DNS, so ranges are more reliable than rDNS here.
+
+# Internet Archive / Wayback Machine -- https://archive.org/details/archive.org_bot
+# Verified against a published feed of Internet Archive's crawler ranges.
+[[agent]]
+ua_substring = "archive.org_bot"
+domains = ["archive.org"]
+ranges_url = "https://sourcecidr.com/feeds/internet-archive.json"
+
+[[agent]]
+ua_substring = "ia_archiver"
+domains = ["archive.org"]
+ranges_url = "https://sourcecidr.com/feeds/internet-archive.json"
+
+[[agent]]
+ua_substring = "special_archiver"
+domains = ["archive.org"]
+ranges_url = "https://sourcecidr.com/feeds/internet-archive.json"

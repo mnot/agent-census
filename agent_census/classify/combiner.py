@@ -24,6 +24,7 @@ _PRIORITY: tuple[Kind, ...] = (
     Kind.IMPERSONATOR,
     Kind.SEARCH_ENGINE,
     Kind.SOCIAL_PREVIEW,
+    Kind.ARCHIVER,
     Kind.AI_CRAWLER,
     Kind.SEO_MARKETING,
     Kind.VULN_SCANNER,

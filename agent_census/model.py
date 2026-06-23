@@ -29,6 +29,7 @@ class Kind(str, Enum):
     VULN_SCANNER = "vuln_scanner"
     SEARCH_ENGINE = "search_engine"
     SOCIAL_PREVIEW = "social_preview"
+    ARCHIVER = "archiver"
     AI_CRAWLER = "ai_crawler"
     SEO_MARKETING = "seo_marketing"
     FEED_READER = "feed_reader"

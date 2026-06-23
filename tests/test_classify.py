@@ -187,6 +187,14 @@ def test_scanner_user_agent_classified() -> None:
     assert classify_client(feats).primary is Kind.VULN_SCANNER
 
 
+def test_internet_archive_classified_as_archiver() -> None:
+    feats = ClientFeatures(
+        request_count=30,
+        user_agent="Mozilla/5.0 (compatible; archive.org_bot; +http://archive.org/details/archive.org_bot)",
+    )
+    assert classify_client(feats).primary is Kind.ARCHIVER
+
+
 def test_verified_tag_from_verification() -> None:
     feats = ClientFeatures(request_count=5, user_agent="Googlebot/2.1")
     verification = BotVerification(VerificationStatus.VERIFIED, resolved_host="x.googlebot.com")

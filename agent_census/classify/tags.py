@@ -30,6 +30,7 @@ def _declares_known_crawler(features: ClientFeatures) -> bool:
     pairs = (
         load_tokens("search_engine")
         + load_tokens("social_preview")
+        + load_tokens("archiver")
         + load_tokens("ai_crawler")
         + load_tokens("seo_marketing")
     )

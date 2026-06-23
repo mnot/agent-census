@@ -114,6 +114,19 @@ def test_inline_range_authoritative_over_domains(monkeypatch: pytest.MonkeyPatch
     assert BotVerifier().verify("203.0.113.9", "RangeBot/1.0").status is VerificationStatus.IMPERSONATOR
 
 
+def test_internet_archive_verified_by_published_range(monkeypatch: pytest.MonkeyPatch) -> None:
+    # archive.org_bot is a recognised, range-verified crawler (Internet Archive's
+    # published feed). In-feed verifies; the same UA elsewhere impersonates.
+    monkeypatch.setattr(
+        netverify, "_fetch_ranges_text", lambda url: '{"prefixes": [{"ipv4Prefix": "207.241.224.0/20"}]}'
+    )
+    verifier = BotVerifier()
+    ua = "Mozilla/5.0 (compatible; archive.org_bot; +http://archive.org/details/archive.org_bot)"
+    assert verifier.needs(ua)
+    assert verifier.verify("207.241.224.5", ua).status is VerificationStatus.VERIFIED
+    assert verifier.verify("8.8.8.8", ua).status is VerificationStatus.IMPERSONATOR
+
+
 def test_ranges_url_fetched_and_used(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_spec(monkeypatch, "FetchBot", CrawlerSpec(ranges_url="https://example.test/r.json"))
     monkeypatch.setattr(

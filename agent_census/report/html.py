@@ -31,6 +31,7 @@ _KIND_COLORS: dict[Kind, str] = {
     Kind.BROWSER: "#2563eb",
     Kind.CRAWLER: "#0891b2",
     Kind.SEARCH_ENGINE: "#16a34a",
+    Kind.ARCHIVER: "#047857",
     Kind.SOCIAL_PREVIEW: "#0ea5e9",
     Kind.AI_CRAWLER: "#7c3aed",
     Kind.SEO_MARKETING: "#ca8a04",

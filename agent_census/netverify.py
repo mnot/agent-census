@@ -61,7 +61,12 @@ def _bounded(func: Callable[[], _T]) -> _T | None:
 
 
 def _known_crawler(ua: str | None) -> tuple[str, CrawlerSpec] | None:
-    pairs = load_tokens("search_engine") + load_tokens("social_preview") + load_tokens("ai_crawler")
+    pairs = (
+        load_tokens("search_engine")
+        + load_tokens("social_preview")
+        + load_tokens("archiver")
+        + load_tokens("ai_crawler")
+    )
     return uas.match_known(ua, pairs)
 
 

@@ -31,12 +31,12 @@ _CRAWLER_CATEGORIES = ("search_engine", "social_preview", "archiver", "ai_crawle
 _FEED_TOKENS = tuple(token.lower() for token in load_list("feed_readers"))
 
 
-@lru_cache(maxsize=16384)
+@lru_cache(maxsize=uas.UA_CACHE_SIZE)
 def _ua_names_crawler(ua: str | None) -> bool:
     return any(uas.match_category(ua, category) for category in _CRAWLER_CATEGORIES)
 
 
-@lru_cache(maxsize=16384)
+@lru_cache(maxsize=uas.UA_CACHE_SIZE)
 def _ua_names_feed_reader(ua: str | None) -> bool:
     low = (ua or "").lower()
     return any(token in low for token in _FEED_TOKENS)

@@ -11,23 +11,26 @@ from __future__ import annotations
 import re
 from functools import lru_cache
 
+from .. import uas
 from ..dataload import load_list
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
 
-# Generic feed terms; specific reader product names live in feed_readers.txt.
-_FEED_UA = re.compile(r"feed|rss|atom|podcast|subscriber", re.I)
-_FEED_READERS = tuple(token.lower() for token in load_list("feed_readers"))
+# Generic feed terms plus the specific reader product names from feed_readers.txt,
+# folded into one compiled alternation. A single C-level search beats scanning the
+# product list per call -- which matters on high-cardinality logs where the cache
+# below thrashes and most calls miss (this was the hottest spot in profiling).
+_FEED_TERMS = ("feed", "rss", "atom", "podcast", "subscriber")
+_FEED_UA = re.compile(
+    "|".join(re.escape(term) for term in (*_FEED_TERMS, *load_list("feed_readers"))), re.I
+)
 
 
-@lru_cache(maxsize=16384)
+@lru_cache(maxsize=uas.UA_CACHE_SIZE)
 def _ua_is_feed_reader(ua: str | None) -> bool:
     if not ua:
         return False
-    if _FEED_UA.search(ua):
-        return True
-    low = ua.lower()
-    return any(token in low for token in _FEED_READERS)
+    return bool(_FEED_UA.search(ua))
 
 
 class FeedReaderClassifier(Classifier):

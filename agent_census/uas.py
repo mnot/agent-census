@@ -16,6 +16,13 @@ from .dataload import CrawlerSpec, load_tokens
 
 _P = TypeVar("_P")
 
+# Size of the per-UA memo caches. UA-only facts (browser? bot? feed reader? which
+# crawler?) are derived once per distinct User-Agent and reused across every client
+# carrying it. Sized to hold the distinct-UA working set of a large log: real logs
+# share common browser UAs heavily, so an undersized cache thrashes and re-derives
+# the same answers per client. ~130k entries/cache costs low tens of MB.
+UA_CACHE_SIZE = 131072
+
 # A real browser UA starts with a Mozilla token and names a layout engine.
 _BROWSER_RE = re.compile(r"mozilla/\d.*(gecko|applewebkit|trident|presto|khtml)", re.I)
 
@@ -37,7 +44,7 @@ def is_empty(ua: str | None) -> bool:
     return not (ua and ua.strip())
 
 
-@lru_cache(maxsize=16384)
+@lru_cache(maxsize=UA_CACHE_SIZE)
 def looks_like_browser(ua: str | None) -> bool:
     """True when the UA syntactically resembles a real browser and not a bot."""
     if is_empty(ua) or ua is None:
@@ -45,7 +52,7 @@ def looks_like_browser(ua: str | None) -> bool:
     return bool(_BROWSER_RE.search(ua)) and not declares_bot(ua)
 
 
-@lru_cache(maxsize=16384)
+@lru_cache(maxsize=UA_CACHE_SIZE)
 def declares_bot(ua: str | None) -> bool:
     """True when the UA self-identifies as automation."""
     if is_empty(ua) or ua is None:
@@ -70,7 +77,7 @@ def _lowered(category: str) -> tuple[tuple[str, str, CrawlerSpec], ...]:
     return tuple((sub.lower(), sub, spec) for sub, spec in load_tokens(category))
 
 
-@lru_cache(maxsize=32768)
+@lru_cache(maxsize=UA_CACHE_SIZE)
 def match_category(ua: str | None, category: str) -> tuple[str, CrawlerSpec] | None:
     """First (substring, spec) in ``category`` whose token occurs in ``ua`` (cached).
 

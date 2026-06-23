@@ -6,9 +6,9 @@ behavioural notes. They do not compete with the kind.
 
 Impersonation is different: it *is* the kind. :func:`impersonation` decides
 whether a client is pretending to be something it is not -- a declared crawler
-whose DNS does not check out, or one that probes for vulnerabilities while
-claiming a search/AI/SEO identity -- and the combiner makes such a client an
-``impersonator``.
+whose IP fails DNS / range verification -- and the combiner makes such a client
+an ``impersonator``. Bad behaviour (probing, ignoring robots) is only ever a
+tag; a genuine crawler can misbehave without forging its identity.
 """
 
 from __future__ import annotations
@@ -36,23 +36,17 @@ def _declares_known_crawler(features: ClientFeatures) -> bool:
     return uas.match_known(features.user_agent, pairs) is not None
 
 
-def impersonation(
-    features: ClientFeatures, verification: BotVerification | None
-) -> tuple[bool, tuple[str, ...]]:
+def impersonation(verification: BotVerification | None) -> tuple[bool, tuple[str, ...]]:
     """Decide whether the client is impersonating a declared identity.
 
-    Returns ``(is_impersonator, evidence)``. Merely ignoring robots.txt is not
-    impersonation -- plenty of real crawlers do that -- so only a DNS mismatch
-    or vulnerability probing under a crawler UA counts.
+    Impersonation is a forged *identity*: only DNS / IP-range verification saying
+    the address isn't really that crawler counts. Misbehaviour such as ignoring
+    robots.txt or probing for vulnerabilities is tagged, not treated as identity
+    theft -- a real crawler can still behave badly.
     """
     if verification is not None and verification.status is VerificationStatus.IMPERSONATOR:
-        return True, verification.evidence or ("DNS does not confirm the declared crawler",)
-    if _declares_known_crawler(features) and (
-        features.vuln_path_hits > 0 or features.traversal_hits > 0
-    ):
-        return True, (
-            "claims a known-crawler User-Agent but probes for vulnerabilities "
-            f"({features.vuln_path_hits} probe paths, {features.traversal_hits} traversal markers)",
+        return True, verification.evidence or (
+            "DNS / IP range does not confirm the declared crawler",
         )
     return False, ()
 
@@ -83,5 +77,8 @@ def derive_tags(
 
     if _declares_known_crawler(features):
         tags.add("declares-known-bot")
+
+    if features.vuln_path_hits > 0 or features.traversal_hits > 0:
+        tags.add("probing")  # badly behaved, but not necessarily a forged identity
 
     return tags

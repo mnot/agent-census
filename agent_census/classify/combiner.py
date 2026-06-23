@@ -75,7 +75,7 @@ def combine(
 
     # Impersonation is decisive: a client faking a declared identity is an
     # impersonator, whatever else it looks like.
-    faking, why = impersonation(features, verification)
+    faking, why = impersonation(verification)
     if faking:
         return Classification(
             primary=Kind.IMPERSONATOR,

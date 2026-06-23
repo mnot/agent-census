@@ -106,11 +106,18 @@ def _network_table(result: AnalysisResult) -> list[str]:
         separator,
     ]
 
-    def cell(value: int) -> str:
-        return f"{value:,}" if value else "–"
+    def cell(value: int, *, lead: bool) -> str:
+        if not value:
+            return "–"
+        text = f"{value:,}"
+        return f"**{text}**" if lead else text  # bold each kind's leading network
 
     for kind in matrix.kinds:
-        cells = " | ".join(cell(matrix.cell(net, kind)) for net in matrix.networks)
+        values = [matrix.cell(net, kind) for net in matrix.networks]
+        peak = max(values, default=0)
+        lead_at = values.index(peak) if peak else -1  # first network with the row max
+        rendered = [cell(v, lead=i == lead_at) for i, v in enumerate(values)]
+        cells = " | ".join(rendered)
         lines.append(f"| {kind_label(kind)} | {cells} | {matrix.row_totals[kind]:,} |")
     totals = " | ".join(f"{matrix.col_totals[net]:,}" for net in matrix.networks)
     lines.append(f"| **All kinds** | {totals} | {matrix.total:,} |")

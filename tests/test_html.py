@@ -130,8 +130,12 @@ def test_network_table_renders_with_providers(
     html = render_report_html(result, source="x")
     assert "Requests by kind and network" in html
     assert "Amazon AWS" in html
-    # The residential (non-hosting) column carries the grey-wash class on its header.
-    assert f"class='num netbg'>{_esc(RESIDENTIAL_NETWORK)}</th>" in html
+    # The residential (non-hosting) column header carries the grey-wash + divider.
+    assert f"netoff'>{_esc(RESIDENTIAL_NETWORK)}</th>" in html
+    assert "class='num netdiv netoff'" in html  # first non-hosting col: divider + grey
+    # Body cells carry their raw count for the JS toggle; the control + script are present.
+    assert "td class='num mxcell" in html and "data-v=" in html
+    assert "id='netmode'" in html and "id='nettab'" in html
 
 
 def test_tags_have_hover_descriptions() -> None:

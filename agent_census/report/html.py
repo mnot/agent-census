@@ -118,7 +118,11 @@ table { border-collapse: collapse; width: 100%; margin: .5rem 0 1rem; font-size:
 th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid #8884; vertical-align: top; }
 th { font-weight: 600; border-bottom: 2px solid #8886; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-.netbg { background: #8881; }
+.netdiv { border-left: 2px solid #8887; }
+th.netoff { background: #8881; }
+tr.netall td { border-top: 2px solid #8887; }
+.netctl { font-size: .9rem; color: #6b7280; margin: .25rem 0 .6rem; }
+.netctl select { font: inherit; margin-left: .35rem; }
 tr:hover td { background: #8881; }
 .badge { display: inline-block; padding: .08rem .5rem; border-radius: 999px;
   color: #fff; font-size: .8rem; font-weight: 600; white-space: nowrap; }
@@ -286,48 +290,103 @@ def _summary_table(result: AnalysisResult) -> str:
     )
 
 
+# Client-side: recompute the network cross-tab when the toggle changes. Each body
+# cell carries data-v (its raw count); the script reformats text, shades a teal
+# heat by share of the row (counts / % of kind) or column (% of network) max, and
+# bolds that group's leader. The Total column and All-kinds row stay raw counts.
+_NET_SCRIPT = """
+<script>
+(function(){
+  var tab=document.getElementById('nettab'); if(!tab) return;
+  var sel=document.getElementById('netmode'); if(!sel) return;
+  var cells=[].slice.call(tab.querySelectorAll('td.mxcell'));
+  var byRow={}, byCol={};
+  cells.forEach(function(c){
+    var r=c.parentNode.rowIndex, col=c.cellIndex; c._v=+c.getAttribute('data-v');
+    (byRow[r]=byRow[r]||[]).push(c);
+    (byCol[col]=byCol[col]||[]).push(c);
+  });
+  function paint(mode){
+    var groups=(mode==='col')?byCol:byRow;
+    cells.forEach(function(c){c.style.background='';c.style.fontWeight='';});
+    Object.keys(groups).forEach(function(k){
+      var g=groups[k], tot=0, mx=0;
+      g.forEach(function(c){tot+=c._v; if(c._v>mx)mx=c._v;});
+      g.forEach(function(c){
+        var v=c._v;
+        c.textContent = (mode==='count') ? (v?v.toLocaleString():'\\u2013')
+                                         : ((v&&tot)?Math.round(v/tot*100)+'%':'\\u2013');
+        if(v>0&&mx>0) c.style.background='rgba(29,158,117,'+(v/mx*0.8).toFixed(3)+')';
+        if(v>0&&v===mx) c.style.fontWeight='500';
+      });
+    });
+  }
+  sel.addEventListener('change',function(){paint(sel.value);});
+  paint('count');
+})();
+</script>
+""".strip()
+
+
+def _num(value: int) -> str:
+    return f"{value:,}" if value else "–"
+
+
 def _network_table(result: AnalysisResult) -> str:
     matrix = network_matrix(result.network_rollups, result.network_categories)
     if matrix is None:
         return ""
+    nets = matrix.networks
+    # The first non-hosting column gets the thick hosted|off-network rule; the
+    # Total column gets one too. Non-hosting headers carry a faint grey wash.
+    first_off = next((i for i, n in enumerate(nets) if not matrix.is_hosting(n)), None)
 
-    # Non-hosting columns (egress networks, residential) get a faint grey wash so
-    # the eye separates "came through someone else's network" from named hosting.
-    def klass(net: str) -> str:
-        return "num" if matrix.is_hosting(net) else "num netbg"
+    def div(i: int) -> str:
+        return " netdiv" if i == first_off else ""
 
     head = (
         "<tr><th>Kind</th>"
-        + "".join(f"<th class='{klass(net)}'>{_esc(net)}</th>" for net in matrix.networks)
-        + "<th class='num'>Total</th></tr>"
+        + "".join(
+            f"<th class='num{div(i)}{'' if matrix.is_hosting(n) else ' netoff'}'>{_esc(n)}</th>"
+            for i, n in enumerate(nets)
+        )
+        + "<th class='num netdiv'>Total</th></tr>"
     )
-
-    def cell(value: int) -> str:
-        return f"{value:,}" if value else '<span class="muted">–</span>'
 
     rows = []
     for kind in matrix.kinds:
         cells = "".join(
-            f"<td class='{klass(net)}'>{cell(matrix.cell(net, kind))}</td>"
-            for net in matrix.networks
+            f"<td class='num mxcell{div(i)}' data-v='{matrix.cell(n, kind)}'>"
+            f"{_num(matrix.cell(n, kind))}</td>"
+            for i, n in enumerate(nets)
         )
         rows.append(
             f'<tr><td><a href="#{kind.value}">{_kind_badge(kind)}</a></td>'
-            f"{cells}<td class='num'>{matrix.row_totals[kind]:,}</td></tr>"
+            f"{cells}<td class='num netdiv'>{matrix.row_totals[kind]:,}</td></tr>"
         )
     totals = "".join(
-        f"<td class='{klass(net)}'>{matrix.col_totals[net]:,}</td>" for net in matrix.networks
+        f"<td class='num{div(i)}'>{matrix.col_totals[n]:,}</td>" for i, n in enumerate(nets)
     )
     rows.append(
-        f"<tr class='totals'><td><strong>All kinds</strong></td>"
-        f"{totals}<td class='num'>{matrix.total:,}</td></tr>"
+        "<tr class='netall'><td><strong>All kinds</strong></td>"
+        f"{totals}<td class='num netdiv'>{matrix.total:,}</td></tr>"
+    )
+    control = (
+        "<div class='netctl'><label>Show <select id='netmode'>"
+        "<option value='count'>counts</option>"
+        "<option value='row'>% of kind</option>"
+        "<option value='col'>% of network</option>"
+        "</select></label></div>"
     )
     return (
         "<h2>Requests by kind and network</h2>\n"
-        f"<table>{head}{''.join(rows)}</table>\n"
-        '<p class="muted">Request counts by origin network — hosting providers, '
-        "shared-egress networks (privacy relays / Tor), or residential/unknown; the "
-        f"smallest hosting providers are folded into “{_esc(OTHER_HOSTING)}”.</p>"
+        + control
+        + f"<table id='nettab'>{head}{''.join(rows)}</table>\n"
+        + '<p class="muted">Counts default; the toggle switches to row or column shares '
+        "(the Total column keeps the raw count). Cell shading tracks the same axis — "
+        "across each kind, or down each network. Hosting reads left of the thick rule, "
+        f"off-network (relays / Tor / residential) to its right; smallest hosters fold into "
+        f"“{_esc(OTHER_HOSTING)}”.</p>" + _NET_SCRIPT
     )
 
 

@@ -294,6 +294,32 @@ def test_logged_asn_marks_datacenter_without_ip_ranges(tmp_path: Path) -> None:
     assert "datacenter" in profile.classification.tags
 
 
+def test_markdown_network_table_bolds_row_leader() -> None:
+    from agent_census.pipeline import (  # local import keeps the module header lean
+        RESIDENTIAL_NETWORK,
+        AnalysisResult,
+        IdentityStats,
+        KindRollup,
+        SkipStats,
+    )
+
+    result = AnalysisResult(
+        profiles=(),
+        skips=SkipStats(0, 0, 0),
+        identity_strategy="ip_ua",
+        identity_stats=IdentityStats(0, 0, 0),
+        network_rollups={
+            "Amazon AWS": {Kind.SCRAPER: KindRollup(clients=1, requests=900)},
+            RESIDENTIAL_NETWORK: {Kind.SCRAPER: KindRollup(clients=1, requests=100)},
+        },
+        network_categories={"Amazon AWS": "datacenter", RESIDENTIAL_NETWORK: "residential"},
+    )
+    text = render_report(result, source="x")
+    assert "Requests by kind and network" in text
+    assert "**900**" in text  # AWS leads the scraper row -> bolded
+    assert "**100**" not in text  # the trailing network is not the leader
+
+
 def test_returning_client_coalesces_after_eviction(tmp_path: Path) -> None:
     # One client (one ip+ua) requests on day 1, then again on day 3. A filler
     # client on day 2 advances the clock past the 12h quiescent window, so the

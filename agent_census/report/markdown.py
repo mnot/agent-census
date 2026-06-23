@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from ..model import ClientProfile, Kind
-from ..pipeline import AnalysisResult, KindRollup
-from .aggregate import KIND_BLURB, KIND_ORDER, by_kind, time_range
+from ..pipeline import OTHER_HOSTING, AnalysisResult, KindRollup
+from .aggregate import KIND_BLURB, KIND_ORDER, by_kind, network_matrix, time_range
 from .format import (
     client_label,
     fmt_ts,
@@ -89,6 +89,35 @@ def _summary_table(result: AnalysisResult) -> list[str]:
     return lines
 
 
+def _network_table(result: AnalysisResult) -> list[str]:
+    matrix = network_matrix(result.network_rollups, result.network_categories)
+    if matrix is None:
+        return []
+    header = "| Kind | " + " | ".join(md_escape(n) for n in matrix.networks) + " | Total |"
+    separator = "| --- |" + " --: |" * (len(matrix.networks) + 1)
+    lines = [
+        "## Requests by kind and network",
+        "",
+        "Where each kind's requests originated — hosting providers, shared-egress "
+        "networks (privacy relays / Tor), or residential/unknown. Cells are request "
+        f"counts; the smallest hosting providers are folded into _{OTHER_HOSTING}_.",
+        "",
+        header,
+        separator,
+    ]
+
+    def cell(value: int) -> str:
+        return f"{value:,}" if value else "–"
+
+    for kind in matrix.kinds:
+        cells = " | ".join(cell(matrix.cell(net, kind)) for net in matrix.networks)
+        lines.append(f"| {kind_label(kind)} | {cells} | {matrix.row_totals[kind]:,} |")
+    totals = " | ".join(f"{matrix.col_totals[net]:,}" for net in matrix.networks)
+    lines.append(f"| **All kinds** | {totals} | {matrix.total:,} |")
+    lines.append("")
+    return lines
+
+
 def _client_label(profile: ClientProfile) -> str:
     return md_escape(client_label(profile)[:80])
 
@@ -135,6 +164,7 @@ def render_report(
     groups = by_kind(result.profiles)
     lines = _header(result, source, robots_note, elapsed)
     lines += _summary_table(result)
+    lines += _network_table(result)
     for kind in KIND_ORDER:
         rollup = result.rollups.get(kind)
         if rollup and rollup.clients:

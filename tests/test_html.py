@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from agent_census import identity, pipeline
 from agent_census.parsing import resolve
 from agent_census.parsing.apache import PRESETS
@@ -105,6 +107,28 @@ def test_inspect_html_rolls_up_ua_rotating_ip(tmp_path: Path) -> None:
     html = render_inspect_html(selected)
     assert "6 clients on one IP" in html
     assert "Request trace" not in html  # rolled up, not full per-client cards
+
+
+def test_network_table_renders_with_providers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(pipeline, "datacenter_subnet", lambda ip: None)
+    monkeypatch.setattr(pipeline, "is_datacenter_ip", lambda ip: ip.startswith("52."))
+    monkeypatch.setattr(
+        pipeline, "datacenter_provider", lambda ip: "Amazon AWS" if ip.startswith("52.") else None
+    )
+    lines = [
+        '52.1.1.1 - - [10/Oct/2023:12:00:00 +0000] "GET /p HTTP/1.1" 200 100 "-" "curl/8.0"',
+        '9.9.9.9 - - [10/Oct/2023:12:01:00 +0000] "GET /p HTTP/1.1" 200 100 "-" '
+        '"Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 Safari/605.1.15"',
+    ]
+    log = tmp_path / "net.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
+    html = render_report_html(result, source="x")
+    assert "Requests by kind and network" in html
+    assert "Amazon AWS" in html
 
 
 def test_tags_have_hover_descriptions() -> None:

@@ -21,24 +21,43 @@ _DATA = "datacenter_ranges"
 
 
 @lru_cache(maxsize=None)
-def _index() -> RangeIndex:
-    v4: list[Interval] = []
-    v6: list[Interval] = []
+def _provider_indexes() -> tuple[tuple[str, RangeIndex], ...]:
+    """One ``(provider_name, RangeIndex)`` per source, so a hit can be attributed.
+
+    Keeping the providers separate (rather than one merged index) is what lets
+    :func:`datacenter_provider` name the owner; it costs no extra intervals, just
+    a handful of small indexes instead of one big one.
+    """
+    built: list[tuple[str, RangeIndex]] = []
     for source in load_range_sources(_DATA):
         inline4, inline6 = network_intervals(source.ranges)
-        v4 += inline4
-        v6 += inline6
+        v4: list[Interval] = list(inline4)
+        v6: list[Interval] = list(inline6)
         if remote_enabled() and source.ranges_url:
             fetched4, fetched6 = fetch_range_intervals(source.ranges_url, source.fmt)
             v4 += fetched4
             v6 += fetched6
-    return RangeIndex(v4, v6)
+        if v4 or v6:
+            built.append((source.name or "hosting", RangeIndex(v4, v6)))
+    return tuple(built)
+
+
+@lru_cache(maxsize=None)
+def datacenter_provider(ip: str) -> str | None:
+    """Name of the hosting provider whose ranges contain ``ip``, or None.
+
+    First match wins if two feeds overlap. Unparseable IPs are None.
+    """
+    for name, index in _provider_indexes():
+        if index.contains(ip):
+            return name
+    return None
 
 
 @lru_cache(maxsize=None)
 def is_datacenter_ip(ip: str) -> bool:
     """True if ``ip`` falls in a known hosting range. Unparseable IPs are False."""
-    return _index().contains(ip)
+    return datacenter_provider(ip) is not None
 
 
 @lru_cache(maxsize=None)

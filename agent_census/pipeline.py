@@ -23,7 +23,7 @@ from typing import Protocol
 from . import egress, uas
 from .classify import DEFAULT_UNKNOWN_THRESHOLD, classify_client
 from .features import DisallowedCheck, FeatureAccumulator
-from .hosting import datacenter_subnet, is_datacenter_ip
+from .hosting import datacenter_provider, datacenter_subnet, is_datacenter_ip
 from .identity import ClientKeyStrategy
 from .model import (
     BotVerification,
@@ -54,6 +54,16 @@ DEFAULT_RETIRED_CAP = 50_000
 
 # Declared-crawler categories, checked individually so per-UA matches cache.
 _CRAWLER_CATEGORIES = ("search_engine", "social_preview", "archiver", "ai_crawler", "seo_marketing")
+
+# Network buckets for the kind x network cross-tab. A client's network is the
+# hosting provider its IP belongs to, the shared-egress network it came through,
+# or this catch-all for everything else (ISPs, mobile, unknown).
+RESIDENTIAL_NETWORK = "Residential / unknown"
+# Fallback provider label, and the column the report collapses the long tail into.
+OTHER_HOSTING = "Other hosting"
+_NET_DATACENTER = "datacenter"
+_NET_EGRESS = "egress"
+_NET_RESIDENTIAL = "residential"
 
 
 def _declares_crawler(ua: str | None) -> bool:
@@ -153,6 +163,12 @@ class AnalysisResult:
     # Exact per-kind totals over all clients; the summary reads these, so it stays
     # exact even when `profiles` is capped to the top clients per kind.
     rollups: dict[Kind, KindRollup] = field(default_factory=dict)
+    # Exact per-kind totals split by the client's network (hosting provider /
+    # shared-egress network / residential), for the kind x network cross-tab.
+    network_rollups: dict[str, dict[Kind, KindRollup]] = field(default_factory=dict)
+    # Each network label's category (datacenter / egress / residential), so the
+    # report can collapse only the datacenter tail.
+    network_categories: dict[str, str] = field(default_factory=dict)
 
 
 def read_lines(path: Path) -> Iterator[str]:
@@ -225,7 +241,7 @@ def _merge_verified(
     return member_ips
 
 
-def analyze(  # pylint: disable=too-many-locals
+def analyze(  # pylint: disable=too-many-locals,too-many-statements
     logs: Path | Sequence[Path],
     parser: LogParser,
     strategy: ClientKeyStrategy,
@@ -273,6 +289,9 @@ def analyze(  # pylint: disable=too-many-locals
     # Output is bounded: exact per-kind rollups over all clients, plus a per-kind
     # heap of the highest-volume profiles (the only ones kept in detail).
     rollups: dict[Kind, _RollupAcc] = defaultdict(_RollupAcc)
+    # Same totals, split by network, for the kind x network cross-tab.
+    net_rollups: dict[str, dict[Kind, _RollupAcc]] = defaultdict(lambda: defaultdict(_RollupAcc))
+    net_categories: dict[str, str] = {}
     kept: dict[Kind, list[tuple[int, int, ClientProfile]]] = defaultdict(list)
     seq = itertools.count()
     total = parsed = skipped = 0
@@ -287,6 +306,8 @@ def analyze(  # pylint: disable=too-many-locals
         member: tuple[str, ...],
         extra_tags: frozenset[str] = frozenset(),
         datacenter: bool | None = None,
+        network: str | None = None,
+        network_category: str | None = None,
     ) -> None:
         nonlocal singleton_count
         ua_count = len(uas_by_ip.get(key.ip) or (None,))
@@ -305,7 +326,14 @@ def analyze(  # pylint: disable=too-many-locals
                 request_count=features.request_count,
                 median_interval=features.inter_arrival_median,
             )
-        in_datacenter = is_datacenter_ip(key.ip) if datacenter is None else datacenter
+        if network is None:
+            # A regular client: attribute it to its hosting provider, if any.
+            provider = datacenter_provider(key.ip)
+            in_datacenter = provider is not None if datacenter is None else datacenter
+            network = provider if provider is not None else RESIDENTIAL_NETWORK
+            network_category = _NET_DATACENTER if provider is not None else _NET_RESIDENTIAL
+        else:
+            in_datacenter = is_datacenter_ip(key.ip) if datacenter is None else datacenter
         classification = classify_client(
             features,
             compliance=compliance,
@@ -327,6 +355,8 @@ def analyze(  # pylint: disable=too-many-locals
         )
         kind = classification.primary
         rollups[kind].add(features, classification.tags)  # every client counts here
+        net_rollups[network][kind].add(features, classification.tags)
+        net_categories.setdefault(network, network_category or _NET_RESIDENTIAL)
         # Keep only the highest-volume profiles per kind in detail; the rest are
         # already fully reflected in the rollup above.
         heap = kept[kind]
@@ -459,13 +489,25 @@ def analyze(  # pylint: disable=too-many-locals
             None,
             tuple(sorted(egress_members[(name, user_agent)])),
             extra_tags=frozenset({egress_tag[name]}),
+            network=name,
+            network_category=_NET_EGRESS,
         )
         client_count += 1
     for (subnet, user_agent), acc in dc_acc.items():
         # One client per datacenter (subnet, UA); the subnet is its identity.
         did = ClientId(ip=subnet, user_agent=user_agent)
         tokens[did] = dc_token[(subnet, user_agent)]
-        emit(did, acc, None, tuple(sorted(dc_members[(subnet, user_agent)])), datacenter=True)
+        members = dc_members[(subnet, user_agent)]
+        rep_ip = next(iter(members), "")  # any member resolves to the same provider
+        emit(
+            did,
+            acc,
+            None,
+            tuple(sorted(members)),
+            datacenter=True,
+            network=datacenter_provider(rep_ip) or OTHER_HOSTING,
+            network_category=_NET_DATACENTER,
+        )
         client_count += 1
 
     profiles = [profile for heap in kept.values() for (_, _, profile) in heap]
@@ -476,6 +518,11 @@ def analyze(  # pylint: disable=too-many-locals
         identity_strategy=strategy.name,
         identity_stats=IdentityStats(client_count, singleton_count, multi_ua_ips),
         rollups={kind: acc.freeze() for kind, acc in rollups.items()},
+        network_rollups={
+            net: {kind: acc.freeze() for kind, acc in kinds.items()}
+            for net, kinds in net_rollups.items()
+        },
+        network_categories=dict(net_categories),
     )
 
 

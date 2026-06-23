@@ -41,10 +41,28 @@ def test_remote_ranges_are_used_only_when_enabled(monkeypatch: pytest.MonkeyPatc
     try:
         assert not is_datacenter_ip("203.0.113.7")  # default run is offline
         iprange.enable_remote()
-        hosting._index.cache_clear()  # pylint: disable=protected-access
+        hosting._provider_indexes.cache_clear()  # pylint: disable=protected-access
+        hosting.datacenter_provider.cache_clear()
         is_datacenter_ip.cache_clear()
         assert is_datacenter_ip("203.0.113.7")  # now merged from the fetched list
     finally:  # reset module/cache state so other tests stay offline
         iprange._remote["enabled"] = False  # pylint: disable=protected-access
-        hosting._index.cache_clear()  # pylint: disable=protected-access
+        hosting._provider_indexes.cache_clear()  # pylint: disable=protected-access
+        hosting.datacenter_provider.cache_clear()
         is_datacenter_ip.cache_clear()
+
+
+def test_datacenter_provider_names_the_owner(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A hit is attributed to a named provider; a miss is None. (conftest resets the
+    # remote flag and caches in teardown.)
+    from agent_census.dataload import load_range_sources
+    from agent_census.iprange import network_intervals
+
+    monkeypatch.setattr(
+        hosting, "fetch_range_intervals", lambda url, fmt: network_intervals(("203.0.113.0/24",))
+    )
+    iprange.enable_remote()
+    sources = [s for s in load_range_sources("datacenter_ranges") if s.ranges_url]
+    expected = sources[0].name  # first source with a feed wins the overlap
+    assert hosting.datacenter_provider("203.0.113.7") == expected
+    assert hosting.datacenter_provider("8.8.8.8") is None

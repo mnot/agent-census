@@ -12,8 +12,8 @@ from functools import lru_cache
 
 from ..dataload import load_egress_networks
 from ..model import ClientProfile, Kind
-from ..pipeline import AnalysisResult, KindRollup
-from .aggregate import KIND_BLURB, KIND_ORDER, by_kind, time_range
+from ..pipeline import OTHER_HOSTING, AnalysisResult, KindRollup
+from .aggregate import KIND_BLURB, KIND_ORDER, by_kind, network_matrix, time_range
 from .format import (
     client_label,
     elide_ua,
@@ -285,6 +285,42 @@ def _summary_table(result: AnalysisResult) -> str:
     )
 
 
+def _network_table(result: AnalysisResult) -> str:
+    matrix = network_matrix(result.network_rollups, result.network_categories)
+    if matrix is None:
+        return ""
+    head = (
+        "<tr><th>Kind</th>"
+        + "".join(f"<th class='num'>{_esc(net)}</th>" for net in matrix.networks)
+        + "<th class='num'>Total</th></tr>"
+    )
+
+    def cell(value: int) -> str:
+        return f"{value:,}" if value else '<span class="muted">–</span>'
+
+    rows = []
+    for kind in matrix.kinds:
+        cells = "".join(
+            f"<td class='num'>{cell(matrix.cell(net, kind))}</td>" for net in matrix.networks
+        )
+        rows.append(
+            f'<tr><td><a href="#{kind.value}">{_kind_badge(kind)}</a></td>'
+            f"{cells}<td class='num'>{matrix.row_totals[kind]:,}</td></tr>"
+        )
+    totals = "".join(f"<td class='num'>{matrix.col_totals[net]:,}</td>" for net in matrix.networks)
+    rows.append(
+        f"<tr class='totals'><td><strong>All kinds</strong></td>"
+        f"{totals}<td class='num'>{matrix.total:,}</td></tr>"
+    )
+    return (
+        "<h2>Requests by kind and network</h2>\n"
+        f"<table>{head}{''.join(rows)}</table>\n"
+        '<p class="muted">Request counts by origin network — hosting providers, '
+        "shared-egress networks (privacy relays / Tor), or residential/unknown; the "
+        f"smallest hosting providers are folded into “{_esc(OTHER_HOSTING)}”.</p>"
+    )
+
+
 _SECTION_HEAD = (
     "<tr><th>Client</th><th class='num'>Requests</th><th class='num'>Bandwidth</th>"
     "<th class='num'>Conf.</th><th>Tags</th><th>Top evidence</th></tr>"
@@ -355,6 +391,7 @@ def render_report_html(
         "<h1>Agent Census</h1>",
         _meta_list(result, source, robots_note, elapsed),
         _summary_table(result),
+        _network_table(result),
     ]
     for kind in KIND_ORDER:
         rollup = result.rollups.get(kind)

@@ -240,6 +240,41 @@ def test_datacenter_fleet_merges_by_subnet_and_ua(
     assert result.identity_stats.client_count == 3
 
 
+def test_network_rollups_attribute_providers_and_render(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Attribute 52.x to a provider and leave folding off, so each client lands in
+    # its network bucket; a residential client stays in the catch-all.
+    monkeypatch.setattr(pipeline, "datacenter_subnet", lambda ip: None)
+    monkeypatch.setattr(pipeline, "is_datacenter_ip", lambda ip: ip.startswith("52."))
+    monkeypatch.setattr(
+        pipeline, "datacenter_provider", lambda ip: "Amazon AWS" if ip.startswith("52.") else None
+    )
+    rows = [
+        ("52.1.1.1", "python-requests/2.31.0"),
+        ("52.1.1.2", "curl/8.0"),
+        ("9.9.9.9", "Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 Safari/605.1.15"),
+    ]
+    lines = [
+        f'{ip} - - [10/Oct/2023:12:0{i}:00 +0000] "GET /p HTTP/1.1" 200 100 "-" "{ua}"'
+        for i, (ip, ua) in enumerate(rows)
+    ]
+    log = tmp_path / "net.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
+
+    assert "Amazon AWS" in result.network_rollups
+    assert pipeline.RESIDENTIAL_NETWORK in result.network_rollups
+    assert result.network_categories["Amazon AWS"] == "datacenter"
+    aws_requests = sum(r.requests for r in result.network_rollups["Amazon AWS"].values())
+    assert aws_requests == 2  # both 52.x clients
+
+    text = render_report(result, source="x")
+    assert "Requests by kind and network" in text
+    assert "Amazon AWS" in text
+
+
 def test_returning_client_coalesces_after_eviction(tmp_path: Path) -> None:
     # One client (one ip+ua) requests on day 1, then again on day 3. A filler
     # client on day 2 advances the clock past the 12h quiescent window, so the

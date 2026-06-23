@@ -114,3 +114,7 @@ ua_substring = "amazon-kendra"
 [[agent]]
 # https://www.image-meta.com
 ua_substring = "ImageMetaBot"
+
+[[agent]]
+# https://beamosearch.com/
+ua_substring = "BeamoBot"

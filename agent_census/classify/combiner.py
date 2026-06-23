@@ -55,8 +55,14 @@ def combine(
     compliance: ComplianceReport | None = None,
     verification: BotVerification | None = None,
     unknown_threshold: float = DEFAULT_UNKNOWN_THRESHOLD,
+    keep_signals: bool = True,
 ) -> Classification:
-    """Aggregate ``signals`` into a primary kind plus secondary tags."""
+    """Aggregate ``signals`` into a primary kind plus secondary tags.
+
+    ``keep_signals`` retains every contributing signal on the result for inspect
+    mode's rationale. The ``analyze`` report never reads them, so it passes
+    ``False`` to avoid holding a Signal (and its evidence strings) per client.
+    """
     by_label: dict[Kind, float] = {}
     for signal in signals:
         by_label[signal.kind] = max(by_label.get(signal.kind, 0.0), signal.confidence)
@@ -67,15 +73,15 @@ def combine(
         by_label.pop(Kind.GOOD_BOT, None)
         by_label.pop(Kind.AI_CRAWLER, None)
 
-    all_signals = tuple(signals)
+    stored = tuple(signals) if keep_signals else ()
     if not by_label or max(by_label.values()) < unknown_threshold:
         confidence = max(by_label.values()) if by_label else 0.0
         return Classification(
             primary=Kind.UNKNOWN,
             confidence=confidence,
             tags=frozenset(tags),
-            evidence=_top_evidence(all_signals),
-            all_signals=all_signals,
+            evidence=_top_evidence(tuple(signals)),
+            all_signals=stored,
         )
 
     primary = _pick(by_label)
@@ -87,7 +93,7 @@ def combine(
         confidence=by_label[primary],
         tags=frozenset(tags),
         evidence=evidence,
-        all_signals=all_signals,
+        all_signals=stored,
     )
 
 

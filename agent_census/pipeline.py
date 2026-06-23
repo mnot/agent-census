@@ -95,12 +95,15 @@ def analyze(
     robots: RobotsRules | None = None,
     verify_fn: VerifyFn | None = None,
     unknown_threshold: float = DEFAULT_UNKNOWN_THRESHOLD,
+    keep_signals: bool = True,
 ) -> AnalysisResult:
     """Stream one or more log files into per-client profiles.
 
     Multiple files are read in order as one stream and pooled, so a client that
     appears across rotated logs is treated as one. Entries are not retained;
     pass the result to :func:`collect_entries` if you need raw request traces.
+    ``keep_signals=False`` drops the per-client classifier signals (which only
+    inspect mode reads), saving memory on the analyze path.
     """
     paths = [logs] if isinstance(logs, Path) else list(logs)
     accumulators: dict[ClientId, FeatureAccumulator] = {}
@@ -153,6 +156,7 @@ def analyze(
             compliance=compliance,
             verification=verification,
             unknown_threshold=unknown_threshold,
+            keep_signals=keep_signals,
         )
         profiles.append(
             ClientProfile(

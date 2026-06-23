@@ -251,6 +251,7 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
         robots=rules,
         verify_fn=verify_fn,
         unknown_threshold=args.unknown_threshold,
+        keep_signals=args.command == "inspect",
     )
     return _RunContext(parser=parser, strategy=strategy, result=result, robots_note=robots_note)
 

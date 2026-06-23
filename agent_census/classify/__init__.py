@@ -27,6 +27,7 @@ def classify_client(
     compliance: ComplianceReport | None = None,
     verification: BotVerification | None = None,
     unknown_threshold: float = DEFAULT_UNKNOWN_THRESHOLD,
+    keep_signals: bool = True,
 ) -> Classification:
     """Run all classifiers over ``features`` and combine into a verdict."""
     signals = run_classifiers(features)
@@ -36,6 +37,7 @@ def classify_client(
         compliance=compliance,
         verification=verification,
         unknown_threshold=unknown_threshold,
+        keep_signals=keep_signals,
     )
 
 

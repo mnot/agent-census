@@ -28,10 +28,12 @@ class Kind(str, Enum):
     SEARCH_ENGINE = "search_engine"
     SOCIAL_PREVIEW = "social_preview"
     AI_CRAWLER = "ai_crawler"
+    SEO_MARKETING = "seo_marketing"
     FEED_READER = "feed_reader"
     MONITOR = "monitor"
     SCRAPER = "scraper"
     SPAM_BOT = "spam_bot"
+    IMPERSONATOR = "impersonator"
     UNKNOWN = "unknown"
 
 

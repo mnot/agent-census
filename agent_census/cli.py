@@ -133,8 +133,8 @@ also checks robots.txt compliance and can DNS-verify declared crawlers.
 
 Client kinds:
   browser       crawler        search_engine  social_preview  ai_crawler
-  scraper       vuln_scanner   spam_bot       feed_reader     monitor
-  unknown
+  seo_marketing scraper        vuln_scanner   spam_bot        feed_reader
+  monitor       impersonator   unknown
 
 Output is Markdown (default) or a self-contained HTML page.
 """

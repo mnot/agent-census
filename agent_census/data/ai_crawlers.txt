@@ -24,3 +24,12 @@ YouBot you.com
 meta-externalagent facebook.com
 Meta-ExternalAgent facebook.com
 Timpibot timpi.io
+MistralBot mistral.ai
+kagibot kagi.com
+kagi-fetcher kagi.com
+Perplexity-User perplexity.ai
+Claude-SearchBot anthropic.com
+Google-CloudVertexBot google.com
+FacebookBot facebook.com
+LinkupBot linkup.so
+TikTokSpider bytedance.com

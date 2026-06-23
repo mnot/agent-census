@@ -18,3 +18,9 @@ Embedly embed.ly
 SkypeUriPreview
 vkShare vk.com
 Mastodon
+Iframely embed.ly iframe.ly
+Slack-ImgProxy slack.com
+Mattermost-Bot
+Pleroma
+SummalyBot
+HatenaBookmark hatena.ne.jp

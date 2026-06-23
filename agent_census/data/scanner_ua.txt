@@ -1,0 +1,20 @@
+# User-Agent tokens that unambiguously name a scanning / pentest / measurement
+# tool. Matched case-insensitively as a substring. A match is strong corroborating
+# evidence for the vuln_scanner classifier (most scanners also behave the part).
+
+sqlmap
+nmap
+nikto
+nuclei
+masscan
+wpscan
+zgrab
+CensysInspect
+InternetMeasurement
+l9scan
+BlackVeil-Security-Scanner
+SecurityScanner
+AliyunSecBot
+TLM-Audit-Scanner
+CMS-Checker
+docs-cortex.paloaltonetworks

@@ -10,14 +10,22 @@ from __future__ import annotations
 
 import re
 
+from ..dataload import load_list
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
 
-_FEED_UA = re.compile(
-    r"feed|rss|atom|podcast|feedly|newsblur|inoreader|theoldreader|"
-    r"universalfeedparser|tiny tiny rss|miniflux|feedbin|subscriber",
-    re.I,
-)
+# Generic feed terms; specific reader product names live in feed_readers.txt.
+_FEED_UA = re.compile(r"feed|rss|atom|podcast|subscriber", re.I)
+_FEED_READERS = tuple(token.lower() for token in load_list("feed_readers.txt"))
+
+
+def _ua_is_feed_reader(ua: str | None) -> bool:
+    if not ua:
+        return False
+    if _FEED_UA.search(ua):
+        return True
+    low = ua.lower()
+    return any(token in low for token in _FEED_READERS)
 
 
 class FeedReaderClassifier(Classifier):
@@ -36,7 +44,7 @@ class FeedReaderClassifier(Classifier):
                 confidence += 0.3
                 evidence.append(f"{features.feed_requests} request(s) for feed resources")
 
-        if features.user_agent and _FEED_UA.search(features.user_agent):
+        if _ua_is_feed_reader(features.user_agent):
             confidence += 0.4
             evidence.append("User-Agent identifies a feed reader")
 

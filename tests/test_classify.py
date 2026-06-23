@@ -75,14 +75,32 @@ def test_combiner_tie_breaks_by_priority() -> None:
     assert combine(signals, ClientFeatures()).primary is Kind.BROWSER
 
 
-def test_impersonator_demotes_search_engine() -> None:
+def test_behavioural_impersonator_is_its_own_kind() -> None:
+    # Declares Googlebot but probes vuln paths -> impersonator kind, not search.
     feats = ClientFeatures(
         request_count=5, user_agent="Mozilla/5.0 (compatible; Googlebot/2.1)", vuln_path_hits=3
     )
     signals = [Signal(Kind.SEARCH_ENGINE, 0.8, ("declares Googlebot",), "search_engine")]
     result = combine(signals, feats)
-    assert "impersonator" in result.tags
-    assert result.primary is not Kind.SEARCH_ENGINE
+    assert result.primary is Kind.IMPERSONATOR
+
+
+def test_dns_mismatch_is_impersonator() -> None:
+    feats = ClientFeatures(request_count=5, user_agent="Mozilla/5.0 (compatible; Googlebot/2.1)")
+    verification = BotVerification(VerificationStatus.IMPERSONATOR, resolved_host="x.evil.example")
+    signals = [Signal(Kind.SEARCH_ENGINE, 0.8, ("declares Googlebot",), "search_engine")]
+    result = combine(signals, feats, verification=verification)
+    assert result.primary is Kind.IMPERSONATOR
+
+
+def test_seo_marketing_classified() -> None:
+    feats = ClientFeatures(request_count=20, user_agent="Mozilla/5.0 (compatible; AhrefsBot/7.0)")
+    assert classify_client(feats).primary is Kind.SEO_MARKETING
+
+
+def test_scanner_user_agent_classified() -> None:
+    feats = ClientFeatures(request_count=4, user_agent="sqlmap/1.7")
+    assert classify_client(feats).primary is Kind.VULN_SCANNER
 
 
 def test_verified_tag_from_verification() -> None:

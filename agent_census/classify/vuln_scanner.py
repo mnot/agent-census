@@ -7,8 +7,18 @@ traversal/injection markers, and no browser-like sub-resource loading.
 
 from __future__ import annotations
 
+from ..dataload import load_list
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
+
+_SCANNER_UA = tuple(token.lower() for token in load_list("scanner_ua.txt"))
+
+
+def _ua_is_scanner(ua: str | None) -> str | None:
+    if not ua:
+        return None
+    low = ua.lower()
+    return next((token for token in _SCANNER_UA if token in low), None)
 
 
 class VulnScannerClassifier(Classifier):
@@ -18,6 +28,11 @@ class VulnScannerClassifier(Classifier):
     def evaluate(self, features: ClientFeatures) -> list[Signal]:
         confidence = 0.0
         evidence: list[str] = []
+
+        scanner_token = _ua_is_scanner(features.user_agent)
+        if scanner_token is not None:
+            confidence += 0.5
+            evidence.append(f"User-Agent names a scanning tool ({scanner_token})")
 
         if features.vuln_path_hits >= 3:
             confidence += 0.45

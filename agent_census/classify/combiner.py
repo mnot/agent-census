@@ -17,13 +17,15 @@ from ..model import (
     Kind,
     Signal,
 )
-from .tags import derive_tags
+from .tags import derive_tags, impersonation
 
 # Tie-break order when two kinds share the top confidence: earlier wins.
 _PRIORITY: tuple[Kind, ...] = (
+    Kind.IMPERSONATOR,
     Kind.SEARCH_ENGINE,
     Kind.SOCIAL_PREVIEW,
     Kind.AI_CRAWLER,
+    Kind.SEO_MARKETING,
     Kind.VULN_SCANNER,
     Kind.SPAM_BOT,
     Kind.FEED_READER,
@@ -69,13 +71,20 @@ def combine(
         by_label[signal.kind] = max(by_label.get(signal.kind, 0.0), signal.confidence)
 
     tags = derive_tags(features, compliance, verification)
-    if "impersonator" in tags:
-        # A claimed crawler that DNS or behavior contradicts is not one.
-        by_label.pop(Kind.SEARCH_ENGINE, None)
-        by_label.pop(Kind.SOCIAL_PREVIEW, None)
-        by_label.pop(Kind.AI_CRAWLER, None)
-
     stored = tuple(signals) if keep_signals else ()
+
+    # Impersonation is decisive: a client faking a declared identity is an
+    # impersonator, whatever else it looks like.
+    faking, why = impersonation(features, verification)
+    if faking:
+        return Classification(
+            primary=Kind.IMPERSONATOR,
+            confidence=0.9,
+            tags=frozenset(tags),
+            evidence=why,
+            all_signals=stored,
+        )
+
     if not by_label or max(by_label.values()) < unknown_threshold:
         confidence = max(by_label.values()) if by_label else 0.0
         return Classification(

@@ -15,6 +15,7 @@ from .feed_reader import FeedReaderClassifier
 from .monitor import MonitorClassifier
 from .scraper import ScraperClassifier
 from .search_engine import SearchEngineClassifier
+from .seo_marketing import SeoMarketingClassifier
 from .social_preview import SocialPreviewClassifier
 from .spam_bot import SpamBotClassifier
 from .vuln_scanner import VulnScannerClassifier
@@ -23,6 +24,7 @@ _CLASSIFIERS: tuple[Classifier, ...] = (
     SearchEngineClassifier(),
     SocialPreviewClassifier(),
     AiCrawlerClassifier(),
+    SeoMarketingClassifier(),
     VulnScannerClassifier(),
     BrowserClassifier(),
     CrawlerClassifier(),

@@ -17,3 +17,10 @@ Applebot applebot.apple.com
 Sogou sogou.com
 Exabot exabot.com
 SeznamBot seznam.cz
+GoogleOther googlebot.com google.com
+PetalBot aspiegel.com petalsearch.com
+Qwantbot qwant.com
+MojeekBot mojeek.com
+coccocbot coccoc.com
+SeekportBot seekport.com
+YisouSpider

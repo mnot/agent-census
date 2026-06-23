@@ -1,11 +1,14 @@
-"""Secondary tag derivation.
+"""Secondary tags and the impersonation verdict.
 
 Tags are orthogonal descriptors layered on top of the primary kind: how the
 client treats robots.txt, whether DNS confirms its declared identity, and
-behavioral red flags. They do not compete with the kind — a vuln scanner that
-avoids disallowed paths is still a vuln scanner — but a couple of them (notably
-``impersonator``) feed back into the combiner to demote a falsely-claimed
-good-bot identity.
+behavioural notes. They do not compete with the kind.
+
+Impersonation is different: it *is* the kind. :func:`impersonation` decides
+whether a client is pretending to be something it is not -- a declared crawler
+whose DNS does not check out, or one that probes for vulnerabilities while
+claiming a search/AI/SEO identity -- and the combiner makes such a client an
+``impersonator``.
 """
 
 from __future__ import annotations
@@ -28,8 +31,30 @@ def _declares_known_crawler(features: ClientFeatures) -> bool:
         load_tokens("search_engines.txt")
         + load_tokens("social_preview.txt")
         + load_tokens("ai_crawlers.txt")
+        + load_tokens("seo_marketing.txt")
     )
     return uas.match_known(features.user_agent, pairs) is not None
+
+
+def impersonation(
+    features: ClientFeatures, verification: BotVerification | None
+) -> tuple[bool, tuple[str, ...]]:
+    """Decide whether the client is impersonating a declared identity.
+
+    Returns ``(is_impersonator, evidence)``. Merely ignoring robots.txt is not
+    impersonation -- plenty of real crawlers do that -- so only a DNS mismatch
+    or vulnerability probing under a crawler UA counts.
+    """
+    if verification is not None and verification.status is VerificationStatus.IMPERSONATOR:
+        return True, verification.evidence or ("DNS does not confirm the declared crawler",)
+    if _declares_known_crawler(features) and (
+        features.vuln_path_hits > 0 or features.traversal_hits > 0
+    ):
+        return True, (
+            "claims a known-crawler User-Agent but probes for vulnerabilities "
+            f"({features.vuln_path_hits} probe paths, {features.traversal_hits} traversal markers)",
+        )
+    return False, ()
 
 
 def derive_tags(
@@ -53,19 +78,10 @@ def derive_tags(
         elif compliance.verdict is RobotsVerdict.IGNORES:
             tags.add("ignores-robots")
 
-    if verification is not None:
-        if verification.status is VerificationStatus.VERIFIED:
-            tags.add("verified")
-        elif verification.status is VerificationStatus.IMPERSONATOR:
-            tags.add("impersonator")
+    if verification is not None and verification.status is VerificationStatus.VERIFIED:
+        tags.add("verified")
 
-    # Behavioral impersonation: a real search/AI crawler never probes for
-    # vulnerabilities. That (or a DNS mismatch, handled above) is spoofing
-    # evidence — merely ignoring robots.txt is not, since plenty of declared
-    # crawlers do that; it gets the `ignores-robots` tag instead.
     if _declares_known_crawler(features):
         tags.add("declares-known-bot")
-        if features.vuln_path_hits > 0 or features.traversal_hits > 0:
-            tags.add("impersonator")
 
     return tags

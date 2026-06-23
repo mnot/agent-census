@@ -83,8 +83,9 @@ class BotVerifier:
         self._forward: dict[str, frozenset[str]] = {}
 
     def needs(self, ua: str | None) -> bool:
-        """True if the UA declares a crawler worth DNS-verifying."""
-        return _known_crawler(ua) is not None
+        """True if the UA declares a crawler we have a domain to verify against."""
+        known = _known_crawler(ua)
+        return known is not None and bool(known[1])
 
     def _cached_reverse(self, ip: str) -> str | None:
         with self._lock:

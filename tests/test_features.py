@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from agent_census.features import extract_features
 
 from .factories import entry
@@ -67,6 +69,26 @@ def test_regular_timing_low_cv() -> None:
     assert feats.rate_regularity is not None
     assert feats.rate_regularity < 0.01
     assert feats.inter_arrival_median == 60.0
+
+
+def test_high_volume_timing_is_bounded_but_accurate() -> None:
+    # Past the exact-delta buffer the accumulator switches to a fixed histogram,
+    # so it holds no per-request timing array. Exact stats (mean/min/CV) survive;
+    # the binned quantiles land in the right ballpark.
+    from agent_census.features import _IAT_BUF_CAP, FeatureAccumulator
+
+    acc = FeatureAccumulator()
+    for i in range(_IAT_BUF_CAP * 3):
+        acc.add(entry("/p", offset=10 * i))
+    feats = acc.finalize()
+
+    assert acc._iat_hist is not None  # pylint: disable=protected-access
+    assert acc._iat_buf is None  # pylint: disable=protected-access
+    assert feats.inter_arrival_min == 10.0
+    assert feats.inter_arrival_mean == pytest.approx(10.0)
+    assert feats.rate_regularity == pytest.approx(0.0, abs=1e-9)
+    assert feats.inter_arrival_median == pytest.approx(10.0, rel=0.3)
+    assert feats.peak_requests_per_minute >= 6  # ~6 requests per 60s minute
 
 
 def test_referer_following_ratio() -> None:

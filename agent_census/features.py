@@ -12,7 +12,7 @@ whole list (timestamp-sorted) into one accumulator.
 
 from __future__ import annotations
 
-import statistics
+import math
 from array import array
 from collections import Counter, deque
 from collections.abc import Callable, Sequence
@@ -99,29 +99,49 @@ def _ratio(numerator: int, denominator: int) -> float:
     return numerator / denominator if denominator else 0.0
 
 
-def _timing(times: Sequence[float]) -> dict[str, float | None]:
-    """Inter-arrival statistics (seconds) from epoch timestamps."""
-    if len(times) < 2:
-        return {"mean": None, "median": None, "p95": None, "min": None, "cv": None}
-    ordered = sorted(times)
-    intervals = sorted(b - a for a, b in zip(ordered, ordered[1:]))
-    mean = statistics.fmean(intervals)
-    idx = min(len(intervals) - 1, round(0.95 * (len(intervals) - 1)))
-    cv = (statistics.pstdev(intervals) / mean) if mean > 0 else None
-    return {
-        "mean": mean,
-        "median": statistics.median(intervals),
-        "p95": intervals[idx],
-        "min": intervals[0],
-        "cv": cv,
-    }
+# Inter-arrival deltas are summarised in O(1) memory instead of one float per
+# request: mean/min/CV are kept exactly online, and the distribution (for
+# median/p95) lives in a small log-spaced histogram once a client exceeds a
+# buffer of exact deltas. Covers 1ms .. ~10^7s (~116 days), 10 buckets/decade.
+_IAT_MIN_EXP = -3
+_IAT_MAX_EXP = 7
+_IAT_PER_DECADE = 10
+_IAT_BUCKETS = (_IAT_MAX_EXP - _IAT_MIN_EXP) * _IAT_PER_DECADE + 2  # + under/overflow
+_IAT_BUF_CAP = 256  # below this many deltas, keep them exactly (cheap for the long tail)
 
 
-def _peak_rpm(times: Sequence[float]) -> int:
-    if not times:
+def _iat_bucket(delta: float) -> int:
+    """Histogram bucket for an inter-arrival delta in seconds."""
+    if delta <= 0:
         return 0
-    buckets: Counter[int] = Counter(int(t // 60) for t in times)
-    return max(buckets.values())
+    idx = int((math.log10(delta) - _IAT_MIN_EXP) * _IAT_PER_DECADE) + 1
+    return max(1, min(idx, _IAT_BUCKETS - 1))
+
+
+def _iat_bucket_value(idx: int) -> float:
+    """A representative delta (geometric centre) for a histogram bucket."""
+    if idx <= 0:
+        return 0.0
+    exp = _IAT_MIN_EXP + (idx - 1 + 0.5) / _IAT_PER_DECADE
+    return float(10**exp)
+
+
+def _hist_quantile(hist: list[int], count: int, quantile: float) -> float:
+    target = quantile * count
+    cumulative = 0
+    for idx, hits in enumerate(hist):
+        cumulative += hits
+        if cumulative >= target:
+            return _iat_bucket_value(idx)
+    return _iat_bucket_value(len(hist) - 1)
+
+
+def _median(values: list[float]) -> float:
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[mid]
+    return (ordered[mid - 1] + ordered[mid]) / 2
 
 
 def _merge_counts(left: dict[_K, int] | None, right: dict[_K, int] | None) -> dict[_K, int] | None:
@@ -166,10 +186,13 @@ class FeatureAccumulator:
         "_disallowed_check", "count", "total_bytes", "status_counts", "count_404",
         "paths_404", "vuln_hits", "vuln_sample", "traversal_hits", "methods",
         "distinct_paths", "static_count", "fetched_robots", "user_agent", "first_seen",
-        "last_seen", "_times", "_has_prev", "_prev_top", "breadth_changes",
+        "last_seen", "_has_prev", "_prev_top", "breadth_changes",
         "breadth_pairs", "ref_total", "ref_onsite", "pages_total", "pages_satisfied",
         "_pending_pages", "disallowed_hits", "disallowed_sample", "robots_fetched_first",
         "_content_seen", "feed_requests",
+        # Inter-arrival timing, summarised in bounded memory (no per-request array).
+        "_prev_ts", "_iat_count", "_iat_sum", "_iat_sumsq", "_iat_min",
+        "_iat_buf", "_iat_hist", "_minute_counts",
     )  # fmt: skip
 
     def __init__(self, *, disallowed_check: DisallowedCheck | None = None) -> None:
@@ -196,13 +219,23 @@ class FeatureAccumulator:
         self.robots_fetched_first = False
         self._content_seen = False
         self.feed_requests = 0
+        # Inter-arrival timing: mean/min/CV kept exactly online; the distribution
+        # for median/p95 stays in a small exact buffer until it overflows into a
+        # fixed log-histogram. peak rpm uses per-minute counts (bounded by span).
+        self._prev_ts: float | None = None
+        self._iat_count = 0
+        self._iat_sum = 0.0
+        self._iat_sumsq = 0.0
+        self._iat_min: float | None = None
+        self._iat_buf: array[float] | None = None
+        self._iat_hist: list[int] | None = None
+        self._minute_counts: dict[int, int] | None = None
         # Lazily allocated; None until first needed.
         self.status_counts: dict[int, int] | None = None
         self.paths_404: set[str] | None = None
         self.vuln_sample: list[str] | None = None
         self.methods: dict[str, int] | None = None
         self.distinct_paths: set[str] | None = None
-        self._times: array[float] | None = None
         self._pending_pages: deque[float] | None = None
         self.disallowed_sample: list[str] | None = None
 
@@ -293,9 +326,7 @@ class FeatureAccumulator:
                 self.last_seen = stamp
         ts = stamp.timestamp() if stamp is not None else None
         if ts is not None:
-            if self._times is None:
-                self._times = array("d")
-            self._times.append(ts)
+            self._record_arrival(ts)
         pending = self._pending_pages
         if ts is not None and pending is not None:
             while pending and pending[0] < ts - _COLOAD_WINDOW_SECONDS:
@@ -310,12 +341,62 @@ class FeatureAccumulator:
             self.pages_satisfied += len(pending)
             pending.clear()
 
+    def _record_arrival(self, ts: float) -> None:
+        """Fold one request's timestamp into the bounded timing summary."""
+        if self._minute_counts is None:
+            self._minute_counts = {}
+        minute = int(ts // 60)
+        self._minute_counts[minute] = self._minute_counts.get(minute, 0) + 1
+        # Inter-arrival in stream order (≈ time order); skip out-of-order negatives.
+        if self._prev_ts is not None and ts >= self._prev_ts:
+            self._record_delta(ts - self._prev_ts)
+        self._prev_ts = ts
+
+    def _record_delta(self, delta: float) -> None:
+        self._iat_count += 1
+        self._iat_sum += delta
+        self._iat_sumsq += delta * delta
+        if self._iat_min is None or delta < self._iat_min:
+            self._iat_min = delta
+        if self._iat_hist is not None:
+            self._iat_hist[_iat_bucket(delta)] += 1
+            return
+        if self._iat_buf is None:
+            self._iat_buf = array("d")
+        self._iat_buf.append(delta)
+        if len(self._iat_buf) > _IAT_BUF_CAP:  # outgrew the exact buffer -> histogram
+            self._ensure_iat_hist()
+
+    def _ensure_iat_hist(self) -> None:
+        if self._iat_hist is not None:
+            return
+        self._iat_hist = [0] * _IAT_BUCKETS
+        for delta in self._iat_buf or ():
+            self._iat_hist[_iat_bucket(delta)] += 1
+        self._iat_buf = None
+
+    def _timing_stats(self) -> dict[str, float | None]:
+        """Inter-arrival statistics (seconds): mean/min/CV exact, quantiles binned."""
+        if self._iat_count < 1:
+            return {"mean": None, "median": None, "p95": None, "min": None, "cv": None}
+        mean = self._iat_sum / self._iat_count
+        variance = max(0.0, self._iat_sumsq / self._iat_count - mean * mean)
+        cv = (math.sqrt(variance) / mean) if mean > 0 else None
+        if self._iat_hist is not None:
+            median = _hist_quantile(self._iat_hist, self._iat_count, 0.5)
+            p95 = _hist_quantile(self._iat_hist, self._iat_count, 0.95)
+        else:
+            buf = sorted(self._iat_buf or array("d"))
+            median = _median(buf)
+            p95 = buf[min(len(buf) - 1, round(0.95 * (len(buf) - 1)))]
+        return {"mean": mean, "median": median, "p95": p95, "min": self._iat_min, "cv": cv}
+
     def merge(self, other: FeatureAccumulator) -> None:
         """Fold ``other`` into this accumulator (used to collapse a bot's IPs).
 
-        Counts and unions combine exactly; timing quantiles are recomputed over
-        the concatenated timestamps; order-dependent counters are summed (each
-        member was a separate connection, so summing their tallies is sound).
+        Counts and unions combine exactly; timing summaries combine additively
+        (sums, min, histograms, per-minute counts); order-dependent counters are
+        summed (each member was a separate connection, so summing is sound).
         """
         self.count += other.count
         self.total_bytes += other.total_bytes
@@ -349,22 +430,49 @@ class FeatureAccumulator:
         self.distinct_paths = _merge_sets(self.distinct_paths, other.distinct_paths)
         self.vuln_sample = _merge_sample(self.vuln_sample, other.vuln_sample)
         self.disallowed_sample = _merge_sample(self.disallowed_sample, other.disallowed_sample)
-        if other._times is not None:  # pylint: disable=protected-access
-            if self._times is None:
-                self._times = array("d")
-            self._times.extend(other._times)  # pylint: disable=protected-access
+        self._merge_timing(other)
+
+    def _merge_timing(self, other: FeatureAccumulator) -> None:
+        # Combines a sibling accumulator's internals.
+        # pylint: disable=protected-access
+        self._iat_count += other._iat_count
+        self._iat_sum += other._iat_sum
+        self._iat_sumsq += other._iat_sumsq
+        if other._iat_min is not None and (self._iat_min is None or other._iat_min < self._iat_min):
+            self._iat_min = other._iat_min
+        if other._minute_counts:
+            if self._minute_counts is None:
+                self._minute_counts = {}
+            for minute, hits in other._minute_counts.items():
+                self._minute_counts[minute] = self._minute_counts.get(minute, 0) + hits
+        # Combine the inter-arrival distributions. If either side already binned,
+        # or together they'd outgrow the exact buffer, both go to the histogram.
+        buffered = len(self._iat_buf or ()) + len(other._iat_buf or ())
+        if self._iat_hist is not None or other._iat_hist is not None or buffered > _IAT_BUF_CAP:
+            self._ensure_iat_hist()
+            assert self._iat_hist is not None  # _ensure_iat_hist just built it
+            if other._iat_hist is not None:
+                for idx, hits in enumerate(other._iat_hist):
+                    self._iat_hist[idx] += hits
+            else:
+                for delta in other._iat_buf or ():
+                    self._iat_hist[_iat_bucket(delta)] += 1
+        elif other._iat_buf:
+            if self._iat_buf is None:
+                self._iat_buf = array("d")
+            self._iat_buf.extend(other._iat_buf)
 
     def finalize(self, *, ua_count_for_ip: int = 1) -> ClientFeatures:
         if self.count == 0:
             return ClientFeatures()
         status_counts = self.status_counts or {}
         methods = self.methods or {}
-        times = self._times if self._times is not None else array("d")
         with_status = sum(status_counts.values())
         classes: Counter[int] = Counter()
         for status, hits in status_counts.items():
             classes[status // 100] += hits
-        timing = _timing(times)
+        timing = self._timing_stats()
+        peak_rpm = max(self._minute_counts.values()) if self._minute_counts else 0
         duration = (
             (self.last_seen - self.first_seen).total_seconds()
             if self.first_seen is not None and self.last_seen is not None
@@ -393,7 +501,7 @@ class FeatureAccumulator:
             inter_arrival_median=timing["median"],
             inter_arrival_p95=timing["p95"],
             inter_arrival_min=timing["min"],
-            peak_requests_per_minute=_peak_rpm(times),
+            peak_requests_per_minute=peak_rpm,
             rate_regularity=timing["cv"],
             distinct_paths=distinct,
             coverage=_ratio(distinct, self.count),

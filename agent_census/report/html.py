@@ -32,8 +32,8 @@ _KIND_COLORS: dict[Kind, str] = {
 
 # Tags that deserve a non-neutral colour.
 _TAG_COLORS: dict[str, str] = {
-    "verified": "#16a34a",
-    "respects-robots": "#16a34a",
+    "verified": "#16a34a",  # confirmed identity -> strong green
+    "respects-robots": "#14b8a6",  # well-behaved, but softer/less definitive -> teal
     "impersonator": "#dc2626",
     "ignores-robots": "#d97706",
 }

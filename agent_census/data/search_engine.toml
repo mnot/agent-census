@@ -74,6 +74,7 @@ ua_substring = "SeznamBot"
 domains = ["seznam.cz"]
 
 [[agent]]
+# https://aspiegel.com/petalbot
 ua_substring = "PetalBot"
 domains = ["aspiegel.com", "petalsearch.com"]
 

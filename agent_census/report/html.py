@@ -169,7 +169,7 @@ def _kind_section(kind: Kind, group: list[ClientProfile], top: int) -> str:
             f'<tr><td class="mono">{_esc(profile.client_id.display[:90])}</td>'
             f"<td class='num'>{profile.features.request_count:,}</td>"
             f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
-            f"<td class='num'>{cls.confidence:.2f}</td>"
+            f"<td class='num'>{cls.confidence:.0%}</td>"
             f"<td>{_tags_html(cls.tags)}</td><td>{evidence}</td></tr>"
         )
     if len(group) > top:
@@ -213,7 +213,7 @@ def _rationale_html(profile: ClientProfile) -> str:
         ev = "".join(f"<li>{_esc(item)}</li>" for item in signal.evidence)
         items.append(
             f"<li{klass}>{_kind_badge(signal.kind)} "
-            f"<span class='muted'>{signal.confidence:.2f} · {_esc(signal.classifier)}</span>"
+            f"<span class='muted'>{signal.confidence:.0%} · {_esc(signal.classifier)}</span>"
             f'<ul class="evlist">{ev}</ul></li>'
         )
     return f"<h3>Why this classification</h3><ul>{''.join(items)}</ul>"
@@ -276,7 +276,7 @@ def _trace_html(profile: ClientProfile, limit: int, full: bool) -> str:
 def _profile_card(profile: ClientProfile, limit: int, full: bool) -> str:
     feats = profile.features
     cls = profile.classification
-    conf = f"<span class='muted'>confidence {cls.confidence:.2f}</span>"
+    conf = f"<span class='muted'>confidence {cls.confidence:.0%}</span>"
     ua = _esc(feats.user_agent or "–")
     seen = f"{_esc(fmt_ts(feats.first_seen))} → {_esc(fmt_ts(feats.last_seen))}"
     header = (

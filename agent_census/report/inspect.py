@@ -33,7 +33,7 @@ def _identity_block(profile: ClientProfile) -> list[str]:
     return [
         f"## {md_escape(profile.client_id.display)}",
         "",
-        f"- **Classified:** `{cls.primary.value}` (confidence {cls.confidence:.2f})",
+        f"- **Classified:** `{cls.primary.value}` (confidence {cls.confidence:.0%})",
         f"- **Tags:** {', '.join(sorted(cls.tags)) or '–'}",
         f"- **IP:** {profile.client_id.ip}"
         + (f" ({len(profile.member_ips)} verified IPs)" if profile.member_ips else ""),
@@ -56,7 +56,7 @@ def _rationale_block(profile: ClientProfile) -> list[str]:
     for signal in signals:
         marker = "→" if signal.kind is profile.classification.primary else " "
         lines.append(
-            f"- {marker} **{signal.kind.value}** ({signal.confidence:.2f}) — {signal.classifier}"
+            f"- {marker} **{signal.kind.value}** ({signal.confidence:.0%}) — {signal.classifier}"
         )
         for item in signal.evidence:
             lines.append(f"    - {md_escape(item)}")

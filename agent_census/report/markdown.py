@@ -90,7 +90,7 @@ def _kind_section(kind: Kind, group: list[ClientProfile], top: int) -> list[str]
         evidence = md_escape(cls.evidence[0]) if cls.evidence else "–"
         lines.append(
             f"| {_client_label(profile)} | {profile.features.request_count:,} | "
-            f"{human_bytes(profile.features.total_bytes)} | {cls.confidence:.2f} | "
+            f"{human_bytes(profile.features.total_bytes)} | {cls.confidence:.0%} | "
             f"{tags} | {evidence} |"
         )
     if len(group) > top:

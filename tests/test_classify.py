@@ -51,9 +51,23 @@ def test_browser_fires_on_coloading() -> None:
 
 def test_combiner_unknown_below_threshold() -> None:
     signals = [Signal(Kind.BROWSER, 0.3, ("weak",), "browser")]
-    result = combine(signals, ClientFeatures(), unknown_threshold=0.45)
+    result = combine(signals, ClientFeatures(request_count=5), unknown_threshold=0.45)
     assert result.primary is Kind.UNKNOWN
     assert result.all_signals == tuple(signals)
+
+
+def test_combiner_singleton_for_one_request_would_be_unknown() -> None:
+    # A single-request client with no strong signal is bucketed as a singleton.
+    signals = [Signal(Kind.BROWSER, 0.3, ("weak",), "browser")]
+    result = combine(signals, ClientFeatures(request_count=1), unknown_threshold=0.45)
+    assert result.primary is Kind.SINGLETON
+
+
+def test_combiner_one_request_keeps_confident_kind() -> None:
+    # One request that clearly matches a kind keeps that kind, not singleton.
+    signals = [Signal(Kind.VULN_SCANNER, 0.8, ("probe",), "vuln_scanner")]
+    result = combine(signals, ClientFeatures(request_count=1), unknown_threshold=0.45)
+    assert result.primary is Kind.VULN_SCANNER
 
 
 def test_combiner_picks_strongest_label() -> None:

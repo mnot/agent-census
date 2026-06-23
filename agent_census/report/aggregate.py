@@ -21,6 +21,7 @@ KIND_ORDER: tuple[Kind, ...] = (
     Kind.SPAM_BOT,
     Kind.FEED_READER,
     Kind.MONITOR,
+    Kind.SINGLETON,
     Kind.UNKNOWN,
 )
 
@@ -37,6 +38,7 @@ KIND_BLURB: dict[Kind, str] = {
     Kind.SPAM_BOT: "Form/comment spam and credential-stuffing bots.",
     Kind.FEED_READER: "RSS/Atom feed pollers.",
     Kind.MONITOR: "Uptime / monitoring checks on a fixed schedule.",
+    Kind.SINGLETON: "One-request clients with no other signal to characterize them.",
     Kind.UNKNOWN: "Clients that no classifier could characterize with confidence.",
 }
 

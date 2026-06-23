@@ -33,6 +33,7 @@ _PRIORITY: tuple[Kind, ...] = (
     Kind.BROWSER,
     Kind.SCRAPER,
     Kind.CRAWLER,
+    Kind.SINGLETON,
     Kind.UNKNOWN,
 )
 _RANK = {kind: i for i, kind in enumerate(_PRIORITY)}
@@ -86,6 +87,16 @@ def combine(
         )
 
     if not by_label or max(by_label.values()) < unknown_threshold:
+        # A would-be-unknown client with a single request gets its own bucket:
+        # one hit is too little to characterize, so we file it by volume.
+        if features.request_count == 1:
+            return Classification(
+                primary=Kind.SINGLETON,
+                confidence=1.0,
+                tags=frozenset(tags),
+                evidence=("single request — too little activity to characterize",),
+                all_signals=stored,
+            )
         confidence = max(by_label.values()) if by_label else 0.0
         return Classification(
             primary=Kind.UNKNOWN,

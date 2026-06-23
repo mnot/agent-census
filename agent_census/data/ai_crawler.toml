@@ -68,6 +68,10 @@ domains = ["amazon.com", "crawl.amazonbot.amazon"]
 # ranges_url = "https://developer.amazon.com/amazonbot/ip-addresses/"
 
 [[agent]]
+# https://docs.aws.amazon.com/quick/latest/userguide/web-crawler-integration.html
+ua_substring = "amazon-Quick-on-behalf-of-"
+
+[[agent]]
 ua_substring = "Bytespider"
 
 [[agent]]

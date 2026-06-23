@@ -180,10 +180,15 @@ def _share_bar(fraction: float) -> str:
 def _summary_table(result: AnalysisResult, groups: dict[Kind, list[ClientProfile]]) -> str:
     total = sum(p.features.request_count for p in result.profiles) or 1
     total_bytes = sum(p.features.total_bytes for p in result.profiles) or 1
+    robots_help = (
+        "✓ respect: requested no disallowed paths\n"
+        "✗ ignore: requested disallowed paths\n"
+        "(clients with no applicable rules are omitted)"
+    )
     head = (
         "<tr><th>Kind</th><th class='num'>Clients</th><th class='num'>Requests</th>"
-        "<th>Req share</th><th class='num'>Bandwidth</th><th>BW share</th>"
-        "<th class='num'>Avg/client</th><th>robots</th></tr>"
+        "<th>Req share</th><th class='num'>Avg/client</th><th class='num'>Bandwidth</th>"
+        f'<th>BW share</th><th title="{_esc(robots_help)}">robots ⓘ</th></tr>'
     )
     rows = []
     for kind in KIND_ORDER:
@@ -200,9 +205,10 @@ def _summary_table(result: AnalysisResult, groups: dict[Kind, list[ClientProfile
             f'<tr><td><a href="#{kind.value}">{_kind_badge(kind)}</a></td>'
             f"<td class='num'>{len(group):,}</td><td class='num'>{requests:,}</td>"
             f"<td>{_share_bar(requests / total)}</td>"
+            f"<td class='num'>{requests / len(group):,.0f}</td>"
             f"<td class='num'>{human_bytes(byte_total)}</td>"
             f"<td>{_share_bar(byte_total / total_bytes)}</td>"
-            f"<td class='num'>{requests / len(group):,.0f}</td><td>{robots}</td></tr>"
+            f"<td>{robots}</td></tr>"
         )
     return (
         f"<h2>Summary by kind</h2>\n<table>{head}{''.join(rows)}</table>\n"

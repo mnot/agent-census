@@ -49,9 +49,10 @@ def _summary_table(result: AnalysisResult, groups: dict[Kind, list[ClientProfile
     lines = [
         "## Summary by kind",
         "",
-        "| Kind | Clients | Requests | Req % | Bandwidth | BW % | Avg req/client | robots |",
+        "| Kind | Clients | Requests | Req % | Avg req/client | Bandwidth | BW % | robots |",
         "| --- | --: | --: | --: | --: | --: | --: | :-: |",
     ]
+    any_robots = False
     for kind in KIND_ORDER:
         group = groups.get(kind)
         if not group:
@@ -60,12 +61,20 @@ def _summary_table(result: AnalysisResult, groups: dict[Kind, list[ClientProfile
         requests = sum(p.features.request_count for p in group)
         byte_total = sum(p.features.total_bytes for p in group)
         avg = requests / clients if clients else 0
+        robots = _robots_summary(group)
+        any_robots = any_robots or robots != "–"
         lines.append(
             f"| {kind.value} | {clients:,} | {requests:,} | {requests / total_requests:.0%} | "
-            f"{human_bytes(byte_total)} | {byte_total / total_bytes:.0%} | "
-            f"{avg:,.0f} | {_robots_summary(group)} |"
+            f"{avg:,.0f} | {human_bytes(byte_total)} | {byte_total / total_bytes:.0%} | "
+            f"{robots} |"
         )
     lines.append("")
+    if any_robots:
+        lines.append(
+            "_robots: ✓ respect (requested no disallowed paths) · "
+            "✗ ignore (requested disallowed paths); clients with no applicable rules are omitted._"
+        )
+        lines.append("")
     return lines
 
 

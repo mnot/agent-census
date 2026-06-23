@@ -109,7 +109,25 @@ asns = [51167]
 # URL embeds a rotating date, so there is no stable URL to pin here; the inline
 # fallback above does not cover Azure. Add a current Service Tags URL by hand if
 # you need Azure coverage:
-# [[source]]
-# name = "Microsoft Azure"
+[[source]]
+name = "Microsoft Azure"
+asns = [12076]
 # ranges_url = "https://download.microsoft.com/.../ServiceTags_Public_YYYYMMDD.json"
 # format = "azure"
+
+[[source]]
+name = "OneHostPlanet"
+asns = [209155]
+
+[[source]]
+name = "Huawei Cloud"
+asns = [136907]
+
+[[source]]
+name = "Alibaba"
+asns = [45102, 55990]
+
+[[source]]
+name = "Dreamhost"
+asns = [26347]
+

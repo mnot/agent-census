@@ -110,6 +110,46 @@ def test_compliance_tags_applied() -> None:
     assert "ignores-robots" in result.tags
 
 
+def test_feed_reader_from_behaviour_without_feed_ua() -> None:
+    # A generic client that mostly polls a feed should classify as a feed reader.
+    feats = ClientFeatures(
+        request_count=12,
+        feed_requests=12,
+        feed_ratio=1.0,
+        distinct_paths=1,
+        rate_regularity=0.1,
+        user_agent="Mozilla/5.0 (some generic client)",
+    )
+    result = classify_client(feats)
+    assert result.primary is Kind.FEED_READER
+
+
+def test_feed_reader_fetching_non_feeds_is_tagged() -> None:
+    feats = ClientFeatures(
+        request_count=10,
+        feed_requests=7,  # 3 non-feed requests
+        feed_ratio=0.7,
+        distinct_paths=4,
+        user_agent="Feedbin feed-id:1 - 5 subscribers",
+    )
+    result = classify_client(feats)
+    assert result.primary is Kind.FEED_READER
+    assert "fetches-non-feeds" in result.tags
+
+
+def test_pure_feed_reader_not_tagged() -> None:
+    feats = ClientFeatures(
+        request_count=8,
+        feed_requests=8,
+        feed_ratio=1.0,
+        distinct_paths=1,
+        user_agent="NetNewsWire (RSS reader)",
+    )
+    result = classify_client(feats)
+    assert result.primary is Kind.FEED_READER
+    assert "fetches-non-feeds" not in result.tags
+
+
 def test_classify_client_runs_all() -> None:
     feats = ClientFeatures(
         request_count=10,

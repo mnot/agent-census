@@ -82,3 +82,29 @@ def test_referer_following_ratio() -> None:
 def test_ua_count_passed_through() -> None:
     feats = extract_features([entry("/")], ua_count_for_ip=7)
     assert feats.ua_count_for_ip == 7
+
+
+def test_feed_requests_by_filename() -> None:
+    entries = [
+        entry("/blog/feed/", offset=0),
+        entry("/index.rss", offset=1),
+        entry("/atom.xml", offset=2),
+        entry("/about", offset=3),
+    ]
+    feats = extract_features(entries)
+    assert feats.feed_requests == 3
+    assert feats.feed_ratio == 0.75
+
+
+def test_feed_requests_by_content_type() -> None:
+    from agent_census.model import LogEntry
+
+    e = LogEntry(
+        line_no=1,
+        remote_host="1.2.3.4",
+        path="/subscribe",
+        status=200,
+        extra={"out:Content-Type": "application/atom+xml; charset=utf-8"},
+    )
+    feats = extract_features([e])
+    assert feats.feed_requests == 1

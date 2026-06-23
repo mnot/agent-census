@@ -66,6 +66,7 @@ def feature_rows(feats: ClientFeatures) -> list[tuple[str, str]]:
             f"traversal {feats.traversal_hits}",
         ),
         ("distinct paths", f"{feats.distinct_paths} (coverage {pct(feats.coverage)})"),
+        ("feed requests", f"{feats.feed_requests} ({pct(feats.feed_ratio)})"),
         ("asset co-load", pct(feats.asset_coload_ratio)),
         ("static ratio", pct(feats.static_ratio)),
         ("referer-following", pct(feats.referer_following_ratio)),

@@ -70,6 +70,28 @@ def _top_segment(path: str) -> str:
     return parts[0] if parts else ""
 
 
+# Tokens that mark a feed in a URL filename, e.g. /blog/feed/, /index.rss, atom.xml.
+_FEED_TOKENS = ("feed", "rss", "atom")
+
+
+def _response_content_type(entry: LogEntry) -> str:
+    """The logged response Content-Type, lower-cased, or '' if not captured."""
+    for key, value in entry.extra.items():
+        if key.lower() == "out:content-type":
+            return value.lower()
+    return ""
+
+
+def _is_feed_request(entry: LogEntry, path: str) -> bool:
+    """True if the request looks like a feed poll: feed-ish URL or RSS/Atom type."""
+    parts = [p for p in path.split("/") if p]
+    filename = parts[-1].lower() if parts else ""
+    if any(token in filename for token in _FEED_TOKENS):
+        return True
+    content_type = _response_content_type(entry)
+    return "rss" in content_type or "atom" in content_type
+
+
 def _ratio(numerator: int, denominator: int) -> float:
     return numerator / denominator if denominator else 0.0
 
@@ -117,7 +139,7 @@ class FeatureAccumulator:
         "last_seen", "_times", "_has_prev", "_prev_top", "breadth_changes",
         "breadth_pairs", "ref_total", "ref_onsite", "pages_total", "pages_satisfied",
         "_pending_pages", "disallowed_hits", "disallowed_sample", "robots_fetched_first",
-        "_content_seen",
+        "_content_seen", "feed_requests",
     )  # fmt: skip
 
     def __init__(self, *, disallowed_check: DisallowedCheck | None = None) -> None:
@@ -143,6 +165,7 @@ class FeatureAccumulator:
         self.disallowed_hits = 0
         self.robots_fetched_first = False
         self._content_seen = False
+        self.feed_requests = 0
         # Lazily allocated; None until first needed.
         self.status_counts: dict[int, int] | None = None
         self.paths_404: set[str] | None = None
@@ -191,6 +214,8 @@ class FeatureAccumulator:
         static = _is_static(path)
         if static:
             self.static_count += 1
+        if _is_feed_request(entry, path):
+            self.feed_requests += 1
 
         self._track_robots(path)
         self._track_referer(entry)
@@ -307,6 +332,8 @@ class FeatureAccumulator:
             head_ratio=_ratio(methods.get("HEAD", 0), self.count),
             post_ratio=_ratio(methods.get("POST", 0), self.count),
             exotic_method_count=sum(v for m, v in methods.items() if m in _EXOTIC_METHODS),
+            feed_requests=self.feed_requests,
+            feed_ratio=_ratio(self.feed_requests, self.count),
             fetched_robots_txt=self.fetched_robots,
             user_agent=self.user_agent,
             ua_looks_like_browser=uas.looks_like_browser(self.user_agent),

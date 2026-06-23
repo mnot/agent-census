@@ -79,6 +79,8 @@ def combine(
         )
 
     primary = _pick(by_label)
+    if primary is Kind.FEED_READER and _fetches_non_feeds(features):
+        tags.add("fetches-non-feeds")
     evidence = tuple(e for s in signals if s.kind is primary for e in s.evidence)
     return Classification(
         primary=primary,
@@ -87,3 +89,11 @@ def combine(
         evidence=evidence,
         all_signals=all_signals,
     )
+
+
+def _fetches_non_feeds(features: ClientFeatures) -> bool:
+    """True if a feed reader also requested non-feed resources (robots.txt aside)."""
+    non_feed = features.request_count - features.feed_requests
+    if features.fetched_robots_txt:
+        non_feed -= 1  # a polite robots.txt fetch does not count as content scraping
+    return non_feed > 0

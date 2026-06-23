@@ -103,13 +103,14 @@ class ClientId:
 
 
 @dataclass(frozen=True, slots=True)
-class ClientFeatures:
+class ClientFeatures:  # pylint: disable=too-many-instance-attributes
     """Pure descriptive metrics for one client — no judgments.
 
     Classifiers consume only this struct (plus their own static data lists), so
     the wall between "measure" and "decide" stays clean and each classifier is a
     pure, independently-testable function. Every field carries a neutral default
     so tests can build partial fixtures that exercise one behavior at a time.
+    It is deliberately a wide bag of metrics; the attribute-count check is off.
     """
 
     # volume / bandwidth / span
@@ -159,6 +160,10 @@ class ClientFeatures:
     head_ratio: float = 0.0
     post_ratio: float = 0.0
     exotic_method_count: int = 0  # PUT/DELETE/PROPFIND/CONNECT/...
+
+    # feed polling: requests for an RSS/Atom resource (by URL or response media type)
+    feed_requests: int = 0
+    feed_ratio: float = 0.0
 
     # politeness (behavioral; robots-rule compliance lives in ComplianceReport)
     fetched_robots_txt: bool = False

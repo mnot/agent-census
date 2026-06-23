@@ -23,7 +23,12 @@ from typing import Protocol
 from . import egress, uas
 from .classify import DEFAULT_UNKNOWN_THRESHOLD, classify_client
 from .features import DisallowedCheck, FeatureAccumulator
-from .hosting import datacenter_provider, datacenter_subnet, is_datacenter_ip
+from .hosting import (
+    datacenter_provider,
+    datacenter_provider_for_asn,
+    datacenter_subnet,
+    is_datacenter_ip,
+)
 from .identity import ClientKeyStrategy
 from .model import (
     BotVerification,
@@ -69,6 +74,19 @@ _NET_RESIDENTIAL = "residential"
 def _declares_crawler(ua: str | None) -> bool:
     """True if the UA names any known crawler (kept resident, never evicted)."""
     return any(uas.match_category(ua, category) for category in _CRAWLER_CATEGORIES)
+
+
+def _parse_asn(value: str | None) -> int | None:
+    """Parse a logged AS number (``16509`` or ``AS16509``) to an int, or None."""
+    if not value:
+        return None
+    text = value.strip()
+    if text[:2].lower() == "as":
+        text = text[2:]
+    try:
+        return int(text)
+    except ValueError:
+        return None
 
 
 class BotVerifier(Protocol):
@@ -327,8 +345,12 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements
                 median_interval=features.inter_arrival_median,
             )
         if network is None:
-            # A regular client: attribute it to its hosting provider, if any.
+            # A regular client: attribute it to its hosting provider. Try the IP
+            # ranges first, then the AS number the log carries (if any) -- so a
+            # provider we know only by ASN is still recognised as a datacenter.
             provider = datacenter_provider(key.ip)
+            if provider is None:
+                provider = datacenter_provider_for_asn(_parse_asn(features.as_number))
             in_datacenter = provider is not None if datacenter is None else datacenter
             network = provider if provider is not None else RESIDENTIAL_NETWORK
             network_category = _NET_DATACENTER if provider is not None else _NET_RESIDENTIAL

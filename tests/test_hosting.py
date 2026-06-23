@@ -52,6 +52,14 @@ def test_remote_ranges_are_used_only_when_enabled(monkeypatch: pytest.MonkeyPatc
         is_datacenter_ip.cache_clear()
 
 
+def test_datacenter_provider_for_asn_maps_known_numbers() -> None:
+    # ASN annotations are static config -- no network, no --fetch-ranges needed.
+    assert hosting.datacenter_provider_for_asn(16509) == "Amazon AWS"
+    assert hosting.datacenter_provider_for_asn(24940) == "Hetzner"
+    assert hosting.datacenter_provider_for_asn(64500) is None  # private-use ASN, unlisted
+    assert hosting.datacenter_provider_for_asn(None) is None
+
+
 def test_datacenter_provider_names_the_owner(monkeypatch: pytest.MonkeyPatch) -> None:
     # A hit is attributed to a named provider; a miss is None. (conftest resets the
     # remote flag and caches in teardown.)

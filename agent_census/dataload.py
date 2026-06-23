@@ -37,6 +37,7 @@ class RangeSource:
     ranges: tuple[str, ...] = ()
     ranges_url: str | None = None
     fmt: str = "prefixes"  # how to parse ranges_url (see iprange.extract_cidrs)
+    asns: tuple[int, ...] = ()  # AS numbers this provider owns, for log-ASN matching
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +88,7 @@ def load_range_sources(name: str) -> tuple[RangeSource, ...]:
                 ranges=tuple(entry.get("ranges", [])),
                 ranges_url=entry.get("ranges_url"),
                 fmt=entry.get("format", "prefixes"),
+                asns=tuple(int(asn) for asn in entry.get("asns", [])),
             )
         )
     return tuple(sources)

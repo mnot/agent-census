@@ -11,22 +11,36 @@
 # is feed-based). `format` says how to parse the URL (prefixes | aws | azure |
 # text | csv | subnets | oracle | ripestat -- see iprange.extract_cidrs). A
 # source may carry both: inline `ranges` then act as an offline fallback.
+#
+# `asns` lists the provider's AS numbers. When the log carries the client's AS
+# number (e.g. Apache "%{MM_ASN}e" from mod_maxminddb), a client whose ASN is
+# listed here is treated as that datacenter even if its IP is in no fetched range
+# -- no network needed, since it matches a log value against static config. To
+# flag extra networks as datacenters, add a source with just a name + asns:
+#   [[source]]
+#   name = "My flagged networks"
+#   asns = [12345, 67890]
+# The AS numbers below are a curated starter set (the provider's primary ASNs);
+# big clouds announce from several, so extend as needed.
 
 # Hosting providers by ASN, via RIPEstat's announced-prefixes feed (auto-updating).
 [[source]]
 name = "Hetzner"  # https://ipinfo.io/AS24940
 ranges_url = "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS24940"
 format = "ripestat"
+asns = [24940]
 
 [[source]]
 name = "OVH"  # https://ipinfo.io/AS16276
 ranges_url = "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS16276"
 format = "ripestat"
+asns = [16276]
 
 [[source]]
 name = "Cloud.ru / SberCloud"  # Sberbank, https://ipinfo.io/AS35237
 ranges_url = "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS35237"
 format = "ripestat"
+asns = [35237]
 
 # Authoritative published lists, fetched only with --fetch-ranges (cached weekly).
 
@@ -34,41 +48,49 @@ format = "ripestat"
 name = "Amazon AWS"
 ranges_url = "https://ip-ranges.amazonaws.com/ip-ranges.json"
 format = "aws"
+asns = [16509, 14618]  # EC2 (16509) + AWS (14618)
 
 [[source]]
 name = "Google Cloud"
 ranges_url = "https://www.gstatic.com/ipranges/cloud.json"
 format = "prefixes"
+asns = [15169, 396982]  # Google (15169) + Google Cloud (396982)
 
 [[source]]
 name = "Cloudflare (IPv4)"
 ranges_url = "https://www.cloudflare.com/ips-v4"
 format = "text"
+asns = [13335]
 
 [[source]]
 name = "Cloudflare (IPv6)"
 ranges_url = "https://www.cloudflare.com/ips-v6"
 format = "text"
+asns = [13335]
 
 [[source]]
 name = "DigitalOcean"
 ranges_url = "https://www.digitalocean.com/geo/google.csv"
 format = "csv"
+asns = [14061]
 
 [[source]]
 name = "Linode"
 ranges_url = "https://geoip.linode.com"
 format = "csv"  # RFC 8805 geofeed; first column is the prefix
+asns = [63949]  # Akamai/Linode
 
 [[source]]
 name = "Vultr"
 ranges_url = "https://geofeed.constant.com/?json"
 format = "subnets"
+asns = [20473]  # The Constant Company
 
 [[source]]
 name = "Oracle Cloud"
 ranges_url = "https://docs.oracle.com/iaas/tools/public_ip_ranges.json"
 format = "oracle"
+asns = [31898]
 
 [[source]]
 name = "Yandex Cloud"
@@ -80,6 +102,7 @@ ranges_url = "https://tech.cdn.yandex.net/prefixes/yc.json"
 name = "Contabo"
 ranges_url = "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS51167"
 format = "ripestat"
+asns = [51167]
 
 
 # Microsoft Azure publishes its ranges as a weekly "Service Tags" download whose

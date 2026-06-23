@@ -55,6 +55,27 @@ def datacenter_provider(ip: str) -> str | None:
 
 
 @lru_cache(maxsize=None)
+def _asn_providers() -> dict[int, str]:
+    """Map each provider AS number (from the ``asns`` annotations) to its name.
+
+    Static config, independent of ``--fetch-ranges``: it needs no network and
+    matches against the AS number a log may already carry (``%{MM_ASN}e``).
+    """
+    mapping: dict[int, str] = {}
+    for source in load_range_sources(_DATA):
+        for asn in source.asns:
+            mapping.setdefault(asn, source.name or "hosting")
+    return mapping
+
+
+def datacenter_provider_for_asn(asn: int | None) -> str | None:
+    """Provider name for a logged AS number declared a datacenter, or None."""
+    if asn is None:
+        return None
+    return _asn_providers().get(asn)
+
+
+@lru_cache(maxsize=None)
 def is_datacenter_ip(ip: str) -> bool:
     """True if ``ip`` falls in a known hosting range. Unparseable IPs are False."""
     return datacenter_provider(ip) is not None

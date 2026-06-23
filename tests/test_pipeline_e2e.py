@@ -275,6 +275,25 @@ def test_network_rollups_attribute_providers_and_render(
     assert "Amazon AWS" in text
 
 
+def test_logged_asn_marks_datacenter_without_ip_ranges(tmp_path: Path) -> None:
+    # Offline (no fetched ranges), a client whose IP is in no range but whose
+    # logged AS number is annotated as a provider is still flagged datacenter.
+    fmt = '%h %l %u %t "%r" %>s %b "%{Referer}i" "%{User-Agent}i" "%{MM_ASN}e"'
+    line = (
+        '9.9.9.9 - - [10/Oct/2023:12:00:00 +0000] "GET /p HTTP/1.1" 200 100 '
+        '"-" "python-requests/2.31.0" "16509"'
+    )
+    log = tmp_path / "asn.log"
+    log.write_text(line + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": fmt})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
+
+    assert "Amazon AWS" in result.network_rollups
+    assert result.network_categories["Amazon AWS"] == "datacenter"
+    profile = next(p for p in result.profiles if p.client_id.ip == "9.9.9.9")
+    assert "datacenter" in profile.classification.tags
+
+
 def test_returning_client_coalesces_after_eviction(tmp_path: Path) -> None:
     # One client (one ip+ua) requests on day 1, then again on day 3. A filler
     # client on day 2 advances the clock past the 12h quiescent window, so the

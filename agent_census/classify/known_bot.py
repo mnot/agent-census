@@ -15,16 +15,16 @@ from .base import Classifier
 
 
 class KnownBotClassifier(Classifier):
-    """Fires when the UA contains a token from :attr:`data_file`."""
+    """Fires when the UA contains a token from the :attr:`category` data list."""
 
-    data_file: str = ""
+    category: str = ""
     descriptor: str = ""
 
     def evaluate(self, features: ClientFeatures) -> list[Signal]:
-        known = uas.match_known(features.user_agent, load_tokens(self.data_file))
+        known = uas.match_known(features.user_agent, load_tokens(self.category))
         if known is None:
             return []
-        token, _domains = known
+        token, _spec = known
         confidence = 0.7
         evidence = [f"User-Agent declares {token!r}, a known {self.descriptor}"]
         if features.fetched_robots_txt:

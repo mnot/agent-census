@@ -9,5 +9,5 @@ from .known_bot import KnownBotClassifier
 class AiCrawlerClassifier(KnownBotClassifier):
     label = Kind.AI_CRAWLER
     name = "ai_crawler"
-    data_file = "ai_crawlers.txt"
+    category = "ai_crawler"
     descriptor = "AI / LLM crawler"

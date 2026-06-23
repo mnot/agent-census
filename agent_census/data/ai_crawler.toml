@@ -1,0 +1,128 @@
+# AI / LLM data-gathering crawlers and assistants.
+# ranges_url points at a provider's published IP ranges in the Google/OpenAI
+# {"prefixes":[{"ipv4Prefix": ...}, ...]} schema; fetched + cached under
+# --verify-bots and the right signal for crawlers that don't support reverse DNS.
+
+[[agent]]
+ua_substring = "GPTBot"
+domains = ["openai.com"]
+ranges_url = "https://openai.com/gptbot.json"
+
+[[agent]]
+ua_substring = "ChatGPT-User"
+domains = ["openai.com"]
+ranges_url = "https://openai.com/chatgpt-user.json"
+
+[[agent]]
+ua_substring = "OAI-SearchBot"
+domains = ["openai.com"]
+ranges_url = "https://openai.com/searchbot.json"
+
+[[agent]]
+ua_substring = "ClaudeBot"
+domains = ["anthropic.com", "claude.ai"]
+ranges = ["160.79.104.0/21"]  # https://platform.claude.com/docs/en/api/ip-addresses
+
+[[agent]]
+ua_substring = "Claude-Web"
+domains = ["anthropic.com"]
+
+[[agent]]
+ua_substring = "Claude-SearchBot"
+domains = ["anthropic.com"]
+
+[[agent]]
+ua_substring = "anthropic-ai"
+domains = ["anthropic.com"]
+
+[[agent]]
+ua_substring = "CCBot"
+domains = ["commoncrawl.org"]
+
+[[agent]]
+ua_substring = "Google-Extended"
+domains = ["google.com", "googlebot.com"]
+
+[[agent]]
+ua_substring = "Google-CloudVertexBot"
+domains = ["google.com"]
+
+[[agent]]
+ua_substring = "PerplexityBot"
+domains = ["perplexity.ai"]
+
+[[agent]]
+ua_substring = "Perplexity-User"
+domains = ["perplexity.ai"]
+
+[[agent]]
+ua_substring = "Amazonbot"
+domains = ["amazon.com", "crawl.amazonbot.amazon"]
+
+[[agent]]
+ua_substring = "Bytespider"
+domains = ["bytedance.com"]
+
+[[agent]]
+ua_substring = "TikTokSpider"
+domains = ["bytedance.com"]
+
+[[agent]]
+ua_substring = "Applebot-Extended"
+domains = ["apple.com", "applebot.apple.com"]
+
+[[agent]]
+ua_substring = "Diffbot"
+domains = ["diffbot.com"]
+
+[[agent]]
+ua_substring = "cohere-ai"
+domains = ["cohere.com"]
+
+[[agent]]
+ua_substring = "cohere-training-data-crawler"
+domains = ["cohere.com"]
+
+[[agent]]
+ua_substring = "ImagesiftBot"
+domains = ["imagesift.com"]
+
+[[agent]]
+ua_substring = "Omgilibot"
+domains = ["omgili.com"]
+
+[[agent]]
+ua_substring = "YouBot"
+domains = ["you.com"]
+
+[[agent]]
+ua_substring = "meta-externalagent"
+domains = ["facebook.com"]
+
+[[agent]]
+ua_substring = "Meta-ExternalAgent"
+domains = ["facebook.com"]
+
+[[agent]]
+ua_substring = "FacebookBot"
+domains = ["facebook.com"]
+
+[[agent]]
+ua_substring = "MistralBot"
+domains = ["mistral.ai"]
+
+[[agent]]
+ua_substring = "kagibot"
+domains = ["kagi.com"]
+
+[[agent]]
+ua_substring = "kagi-fetcher"
+domains = ["kagi.com"]
+
+[[agent]]
+ua_substring = "LinkupBot"
+domains = ["linkup.so"]
+
+[[agent]]
+ua_substring = "Timpibot"
+domains = ["timpi.io"]

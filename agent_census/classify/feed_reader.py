@@ -16,7 +16,7 @@ from .base import Classifier
 
 # Generic feed terms; specific reader product names live in feed_readers.txt.
 _FEED_UA = re.compile(r"feed|rss|atom|podcast|subscriber", re.I)
-_FEED_READERS = tuple(token.lower() for token in load_list("feed_readers.txt"))
+_FEED_READERS = tuple(token.lower() for token in load_list("feed_readers"))
 
 
 def _ua_is_feed_reader(ua: str | None) -> bool:

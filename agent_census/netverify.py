@@ -16,37 +16,40 @@ keeps a dead resolver from stalling the run or delaying exit. Enabled only with
 
 from __future__ import annotations
 
+import hashlib
 import ipaddress
+import json
+import os
 import socket
 import threading
+import time
+import urllib.request
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import TypeVar
 
 from . import uas
-from .dataload import load_tokens
+from .dataload import CrawlerSpec, load_tokens
 from .model import BotVerification, ClientId, VerificationStatus
 
 _MAX_WORKERS = 32
 _DNS_TIMEOUT = 5.0  # seconds per individual lookup
+_RANGES_TTL = 7 * 24 * 60 * 60  # refresh fetched IP-range files weekly
+_FETCH_TIMEOUT = 10
 
 _T = TypeVar("_T")
 _Network = ipaddress.IPv4Network | ipaddress.IPv6Network
 
 
-def _split_hints(hints: tuple[str, ...]) -> tuple[tuple[str, ...], tuple[_Network, ...]]:
-    """Separate a token's verifying hints into rDNS domains and CIDR networks."""
-    domains: list[str] = []
-    networks: list[_Network] = []
-    for hint in hints:
-        if "/" in hint:
-            try:
-                networks.append(ipaddress.ip_network(hint, strict=False))
-            except ValueError:
-                continue
-        else:
-            domains.append(hint)
-    return tuple(domains), tuple(networks)
+def _parse_networks(cidrs: tuple[str, ...]) -> tuple[_Network, ...]:
+    nets: list[_Network] = []
+    for cidr in cidrs:
+        try:
+            nets.append(ipaddress.ip_network(cidr, strict=False))
+        except ValueError:
+            continue
+    return tuple(nets)
 
 
 def _ip_in(ip: str, networks: tuple[_Network, ...]) -> _Network | None:
@@ -55,6 +58,63 @@ def _ip_in(ip: str, networks: tuple[_Network, ...]) -> _Network | None:
     except ValueError:
         return None
     return next((net for net in networks if addr in net), None)
+
+
+def _ranges_cache_path(url: str) -> Path:
+    base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+    directory = Path(base) / "agent-census" / "ranges"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory / (hashlib.sha1(url.encode("utf-8")).hexdigest() + ".json")
+
+
+def _http_get(url: str) -> str | None:
+    request = urllib.request.Request(url, headers={"User-Agent": "agent-census"})
+    try:
+        with urllib.request.urlopen(request, timeout=_FETCH_TIMEOUT) as response:  # noqa: S310
+            return str(response.read().decode("utf-8", "replace"))
+    except (OSError, ValueError):
+        return None
+
+
+def _fetch_ranges_text(url: str) -> str | None:
+    """Return the ranges JSON for ``url``, backed by a weekly on-disk cache."""
+    path = _ranges_cache_path(url)
+    try:
+        fresh = path.exists() and (time.time() - path.stat().st_mtime) < _RANGES_TTL
+    except OSError:
+        fresh = False
+    if fresh:
+        try:
+            return path.read_text(encoding="utf-8")
+        except OSError:
+            pass
+    text = _http_get(url)
+    if text is not None:
+        try:
+            path.write_text(text, encoding="utf-8")
+        except OSError:
+            pass
+        return text
+    try:  # fetch failed -- fall back to a stale cached copy if we have one
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
+def _parse_prefixes(text: str) -> tuple[str, ...]:
+    """Extract CIDRs from the Google/OpenAI ``{"prefixes": [...]}`` schema."""
+    try:
+        data = json.loads(text)
+    except (ValueError, TypeError):
+        return ()
+    prefixes = data.get("prefixes", []) if isinstance(data, dict) else []
+    out: list[str] = []
+    for prefix in prefixes:
+        if isinstance(prefix, dict):
+            cidr = prefix.get("ipv4Prefix") or prefix.get("ipv6Prefix")
+            if cidr:
+                out.append(cidr)
+    return tuple(out)
 
 
 def _bounded(func: Callable[[], _T]) -> _T | None:
@@ -75,12 +135,8 @@ def _bounded(func: Callable[[], _T]) -> _T | None:
     return box[0]
 
 
-def _known_crawler(ua: str | None) -> tuple[str, tuple[str, ...]] | None:
-    pairs = (
-        load_tokens("search_engines.txt")
-        + load_tokens("social_preview.txt")
-        + load_tokens("ai_crawlers.txt")
-    )
+def _known_crawler(ua: str | None) -> tuple[str, CrawlerSpec] | None:
+    pairs = load_tokens("search_engine") + load_tokens("social_preview") + load_tokens("ai_crawler")
     return uas.match_known(ua, pairs)
 
 
@@ -106,11 +162,29 @@ class BotVerifier:
         self._lock = threading.Lock()
         self._reverse: dict[str, str | None] = {}
         self._forward: dict[str, frozenset[str]] = {}
+        self._ranges: dict[str, tuple[_Network, ...]] = {}
 
     def needs(self, ua: str | None) -> bool:
-        """True if the UA declares a crawler we have a domain to verify against."""
+        """True if the UA declares a crawler we have something to verify against."""
         known = _known_crawler(ua)
-        return known is not None and bool(known[1])
+        if known is None:
+            return False
+        spec = known[1]
+        return bool(spec.domains or spec.ranges or spec.ranges_url)
+
+    def _networks_for(self, spec: CrawlerSpec) -> tuple[_Network, ...]:
+        """Inline CIDR ranges plus any fetched (and cached) from ``ranges_url``."""
+        networks = list(_parse_networks(spec.ranges))
+        if spec.ranges_url:
+            with self._lock:
+                cached = self._ranges.get(spec.ranges_url)
+            if cached is None:
+                text = _fetch_ranges_text(spec.ranges_url)
+                cached = _parse_networks(_parse_prefixes(text)) if text else ()
+                with self._lock:
+                    self._ranges[spec.ranges_url] = cached
+            networks.extend(cached)
+        return tuple(networks)
 
     def _cached_reverse(self, ip: str) -> str | None:
         with self._lock:
@@ -137,59 +211,68 @@ class BotVerifier:
         known = _known_crawler(ua)
         if known is None:
             return BotVerification(VerificationStatus.NOT_APPLICABLE)
-        token, hints = known
-        domains, networks = _split_hints(hints)
-        if not domains and not networks:
+        substring, spec = known
+        if not (spec.domains or spec.ranges or spec.ranges_url):
             return BotVerification(
                 VerificationStatus.UNVERIFIED,
-                evidence=(f"no verifying domain or IP range known for {token}",),
+                evidence=(f"no verifying domain or IP range known for {substring}",),
             )
 
         # IP-range membership is authoritative and needs no DNS.
+        networks = self._networks_for(spec)
         if networks:
             match = _ip_in(ip, networks)
             if match is not None:
                 return BotVerification(
                     VerificationStatus.VERIFIED,
                     resolved_host=str(match),
-                    expected_domains=domains,
-                    evidence=(f"{ip} is within {match}, a published {token} range",),
+                    expected_domains=spec.domains,
+                    evidence=(f"{ip} is within {match}, a published {substring} range",),
                 )
-            if not domains:
+            if not spec.domains:
                 return BotVerification(
                     VerificationStatus.IMPERSONATOR,
-                    expected_domains=domains,
-                    evidence=(f"{ip} is not in any published {token} IP range",),
+                    expected_domains=spec.domains,
+                    evidence=(f"{ip} is not in any published {substring} IP range",),
                 )
+
+        if not spec.domains:
+            return BotVerification(
+                VerificationStatus.UNVERIFIED,
+                evidence=(f"could not obtain a verifying IP range for {substring}",),
+            )
 
         host = self._cached_reverse(ip)
         if host is None:
             return BotVerification(
                 VerificationStatus.UNVERIFIED,
-                expected_domains=domains,
+                expected_domains=spec.domains,
                 evidence=(f"reverse DNS lookup of {ip} failed",),
             )
-        if not _domain_matches(host, domains):
+        if not _domain_matches(host, spec.domains):
             return BotVerification(
                 VerificationStatus.IMPERSONATOR,
                 resolved_host=host,
-                expected_domains=domains,
-                evidence=(f"{ip} resolves to {host}, not a {token} domain ({', '.join(domains)})",),
+                expected_domains=spec.domains,
+                evidence=(
+                    f"{ip} resolves to {host}, not a {substring} domain "
+                    f"({', '.join(spec.domains)})",
+                ),
             )
         forward = self._cached_forward(host)
         if ip in forward:
             return BotVerification(
                 VerificationStatus.VERIFIED,
                 resolved_host=host,
-                expected_domains=domains,
-                evidence=(f"{ip} ↔ {host} confirmed for {token}",),
+                expected_domains=spec.domains,
+                evidence=(f"{ip} ↔ {host} confirmed for {substring}",),
             )
         if forward:
             status, why = VerificationStatus.IMPERSONATOR, f"{host} does not resolve back to {ip}"
         else:
             status, why = VerificationStatus.UNVERIFIED, f"forward DNS of {host} failed"
         return BotVerification(
-            status, resolved_host=host, expected_domains=domains, evidence=(why,)
+            status, resolved_host=host, expected_domains=spec.domains, evidence=(why,)
         )
 
     def verify_all(

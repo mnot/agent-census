@@ -1,5 +1,5 @@
 global-include py.typed
-recursive-include agent_census/data *.txt
+recursive-include agent_census/data *.toml
 prune build
 prune dist
 prune test

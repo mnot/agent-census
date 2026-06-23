@@ -14,10 +14,11 @@ classifiers = [
     "Development Status :: 4 - Beta"
 ]
 dependencies = [
+    'tomli; python_version < "3.11"',
 ]
 
 [project.optional-dependencies]
-dev = ["mypy", "black", "isort", "pylint", "pytest", "pytest-md", "validate-pyproject", "build"]
+dev = ["mypy", "black", "isort", "pylint", "pytest", "pytest-md", "validate-pyproject", "build", "tomli"]
 
 [project.urls]
 homepage = "https://github.com/mnot/agent-census"
@@ -46,7 +47,7 @@ namespaces = false
 include-package-data = true
 
 [tool.setuptools.package-data]
-agent_census = ["py.typed", "classify/data/*.txt"]
+agent_census = ["py.typed", "data/*.toml"]
 
 # Most tool configuration lives in dedicated files (managed by the template):
 #   mypy   → mypy.ini

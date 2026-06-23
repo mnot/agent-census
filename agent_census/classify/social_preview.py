@@ -9,5 +9,5 @@ from .known_bot import KnownBotClassifier
 class SocialPreviewClassifier(KnownBotClassifier):
     label = Kind.SOCIAL_PREVIEW
     name = "social_preview"
-    data_file = "social_preview.txt"
+    category = "social_preview"
     descriptor = "social-preview / link-unfurl bot"

@@ -11,7 +11,7 @@ from ..dataload import load_list
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
 
-_SCANNER_UA = tuple(token.lower() for token in load_list("scanner_ua.txt"))
+_SCANNER_UA = tuple(token.lower() for token in load_list("scanner_ua"))
 
 
 def _ua_is_scanner(ua: str | None) -> str | None:

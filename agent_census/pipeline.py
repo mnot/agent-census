@@ -19,7 +19,7 @@ from typing import Protocol
 
 from . import uas
 from .classify import DEFAULT_UNKNOWN_THRESHOLD, classify_client
-from .dataload import load_tokens
+from .dataload import CrawlerSpec, load_tokens
 from .features import DisallowedCheck, FeatureAccumulator
 from .identity import ClientKeyStrategy
 from .model import BotVerification, ClientId, ClientProfile, LogEntry, VerificationStatus
@@ -29,7 +29,7 @@ from .robots import RobotsRules, report_from_signals
 # Default inactivity gap after which a client is considered finished and evicted.
 DEFAULT_QUIESCENT_SECONDS = 24 * 60 * 60
 
-_CRAWLER_TOKENS: tuple[tuple[str, tuple[str, ...]], ...] | None = None
+_CRAWLER_TOKENS: tuple[tuple[str, CrawlerSpec], ...] | None = None
 
 
 def _declares_crawler(ua: str | None) -> bool:
@@ -37,10 +37,10 @@ def _declares_crawler(ua: str | None) -> bool:
     global _CRAWLER_TOKENS  # pylint: disable=global-statement
     if _CRAWLER_TOKENS is None:
         _CRAWLER_TOKENS = (
-            load_tokens("search_engines.txt")
-            + load_tokens("social_preview.txt")
-            + load_tokens("ai_crawlers.txt")
-            + load_tokens("seo_marketing.txt")
+            load_tokens("search_engine")
+            + load_tokens("social_preview")
+            + load_tokens("ai_crawler")
+            + load_tokens("seo_marketing")
         )
     return uas.match_known(ua, _CRAWLER_TOKENS) is not None
 

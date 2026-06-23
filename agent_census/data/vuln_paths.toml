@@ -1,0 +1,23 @@
+# Path substrings that indicate vulnerability / misconfiguration probing.
+# Matched case-insensitively against the request path. Tune for your site;
+# remove any that are legitimate paths on your deployment.
+
+vuln_paths = [
+    # credential / secret files
+    "/.env", "/.git/", "/.svn/", "/.aws/", "/.ssh/", "/.htpasswd", "/.htaccess",
+    "/id_rsa", "/credentials", "/config.php", "/configuration.php",
+    "/wp-config.php", "/database.yml", "/.DS_Store",
+    # WordPress / CMS probes
+    "/wp-login.php", "/wp-admin", "/wp-content", "/xmlrpc.php", "/administrator/",
+    "/joomla", "/drupal",
+    # admin / database tools
+    "/phpmyadmin", "/phpMyAdmin", "/pma/", "/myadmin", "/adminer.php", "/dbadmin",
+    # shells / RCE attempts
+    "/shell", "/cmd.php", "/eval-stdin.php", "/vendor/phpunit", "/cgi-bin/",
+    "/boaform", "/HNAP1", "/setup.cgi", "/tmUnblock.cgi", "/currentsetting.htm",
+    # app framework / actuator endpoints
+    "/actuator", "/solr/", "/struts", "/jenkins", "/.well-known/openid",
+    "/telerik", "/owa/", "/autodiscover",
+    # generic injection / traversal markers
+    "/etc/passwd", "/proc/self",
+]

@@ -1,0 +1,51 @@
+# SEO / marketing / brand-monitoring crawlers: backlink indexes, rank trackers,
+# social-listening bots. Declared, but crawl for commercial third parties rather
+# than to serve the site's own audience. Most publish IP ranges, not reverse DNS.
+
+[[agent]]
+ua_substring = "AhrefsBot"
+
+[[agent]]
+ua_substring = "SemrushBot"
+
+[[agent]]
+ua_substring = "MJ12bot"
+
+[[agent]]
+ua_substring = "DotBot"
+
+[[agent]]
+ua_substring = "DataForSeoBot"
+
+[[agent]]
+ua_substring = "ZoominfoBot"
+
+[[agent]]
+ua_substring = "AwarioBot"
+
+[[agent]]
+ua_substring = "SERankingBacklinksBot"
+
+[[agent]]
+ua_substring = "Mediatoolkitbot"
+
+[[agent]]
+ua_substring = "BrokenLinksBot"
+
+[[agent]]
+ua_substring = "SerpMinerBot"
+
+[[agent]]
+ua_substring = "SiteCheckerBotCrawler"
+
+[[agent]]
+ua_substring = "linkfluence"
+
+[[agent]]
+ua_substring = "WebTrackrCrawler"
+
+[[agent]]
+ua_substring = "BLEXBot"
+
+[[agent]]
+ua_substring = "Barkrowler"

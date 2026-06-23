@@ -36,7 +36,7 @@ _EXOTIC_METHODS = frozenset("PUT DELETE PROPFIND PROPPATCH CONNECT TRACE PATCH M
 _COLOAD_WINDOW_SECONDS = 10.0
 
 # Loaded once, shared by every accumulator (not stored per instance).
-_VULN_PATTERNS = tuple(p.lower() for p in load_list("vuln_paths.txt"))
+_VULN_PATTERNS = tuple(p.lower() for p in load_list("vuln_paths"))
 
 # Predicate the robots stage injects to flag a path the client may not fetch.
 DisallowedCheck = Callable[[str], bool]

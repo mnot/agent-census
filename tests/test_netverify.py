@@ -7,6 +7,7 @@ import time
 import pytest
 
 from agent_census import netverify
+from agent_census.dataload import CrawlerSpec
 from agent_census.model import ClientId, VerificationStatus
 from agent_census.netverify import BotVerifier
 
@@ -78,9 +79,23 @@ def test_cidr_range_verifies_without_dns(monkeypatch: pytest.MonkeyPatch) -> Non
 
 def test_ip_outside_only_range_is_impersonator(monkeypatch: pytest.MonkeyPatch) -> None:
     # A token verified solely by IP range: an out-of-range IP is an impersonator.
-    monkeypatch.setattr(netverify, "load_tokens", lambda name: (("RangeBot", ("10.0.0.0/24",)),))
+    spec = CrawlerSpec(ranges=("10.0.0.0/24",))
+    monkeypatch.setattr(netverify, "load_tokens", lambda name: (("RangeBot", spec),))
     result = BotVerifier().verify("203.0.113.9", "RangeBot/1.0")
     assert result.status is VerificationStatus.IMPERSONATOR
+
+
+def test_ranges_url_fetched_and_used(monkeypatch: pytest.MonkeyPatch) -> None:
+    spec = CrawlerSpec(ranges_url="https://example.test/ranges.json")
+    monkeypatch.setattr(netverify, "load_tokens", lambda name: (("FetchBot", spec),))
+    monkeypatch.setattr(
+        netverify,
+        "_fetch_ranges_text",
+        lambda url: '{"prefixes": [{"ipv4Prefix": "192.0.2.0/24"}]}',
+    )
+    verifier = BotVerifier()
+    assert verifier.verify("192.0.2.7", "FetchBot/1.0").status is VerificationStatus.VERIFIED
+    assert verifier.verify("198.51.100.1", "FetchBot/1.0").status is VerificationStatus.IMPERSONATOR
 
 
 def test_verified_bot_ips_merge_into_one_entry(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,0 +1,88 @@
+# Search-engine crawlers (index the site for search results).
+# One [[agent]] per crawler. ua_substring is matched case-insensitively against
+# the User-Agent. Optional: domains (reverse-DNS suffixes), ranges (CIDR blocks),
+# ranges_url (JSON of published ranges, fetched + cached under --verify-bots).
+
+[[agent]]
+ua_substring = "Googlebot"
+domains = ["googlebot.com", "google.com"]
+ranges_url = "https://developers.google.com/static/crawling/ipranges/googlebot.json"
+
+[[agent]]
+ua_substring = "Googlebot-Image"
+domains = ["googlebot.com", "google.com"]
+
+[[agent]]
+ua_substring = "GoogleOther"
+domains = ["googlebot.com", "google.com"]
+
+[[agent]]
+ua_substring = "Bingbot"
+domains = ["search.msn.com"]
+
+[[agent]]
+ua_substring = "BingPreview"
+domains = ["search.msn.com"]
+
+[[agent]]
+ua_substring = "Slurp"
+domains = ["crawl.yahoo.net"]
+
+[[agent]]
+ua_substring = "DuckDuckBot"
+domains = ["duckduckgo.com"]
+
+[[agent]]
+ua_substring = "DuckDuckGo"
+domains = ["duckduckgo.com"]
+
+[[agent]]
+ua_substring = "Baiduspider"
+domains = ["crawl.baidu.com", "baidu.jp"]
+
+[[agent]]
+ua_substring = "YandexBot"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexImages"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "Applebot"
+domains = ["applebot.apple.com"]
+
+[[agent]]
+ua_substring = "Sogou"
+domains = ["sogou.com"]
+
+[[agent]]
+ua_substring = "Exabot"
+domains = ["exabot.com"]
+
+[[agent]]
+ua_substring = "SeznamBot"
+domains = ["seznam.cz"]
+
+[[agent]]
+ua_substring = "PetalBot"
+domains = ["aspiegel.com", "petalsearch.com"]
+
+[[agent]]
+ua_substring = "Qwantbot"
+domains = ["qwant.com"]
+
+[[agent]]
+ua_substring = "MojeekBot"
+domains = ["mojeek.com"]
+
+[[agent]]
+ua_substring = "coccocbot"
+domains = ["coccoc.com"]
+
+[[agent]]
+ua_substring = "SeekportBot"
+domains = ["seekport.com"]
+
+[[agent]]
+ua_substring = "YisouSpider"

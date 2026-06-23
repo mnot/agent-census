@@ -1,0 +1,9 @@
+# User-Agent tokens that name a scanning / pentest / measurement tool.
+# Matched case-insensitively as a substring; a hit corroborates vuln_scanner.
+
+scanner_ua = [
+    "sqlmap", "nmap", "nikto", "nuclei", "masscan", "wpscan", "zgrab",
+    "CensysInspect", "InternetMeasurement", "l9scan", "BlackVeil-Security-Scanner",
+    "SecurityScanner", "AliyunSecBot", "TLM-Audit-Scanner", "CMS-Checker",
+    "docs-cortex.paloaltonetworks",
+]

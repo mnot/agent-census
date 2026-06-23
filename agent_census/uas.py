@@ -9,6 +9,9 @@ request behavior.
 from __future__ import annotations
 
 import re
+from typing import TypeVar
+
+_P = TypeVar("_P")
 
 # A real browser UA starts with a Mozilla token and names a layout engine.
 _BROWSER_RE = re.compile(r"mozilla/\d.*(gecko|applewebkit|trident|presto|khtml)", re.I)
@@ -45,16 +48,14 @@ def declares_bot(ua: str | None) -> bool:
     return bool(_BOT_RE.search(ua))
 
 
-def match_known(
-    ua: str | None, pairs: tuple[tuple[str, tuple[str, ...]], ...]
-) -> tuple[str, tuple[str, ...]] | None:
-    """Return the first ``(token, domains)`` whose token is a substring of ``ua``."""
+def match_known(ua: str | None, pairs: tuple[tuple[str, _P], ...]) -> tuple[str, _P] | None:
+    """Return the first ``(substring, payload)`` whose substring occurs in ``ua``."""
     if is_empty(ua) or ua is None:
         return None
     low = ua.lower()
-    for token, domains in pairs:
-        if token.lower() in low:
-            return token, domains
+    for substring, payload in pairs:
+        if substring.lower() in low:
+            return substring, payload
     return None
 
 

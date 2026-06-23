@@ -1,0 +1,85 @@
+# Social-preview / link-unfurl fetchers: fetch a URL once to build the rich
+# preview card shown when a link is shared in a chat or post.
+
+[[agent]]
+ua_substring = "facebookexternalhit"
+domains = ["facebook.com", "fbsv.net"]
+
+[[agent]]
+ua_substring = "Facebot"
+domains = ["facebook.com"]
+
+[[agent]]
+ua_substring = "Twitterbot"
+domains = ["twitter.com"]
+
+[[agent]]
+ua_substring = "LinkedInBot"
+domains = ["linkedin.com"]
+
+[[agent]]
+ua_substring = "Slackbot"
+domains = ["slack.com"]
+
+[[agent]]
+ua_substring = "Slackbot-LinkExpanding"
+domains = ["slack.com"]
+
+[[agent]]
+ua_substring = "Slack-ImgProxy"
+domains = ["slack.com"]
+
+[[agent]]
+ua_substring = "Discordbot"
+domains = ["discordapp.com", "discord.com"]
+
+[[agent]]
+ua_substring = "WhatsApp"
+domains = ["whatsapp.net"]
+
+[[agent]]
+ua_substring = "TelegramBot"
+domains = ["telegram.org"]
+
+[[agent]]
+ua_substring = "Pinterest"
+domains = ["pinterest.com"]
+
+[[agent]]
+ua_substring = "Pinterestbot"
+domains = ["pinterest.com"]
+
+[[agent]]
+ua_substring = "redditbot"
+domains = ["reddit.com"]
+
+[[agent]]
+ua_substring = "Embedly"
+domains = ["embed.ly"]
+
+[[agent]]
+ua_substring = "Iframely"
+domains = ["embed.ly", "iframe.ly"]
+
+[[agent]]
+ua_substring = "vkShare"
+domains = ["vk.com"]
+
+[[agent]]
+ua_substring = "HatenaBookmark"
+domains = ["hatena.ne.jp"]
+
+[[agent]]
+ua_substring = "SkypeUriPreview"
+
+[[agent]]
+ua_substring = "Mastodon"
+
+[[agent]]
+ua_substring = "Mattermost-Bot"
+
+[[agent]]
+ua_substring = "Pleroma"
+
+[[agent]]
+ua_substring = "SummalyBot"

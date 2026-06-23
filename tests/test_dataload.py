@@ -1,13 +1,23 @@
-"""Tests for data-file parsing (inline comments, CIDR hints)."""
+"""Tests for the TOML data files and loader."""
 
 from __future__ import annotations
 
-from agent_census.dataload import load_tokens
+from agent_census.dataload import load_list, load_tokens
 
 
-def test_inline_comment_stripped_and_cidr_kept() -> None:
-    hints = dict(load_tokens("ai_crawlers.txt"))["ClaudeBot"]
-    assert "anthropic.com" in hints
-    assert "160.79.104.0/21" in hints  # CIDR range kept
-    # the trailing "# https://..." comment is not parsed as a hint
-    assert not any("http" in hint or hint.startswith("#") for hint in hints)
+def test_crawler_spec_fields() -> None:
+    spec = dict(load_tokens("ai_crawler"))["ClaudeBot"]
+    assert spec.domains == ("anthropic.com", "claude.ai")
+    assert spec.ranges == ("160.79.104.0/21",)  # inline-comment source stripped by TOML
+    assert spec.ranges_url is None
+
+
+def test_ranges_url_loaded() -> None:
+    spec = dict(load_tokens("ai_crawler"))["OAI-SearchBot"]
+    assert spec.ranges_url == "https://openai.com/searchbot.json"
+
+
+def test_flat_lists_load() -> None:
+    assert "/.env" in load_list("vuln_paths")
+    assert "sqlmap" in load_list("scanner_ua")
+    assert "NetNewsWire" in load_list("feed_readers")

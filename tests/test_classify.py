@@ -95,6 +95,21 @@ def test_combiner_fake_browser_without_datacenter_stays_unknown() -> None:
     assert "datacenter" not in result.tags
 
 
+def test_feed_reader_with_safari_prefix_is_not_fake_browser() -> None:
+    # macOS feed readers wear a Safari UA with the product appended; the browser
+    # prefix + no co-loading must not be mistaken for a browser costume.
+    feats = ClientFeatures(
+        request_count=50,
+        ua_looks_like_browser=True,
+        asset_coload_ratio=0.0,
+        referer_following_ratio=0.0,
+        user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/605.1.15 (KHTML, like Gecko) NetNewsWire/6.1",
+    )
+    tags = combine([Signal(Kind.FEED_READER, 0.5, ("feed UA",), "feed_reader")], feats).tags
+    assert "fake-browser" not in tags
+
+
 def test_combiner_real_browser_behaviour_from_datacenter_is_not_spoofed() -> None:
     # Asset co-loading means real browsing; a hosting IP alone doesn't condemn it.
     feats = ClientFeatures(request_count=5, ua_looks_like_browser=True, asset_coload_ratio=0.6)

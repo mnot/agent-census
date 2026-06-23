@@ -14,7 +14,7 @@ tag; a genuine crawler can misbehave without forging its identity.
 from __future__ import annotations
 
 from .. import uas
-from ..dataload import load_tokens
+from ..dataload import load_list, load_tokens
 from ..model import (
     BotVerification,
     ClientFeatures,
@@ -51,16 +51,33 @@ def impersonation(verification: BotVerification | None) -> tuple[bool, tuple[str
     return False, ()
 
 
+def _identifies_as_known_agent(features: ClientFeatures) -> bool:
+    """True if the UA positively names a non-browser agent it could only be lying about.
+
+    Feed readers, known crawlers, and self-declared bots routinely wear a Safari
+    or Chrome prefix with their product token appended (``... NetNewsWire/6``).
+    That is an honest identity, not a browser costume, so it must not count as a
+    fake browser.
+    """
+    if features.ua_declares_bot or _declares_known_crawler(features):
+        return True
+    ua = (features.user_agent or "").lower()
+    return any(token.lower() in ua for token in load_list("feed_readers"))
+
+
 def looks_like_fake_browser(features: ClientFeatures) -> bool:
     """A browser User-Agent showing none of the behaviour a real browser shows.
 
     Real browsers pull a page's sub-resources (CSS/JS/images) and follow links
     via the referer. A client claiming to be a browser that never co-loads assets
     and never follows a referer is presenting a costume, not browsing. Needs at
-    least two requests -- a single request reveals nothing either way.
+    least two requests -- a single request reveals nothing either way. A UA that
+    names a known agent (feed reader / crawler / bot) is identifying itself, not
+    faking a browser, so it is excluded.
     """
     return (
         features.ua_looks_like_browser
+        and not _identifies_as_known_agent(features)
         and features.request_count >= 2
         and features.asset_coload_ratio == 0.0
         and features.referer_following_ratio == 0.0

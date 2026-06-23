@@ -36,12 +36,6 @@ domains = ["anthropic.com"]
 ranges_url = "https://claude.com/crawling/bots.json"
 
 [[agent]]
-# https://commoncrawl.org/ccbot
-ua_substring = "CCBot"
-domains = ["commoncrawl.org"]
-ranges_url = "https://index.commoncrawl.org/ccbot.json"
-
-[[agent]]
 ua_substring = "Google-Extended"
 domains = ["google.com", "googlebot.com"]
 

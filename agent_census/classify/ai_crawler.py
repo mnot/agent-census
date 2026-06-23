@@ -1,4 +1,4 @@
-"""Declared AI / LLM data-gathering crawlers (GPTBot, ClaudeBot, CCBot, ...)."""
+"""Declared AI / LLM data-gathering crawlers (GPTBot, ClaudeBot, Google-Extended, ...)."""
 
 from __future__ import annotations
 

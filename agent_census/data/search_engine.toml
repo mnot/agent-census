@@ -111,3 +111,6 @@ ua_substring = "mwmbl"
 # https://docs.aws.amazon.com/kendra/latest/dg/what-is-kendra.html
 ua_substring = "amazon-kendra"
 
+[[agent]]
+# https://www.image-meta.com
+ua_substring = "ImageMetaBot"

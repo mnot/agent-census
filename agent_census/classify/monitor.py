@@ -7,6 +7,7 @@ regular intervals — the lowest timing variability of any client kind.
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
@@ -18,6 +19,11 @@ _MONITOR_UA = re.compile(
 )
 
 
+@lru_cache(maxsize=16384)
+def _ua_is_monitor(ua: str | None) -> bool:
+    return bool(ua and _MONITOR_UA.search(ua))
+
+
 class MonitorClassifier(Classifier):
     label = Kind.MONITOR
     name = "monitor"
@@ -26,7 +32,7 @@ class MonitorClassifier(Classifier):
         confidence = 0.0
         evidence: list[str] = []
 
-        if features.user_agent and _MONITOR_UA.search(features.user_agent):
+        if _ua_is_monitor(features.user_agent):
             confidence += 0.4
             evidence.append("User-Agent names a monitoring service")
 

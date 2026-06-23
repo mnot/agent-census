@@ -9,7 +9,10 @@ request behavior.
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 from typing import TypeVar
+
+from .dataload import CrawlerSpec, load_tokens
 
 _P = TypeVar("_P")
 
@@ -34,6 +37,7 @@ def is_empty(ua: str | None) -> bool:
     return not (ua and ua.strip())
 
 
+@lru_cache(maxsize=16384)
 def looks_like_browser(ua: str | None) -> bool:
     """True when the UA syntactically resembles a real browser and not a bot."""
     if is_empty(ua) or ua is None:
@@ -41,6 +45,7 @@ def looks_like_browser(ua: str | None) -> bool:
     return bool(_BROWSER_RE.search(ua)) and not declares_bot(ua)
 
 
+@lru_cache(maxsize=16384)
 def declares_bot(ua: str | None) -> bool:
     """True when the UA self-identifies as automation."""
     if is_empty(ua) or ua is None:
@@ -56,6 +61,28 @@ def match_known(ua: str | None, pairs: tuple[tuple[str, _P], ...]) -> tuple[str,
     for substring, payload in pairs:
         if substring.lower() in low:
             return substring, payload
+    return None
+
+
+@lru_cache(maxsize=None)
+def _lowered(category: str) -> tuple[tuple[str, str, CrawlerSpec], ...]:
+    """Category tokens as (lowercased-substring, original, spec); built once each."""
+    return tuple((sub.lower(), sub, spec) for sub, spec in load_tokens(category))
+
+
+@lru_cache(maxsize=32768)
+def match_category(ua: str | None, category: str) -> tuple[str, CrawlerSpec] | None:
+    """First (substring, spec) in ``category`` whose token occurs in ``ua`` (cached).
+
+    Memoised by (ua, category): classification runs per client and User-Agents
+    repeat heavily, so a plain scan would redo the same search for every client.
+    """
+    if is_empty(ua) or ua is None:
+        return None
+    low = ua.lower()
+    for low_sub, sub, spec in _lowered(category):
+        if low_sub in low:
+            return sub, spec
     return None
 
 

@@ -61,6 +61,9 @@ def _bounded(func: Callable[[], _T]) -> _T | None:
 
 
 def _known_crawler(ua: str | None) -> tuple[str, CrawlerSpec] | None:
+    # Not a hot path (runs per deduped candidate under --verify-bots), so this
+    # builds the combined token list rather than using the cached per-category
+    # match -- and lets tests inject synthetic specs via load_tokens.
     pairs = (
         load_tokens("search_engine")
         + load_tokens("social_preview")

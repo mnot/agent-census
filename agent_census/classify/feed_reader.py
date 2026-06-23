@@ -9,6 +9,7 @@ small number of URLs corroborate it.
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 
 from ..dataload import load_list
 from ..model import ClientFeatures, Kind, Signal
@@ -19,6 +20,7 @@ _FEED_UA = re.compile(r"feed|rss|atom|podcast|subscriber", re.I)
 _FEED_READERS = tuple(token.lower() for token in load_list("feed_readers"))
 
 
+@lru_cache(maxsize=16384)
 def _ua_is_feed_reader(ua: str | None) -> bool:
     if not ua:
         return False

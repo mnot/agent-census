@@ -22,7 +22,6 @@ from typing import Protocol
 
 from . import egress, uas
 from .classify import DEFAULT_UNKNOWN_THRESHOLD, classify_client
-from .dataload import CrawlerSpec, load_tokens
 from .features import DisallowedCheck, FeatureAccumulator
 from .hosting import datacenter_subnet, is_datacenter_ip
 from .identity import ClientKeyStrategy
@@ -53,21 +52,13 @@ DEFAULT_MAX_PER_KIND = 1000
 # later return from one of those would re-fragment -- the memory ceiling's cost).
 DEFAULT_RETIRED_CAP = 50_000
 
-_CRAWLER_TOKENS: tuple[tuple[str, CrawlerSpec], ...] | None = None
+# Declared-crawler categories, checked individually so per-UA matches cache.
+_CRAWLER_CATEGORIES = ("search_engine", "social_preview", "archiver", "ai_crawler", "seo_marketing")
 
 
 def _declares_crawler(ua: str | None) -> bool:
     """True if the UA names any known crawler (kept resident, never evicted)."""
-    global _CRAWLER_TOKENS  # pylint: disable=global-statement
-    if _CRAWLER_TOKENS is None:
-        _CRAWLER_TOKENS = (
-            load_tokens("search_engine")
-            + load_tokens("social_preview")
-            + load_tokens("archiver")
-            + load_tokens("ai_crawler")
-            + load_tokens("seo_marketing")
-        )
-    return uas.match_known(ua, _CRAWLER_TOKENS) is not None
+    return any(uas.match_category(ua, category) for category in _CRAWLER_CATEGORIES)
 
 
 class BotVerifier(Protocol):

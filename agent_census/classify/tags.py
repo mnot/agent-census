@@ -14,7 +14,7 @@ tag; a genuine crawler can misbehave without forging its identity.
 from __future__ import annotations
 
 from .. import uas
-from ..dataload import load_list, load_tokens
+from ..dataload import load_list
 from ..model import (
     BotVerification,
     ClientFeatures,
@@ -24,17 +24,12 @@ from ..model import (
 )
 
 _UA_ROTATION_THRESHOLD = 4
+# Declared-crawler data categories, checked individually so per-UA results cache.
+_CRAWLER_CATEGORIES = ("search_engine", "social_preview", "archiver", "ai_crawler", "seo_marketing")
 
 
 def _declares_known_crawler(features: ClientFeatures) -> bool:
-    pairs = (
-        load_tokens("search_engine")
-        + load_tokens("social_preview")
-        + load_tokens("archiver")
-        + load_tokens("ai_crawler")
-        + load_tokens("seo_marketing")
-    )
-    return uas.match_known(features.user_agent, pairs) is not None
+    return any(uas.match_category(features.user_agent, c) for c in _CRAWLER_CATEGORIES)
 
 
 def impersonation(verification: BotVerification | None) -> tuple[bool, tuple[str, ...]]:

@@ -9,7 +9,6 @@ claim is taken at face value (high confidence); the combiner downgrades it to
 from __future__ import annotations
 
 from .. import uas
-from ..dataload import load_tokens
 from ..model import ClientFeatures, Signal
 from .base import Classifier
 
@@ -21,7 +20,7 @@ class KnownBotClassifier(Classifier):
     descriptor: str = ""
 
     def evaluate(self, features: ClientFeatures) -> list[Signal]:
-        known = uas.match_known(features.user_agent, load_tokens(self.category))
+        known = uas.match_category(features.user_agent, self.category)
         if known is None:
             return []
         token, _spec = known

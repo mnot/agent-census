@@ -30,9 +30,18 @@ def test_report_html_is_a_full_page() -> None:
     assert 'href="#vuln_scanner"' in html
 
 
+def test_report_html_client_cells_are_copyable() -> None:
+    # The 203.0.113.66 scanner row should be click-to-copy with its id.
+    html = render_report_html(_run(), source="sample")
+    assert 'data-copy="203.0.113.66"' in html
+    assert "navigator.clipboard" in html  # copy script present
+    assert "inspect --client" in html  # the tip
+
+
 def test_report_html_escapes_user_agent() -> None:
-    # The sample has no angle brackets, so inject one via a crafted log line.
-    log = '1.2.3.4 - - [10/Oct/2023:00:00:00 +0000] "GET /<script> HTTP/1.1" 404 1 "-" "<x>"'
+    # Inject a script payload via the UA; it must be escaped, not rendered.
+    payload = "<script>alert(1)</script>"
+    log = f'1.2.3.4 - - [10/Oct/2023:00:00:00 +0000] "GET / HTTP/1.1" 404 1 "-" "{payload}"'
     tmp = DATA / "_xss_tmp.log"
     tmp.write_text(log + "\n", encoding="utf-8")
     try:
@@ -41,8 +50,8 @@ def test_report_html_escapes_user_agent() -> None:
         html = render_report_html(result, source="x")
     finally:
         tmp.unlink()
-    assert "<script>" not in html
-    assert "&lt;script&gt;" in html or "&lt;x&gt;" in html
+    assert payload not in html  # the injected tag never appears raw
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html  # it is escaped
 
 
 def test_inspect_html_renders_selected() -> None:

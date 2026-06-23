@@ -40,9 +40,10 @@ from .iprange import parse_networks as _parse_networks
 from .iprange import parse_prefixes as _parse_prefixes
 from .model import BotVerification, ClientId, VerificationStatus
 
-_MAX_WORKERS = 32
-_DNS_TIMEOUT = 5.0  # seconds per individual lookup
-_DNS_CACHE_TTL = 24 * 60 * 60  # re-resolve a given host/IP at most daily
+_MAX_WORKERS = 64
+_DNS_TIMEOUT = 3.0  # seconds per individual lookup
+_DNS_CACHE_TTL = 24 * 60 * 60  # re-resolve a resolved/authoritative answer at most daily
+_DNS_NEG_TTL = 60 * 60  # but re-probe a non-answer (timeout / empty) after an hour
 
 
 def _dns_cache_path() -> Path:
@@ -130,37 +131,49 @@ class BotVerifier:
         self._load_dns_cache()
 
     def _load_dns_cache(self) -> None:
-        """Seed the in-memory DNS caches from disk, dropping entries past the TTL."""
+        """Seed the in-memory DNS caches from disk, dropping entries past their TTL.
+
+        Answers (a resolved host, a definitive no-record, a non-empty forward set)
+        live for ``_DNS_CACHE_TTL``; non-answers -- a timed-out / transient lookup
+        cached so a dead IP isn't re-probed every run -- expire after the shorter
+        ``_DNS_NEG_TTL``.
+        """
         try:
             data = json.loads(_dns_cache_path().read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return
         now = time.time()
         for ip, entry in data.get("reverse", {}).items():
-            if isinstance(entry, list) and len(entry) == 3 and now - entry[2] < _DNS_CACHE_TTL:
-                self._reverse[ip] = (entry[0], bool(entry[1]))
+            if not (isinstance(entry, list) and len(entry) == 3):
+                continue
+            host, no_ptr = entry[0], bool(entry[1])
+            ttl = _DNS_CACHE_TTL if host is not None or no_ptr else _DNS_NEG_TTL
+            if now - entry[2] < ttl:
+                self._reverse[ip] = (host, no_ptr)
                 self._reverse_ts[ip] = entry[2]
         for host, entry in data.get("forward", {}).items():
-            if isinstance(entry, list) and len(entry) == 2 and now - entry[1] < _DNS_CACHE_TTL:
+            if not (isinstance(entry, list) and len(entry) == 2):
+                continue
+            ttl = _DNS_CACHE_TTL if entry[0] else _DNS_NEG_TTL
+            if now - entry[1] < ttl:
                 self._forward[host] = frozenset(entry[0])
                 self._forward_ts[host] = entry[1]
 
     def _save_dns_cache(self) -> None:
-        """Persist resolved DNS results so the next run skips re-resolving them.
+        """Persist DNS results so the next run skips re-resolving them.
 
-        Transient failures (no host and no definitive no-record; empty forward
-        set) are not persisted, so they are retried next run rather than cached.
+        Both answers and non-answers are written; :meth:`_load_dns_cache` ages
+        non-answers out sooner (``_DNS_NEG_TTL``) so a transient failure is a
+        short-lived negative cache entry, not a permanent verdict.
         """
         now = time.time()
         reverse = {
             ip: [host, no_ptr, self._reverse_ts.get(ip, now)]
             for ip, (host, no_ptr) in self._reverse.items()
-            if host is not None or no_ptr
         }
         forward = {
             host: [sorted(ips), self._forward_ts.get(host, now)]
             for host, ips in self._forward.items()
-            if ips
         }
         try:
             _dns_cache_path().write_text(

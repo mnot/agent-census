@@ -104,24 +104,44 @@ def test_dns_lookups_persist_across_runs(monkeypatch: pytest.MonkeyPatch) -> Non
     assert calls == ["66.249.66.1"]  # no new lookup
 
 
-def test_transient_dns_failures_not_persisted(monkeypatch: pytest.MonkeyPatch) -> None:
-    # A timeout (None, False) must not be cached, so the next run retries.
+def test_transient_dns_failure_negative_cached_within_ttl(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A timeout (None, False) is negative-cached, so a run within the TTL reuses it.
     _patch_spec(monkeypatch, "DnsBot", CrawlerSpec(domains=("example.com",)))
     calls: list[str] = []
 
-    def flaky_reverse(ip: str) -> tuple[str | None, bool]:
+    def failing_reverse(ip: str) -> tuple[str | None, bool]:
         calls.append(ip)
-        if len(calls) == 1:
-            return None, False  # transient failure first time
-        return "crawl.example.com", False
+        return None, False  # transient failure / timeout
 
-    monkeypatch.setattr(netverify, "_reverse_dns", flaky_reverse)
-    monkeypatch.setattr(netverify, "_forward_ips", lambda host: {"66.249.66.1"})
+    monkeypatch.setattr(netverify, "_reverse_dns", failing_reverse)
     items = [(ClientId(ip="66.249.66.1", user_agent="DnsBot"), "DnsBot")]
 
     assert BotVerifier().verify_all(items)[items[0][0]].status is VerificationStatus.UNVERIFIED
+    assert calls == ["66.249.66.1"]  # probed once, then written as a negative
+    assert BotVerifier().verify_all(items)[items[0][0]].status is VerificationStatus.UNVERIFIED
+    assert calls == ["66.249.66.1"]  # served from the negative cache, not re-probed
+
+
+def test_stale_negative_dns_is_reprobed(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A negative older than _DNS_NEG_TTL is dropped on load, so the IP is re-probed.
+    _patch_spec(monkeypatch, "DnsBot", CrawlerSpec(domains=("example.com",)))
+    stale = time.time() - netverify._DNS_NEG_TTL - 1
+    netverify._dns_cache_path().write_text(
+        f'{{"reverse": {{"66.249.66.1": [null, false, {stale}]}}, "forward": {{}}}}',
+        encoding="utf-8",
+    )
+    calls: list[str] = []
+
+    def good_reverse(ip: str) -> tuple[str | None, bool]:
+        calls.append(ip)
+        return "crawl.example.com", False
+
+    monkeypatch.setattr(netverify, "_reverse_dns", good_reverse)
+    monkeypatch.setattr(netverify, "_forward_ips", lambda host: {"66.249.66.1"})
+    items = [(ClientId(ip="66.249.66.1", user_agent="DnsBot"), "DnsBot")]
+
     assert BotVerifier().verify_all(items)[items[0][0]].status is VerificationStatus.VERIFIED
-    assert calls == ["66.249.66.1", "66.249.66.1"]  # retried, not served from cache
+    assert calls == ["66.249.66.1"]  # stale negative ignored, freshly resolved
 
 
 # --- IP-range path ---

@@ -33,6 +33,10 @@ class BrowserClassifier(Classifier):
         if regularity is not None and regularity > 0.6:
             confidence += 0.1
             evidence.append("irregular, bursty timing (human-like)")
+        elif regularity is not None and regularity < 0.15 and features.request_count >= 5:
+            # Metronomic cadence is a machine, not a person clicking around.
+            confidence -= 0.2
+            evidence.append("metronomic timing — automated, not human")
 
         if features.referer_following_ratio > 0.3:
             confidence += 0.1

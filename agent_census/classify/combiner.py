@@ -74,6 +74,12 @@ def combine(
     for signal in signals:
         by_label[signal.kind] = max(by_label.get(signal.kind, 0.0), signal.confidence)
 
+    # A person rarely browses from hosting infrastructure, so nudge a datacenter
+    # "browser" verdict down a little -- enough to tip a borderline one, not to
+    # overrule a strongly-behaving real browser.
+    if datacenter and Kind.BROWSER in by_label:
+        by_label[Kind.BROWSER] = max(0.0, by_label[Kind.BROWSER] - 0.1)
+
     tags = derive_tags(features, compliance, verification, datacenter=datacenter)
     stored = tuple(signals) if keep_signals else ()
 

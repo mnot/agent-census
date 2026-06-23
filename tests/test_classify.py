@@ -279,6 +279,39 @@ def test_feed_reader_fetching_non_feeds_is_tagged() -> None:
     assert "fetches-non-feeds" in result.tags
 
 
+def test_feed_minority_is_not_a_feed_reader() -> None:
+    # Grazes a feed but mostly hammers pages, no feed-reader UA -> not a feed reader.
+    feats = ClientFeatures(
+        request_count=20,
+        feed_requests=4,
+        feed_ratio=0.2,
+        distinct_paths=6,
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/103.0 Safari/537.36",
+    )
+    assert classify_client(feats).primary is not Kind.FEED_READER
+
+
+def test_datacenter_nudges_a_borderline_browser_out() -> None:
+    sig = [Signal(Kind.BROWSER, 0.5, ("x",), "browser")]
+    feats = ClientFeatures(request_count=10, ua_looks_like_browser=True)
+    assert combine(sig, feats).primary is Kind.BROWSER
+    assert combine(sig, feats, datacenter=True).primary is not Kind.BROWSER
+
+
+def test_metronomic_timing_penalises_browser() -> None:
+    # Browser-ish signals but machine-regular cadence -> not a person.
+    feats = ClientFeatures(
+        request_count=10,
+        ua_looks_like_browser=True,
+        referer_following_ratio=0.5,
+        static_ratio=0.4,
+        ratio_404=0.0,
+        distinct_paths=8,
+        rate_regularity=0.05,
+    )
+    assert classify_client(feats).primary is not Kind.BROWSER
+
+
 def test_pure_feed_reader_not_tagged() -> None:
     feats = ClientFeatures(
         request_count=8,

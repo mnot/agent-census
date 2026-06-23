@@ -33,18 +33,25 @@ class FeedReaderClassifier(Classifier):
     name = "feed_reader"
 
     def evaluate(self, features: ClientFeatures) -> list[Signal]:
+        feed_ua = _ua_is_feed_reader(features.user_agent)
+        feed_dominant = features.feed_requests > 0 and features.feed_ratio >= 0.5
+        # Feeds have to be the point: either a declared reader, or feeds are the
+        # majority of traffic. A client that mostly hammers non-feed pages and only
+        # grazes a feed is not a feed reader -- its other behaviour decides the kind.
+        if not (feed_ua or feed_dominant):
+            return []
+
         confidence = 0.0
         evidence: list[str] = []
 
-        if features.feed_requests > 0:
-            if features.feed_ratio >= 0.5:
-                confidence += 0.5
-                evidence.append(f"{features.feed_ratio:.0%} of requests are for feed resources")
-            else:
-                confidence += 0.3
-                evidence.append(f"{features.feed_requests} request(s) for feed resources")
+        if feed_dominant:
+            confidence += 0.5
+            evidence.append(f"{features.feed_ratio:.0%} of requests are for feed resources")
+        elif features.feed_requests > 0:
+            confidence += 0.2
+            evidence.append(f"{features.feed_requests} request(s) for feed resources")
 
-        if _ua_is_feed_reader(features.user_agent):
+        if feed_ua:
             confidence += 0.4
             evidence.append("User-Agent identifies a feed reader")
 

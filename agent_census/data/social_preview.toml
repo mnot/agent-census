@@ -28,19 +28,12 @@ ua_substring = "Slack-ImgProxy"
 
 [[agent]]
 ua_substring = "Discordbot"
-domains = ["discordapp.com", "discord.com"]
 
 [[agent]]
 ua_substring = "WhatsApp"
-domains = ["whatsapp.net"]
 
 [[agent]]
 ua_substring = "TelegramBot"
-domains = ["telegram.org"]
-
-[[agent]]
-ua_substring = "Pinterest"
-domains = ["pinterest.com"]
 
 [[agent]]
 # https://help.pinterest.com/en/business/article/pinterestbot

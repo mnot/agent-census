@@ -7,21 +7,47 @@ forward-resolve that hostname and confirm it points back to the same IP.
 DNS is the slow part, so verification is done as a deduped, concurrent batch:
 each distinct IP is resolved once, and the lookups run across a thread pool (they
 are I/O-bound, so this is a near-linear speedup over doing them one at a time).
-Enabled only with ``--verify-bots``.
+Each lookup is bounded by a timeout -- the stdlib resolver calls cannot be
+cancelled and ignore ``socket.setdefaulttimeout``, so each runs in a daemon
+thread that is abandoned (treated as "unverified") if it overruns, which also
+keeps a dead resolver from stalling the run or delaying exit. Enabled only with
+``--verify-bots``.
 """
 
 from __future__ import annotations
 
 import socket
 import threading
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
+from typing import TypeVar
 
 from . import uas
 from .dataload import load_tokens
 from .model import BotVerification, ClientId, VerificationStatus
 
 _MAX_WORKERS = 32
+_DNS_TIMEOUT = 5.0  # seconds per individual lookup
+
+_T = TypeVar("_T")
+
+
+def _bounded(func: Callable[[], _T]) -> _T | None:
+    """Run ``func`` in a daemon thread, returning None if it errors or times out."""
+    box: list[_T | None] = []
+
+    def runner() -> None:
+        try:
+            box.append(func())
+        except (OSError, socket.herror, socket.gaierror):
+            box.append(None)
+
+    thread = threading.Thread(target=runner, daemon=True)
+    thread.start()
+    thread.join(_DNS_TIMEOUT)
+    if thread.is_alive() or not box:
+        return None
+    return box[0]
 
 
 def _known_crawler(ua: str | None) -> tuple[str, tuple[str, ...]] | None:
@@ -30,17 +56,12 @@ def _known_crawler(ua: str | None) -> tuple[str, tuple[str, ...]] | None:
 
 
 def _reverse_dns(ip: str) -> str | None:
-    try:
-        return socket.gethostbyaddr(ip)[0]
-    except (OSError, socket.herror, socket.gaierror):
-        return None
+    return _bounded(lambda: socket.gethostbyaddr(ip)[0])
 
 
 def _forward_ips(host: str) -> set[str]:
-    try:
-        return {str(info[4][0]) for info in socket.getaddrinfo(host, None)}
-    except OSError:
-        return set()
+    result = _bounded(lambda: {str(info[4][0]) for info in socket.getaddrinfo(host, None)})
+    return result if result is not None else set()
 
 
 def _domain_matches(host: str, domains: tuple[str, ...]) -> bool:

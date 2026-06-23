@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import pytest
 
 from agent_census import netverify
@@ -61,3 +63,11 @@ def test_verify_all_dedupes_and_caches(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_verify_all_empty() -> None:
     assert BotVerifier().verify_all([]) == {}
+
+
+def test_reverse_dns_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(netverify, "_DNS_TIMEOUT", 0.1)
+    monkeypatch.setattr(netverify.socket, "gethostbyaddr", lambda ip: time.sleep(5))
+    start = time.time()
+    assert netverify._reverse_dns("1.2.3.4") is None
+    assert time.time() - start < 1.0  # bounded by the timeout, not the 5s sleep

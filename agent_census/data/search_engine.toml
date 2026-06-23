@@ -107,3 +107,7 @@ ua_substring = "YisouSpider"
 # https://github.com/mwmbl/mwmbl/
 ua_substring = "mwmbl"
 
+[[agent]]
+# https://docs.aws.amazon.com/kendra/latest/dg/what-is-kendra.html
+ua_substring = "amazon-kendra"
+

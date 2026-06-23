@@ -102,3 +102,8 @@ domains = ["seekport.com"]
 
 [[agent]]
 ua_substring = "YisouSpider"
+
+[[agent]]
+# https://github.com/mwmbl/mwmbl/
+ua_substring = "mwmbl"
+

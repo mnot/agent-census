@@ -133,9 +133,16 @@ def ip_in(ip: str, networks: tuple[Network, ...]) -> Network | None:
     return next((net for net in networks if addr.version == net.version and addr in net), None)
 
 
-def _ranges_cache_path(url: str) -> Path:
+def cache_dir() -> Path:
+    """The ``agent-census`` cache directory (``~/.cache/agent-census``), created if needed."""
     base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
-    directory = Path(base) / "agent-census" / "ranges"
+    directory = Path(base) / "agent-census"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def _ranges_cache_path(url: str) -> Path:
+    directory = cache_dir() / "ranges"
     directory.mkdir(parents=True, exist_ok=True)
     return directory / (hashlib.sha1(url.encode("utf-8")).hexdigest() + ".json")
 
@@ -315,8 +322,7 @@ def extract_cidrs(text: str, fmt: str) -> tuple[str, ...]:
 
 
 def _intervals_cache_path(url: str, fmt: str) -> Path:
-    base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
-    directory = Path(base) / "agent-census" / "ranges"
+    directory = cache_dir() / "ranges"
     directory.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha1(f"{url}|{fmt}|v{_INTERVALS_CACHE_VERSION}".encode("utf-8")).hexdigest()
     return directory / (digest + ".intervals.json")

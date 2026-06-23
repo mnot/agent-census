@@ -82,6 +82,48 @@ def test_verify_all_empty() -> None:
     assert BotVerifier().verify_all([]) == {}
 
 
+def test_dns_lookups_persist_across_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A second verifier (a later run) loads the on-disk cache and re-resolves nothing.
+    _patch_spec(monkeypatch, "DnsBot", CrawlerSpec(domains=("example.com",)))
+    calls: list[str] = []
+
+    def fake_reverse(ip: str) -> tuple[str | None, bool]:
+        calls.append(ip)
+        return "crawl.example.com", False
+
+    monkeypatch.setattr(netverify, "_reverse_dns", fake_reverse)
+    monkeypatch.setattr(netverify, "_forward_ips", lambda host: {"66.249.66.1"})
+    items = [(ClientId(ip="66.249.66.1", user_agent="DnsBot"), "DnsBot")]
+
+    first = BotVerifier().verify_all(items)
+    assert first[items[0][0]].status is VerificationStatus.VERIFIED
+    assert calls == ["66.249.66.1"]  # resolved once, then written to disk
+
+    second = BotVerifier().verify_all(items)  # fresh instance reads the cache
+    assert second[items[0][0]].status is VerificationStatus.VERIFIED
+    assert calls == ["66.249.66.1"]  # no new lookup
+
+
+def test_transient_dns_failures_not_persisted(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A timeout (None, False) must not be cached, so the next run retries.
+    _patch_spec(monkeypatch, "DnsBot", CrawlerSpec(domains=("example.com",)))
+    calls: list[str] = []
+
+    def flaky_reverse(ip: str) -> tuple[str | None, bool]:
+        calls.append(ip)
+        if len(calls) == 1:
+            return None, False  # transient failure first time
+        return "crawl.example.com", False
+
+    monkeypatch.setattr(netverify, "_reverse_dns", flaky_reverse)
+    monkeypatch.setattr(netverify, "_forward_ips", lambda host: {"66.249.66.1"})
+    items = [(ClientId(ip="66.249.66.1", user_agent="DnsBot"), "DnsBot")]
+
+    assert BotVerifier().verify_all(items)[items[0][0]].status is VerificationStatus.UNVERIFIED
+    assert BotVerifier().verify_all(items)[items[0][0]].status is VerificationStatus.VERIFIED
+    assert calls == ["66.249.66.1", "66.249.66.1"]  # retried, not served from cache
+
+
 # --- IP-range path ---
 
 

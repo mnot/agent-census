@@ -21,15 +21,19 @@ keeps a dead resolver from stalling the run or delaying exit. Enabled only with
 
 from __future__ import annotations
 
+import json
 import socket
 import threading
+import time
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import TypeVar
 
 from . import uas
 from .dataload import CrawlerSpec, load_tokens
 from .iprange import Network as _Network
+from .iprange import cache_dir
 from .iprange import fetch_ranges_text as _fetch_ranges_text
 from .iprange import ip_in as _ip_in
 from .iprange import parse_networks as _parse_networks
@@ -38,6 +42,12 @@ from .model import BotVerification, ClientId, VerificationStatus
 
 _MAX_WORKERS = 32
 _DNS_TIMEOUT = 5.0  # seconds per individual lookup
+_DNS_CACHE_TTL = 24 * 60 * 60  # re-resolve a given host/IP at most daily
+
+
+def _dns_cache_path() -> Path:
+    return cache_dir() / "dns.json"
+
 
 _T = TypeVar("_T")
 
@@ -114,6 +124,50 @@ class BotVerifier:
         self._reverse: dict[str, tuple[str | None, bool]] = {}
         self._forward: dict[str, frozenset[str]] = {}
         self._ranges: dict[str, tuple[_Network, ...]] = {}
+        # When each entry was resolved, so the on-disk cache can expire per-entry.
+        self._reverse_ts: dict[str, float] = {}
+        self._forward_ts: dict[str, float] = {}
+        self._load_dns_cache()
+
+    def _load_dns_cache(self) -> None:
+        """Seed the in-memory DNS caches from disk, dropping entries past the TTL."""
+        try:
+            data = json.loads(_dns_cache_path().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        now = time.time()
+        for ip, entry in data.get("reverse", {}).items():
+            if isinstance(entry, list) and len(entry) == 3 and now - entry[2] < _DNS_CACHE_TTL:
+                self._reverse[ip] = (entry[0], bool(entry[1]))
+                self._reverse_ts[ip] = entry[2]
+        for host, entry in data.get("forward", {}).items():
+            if isinstance(entry, list) and len(entry) == 2 and now - entry[1] < _DNS_CACHE_TTL:
+                self._forward[host] = frozenset(entry[0])
+                self._forward_ts[host] = entry[1]
+
+    def _save_dns_cache(self) -> None:
+        """Persist resolved DNS results so the next run skips re-resolving them.
+
+        Transient failures (no host and no definitive no-record; empty forward
+        set) are not persisted, so they are retried next run rather than cached.
+        """
+        now = time.time()
+        reverse = {
+            ip: [host, no_ptr, self._reverse_ts.get(ip, now)]
+            for ip, (host, no_ptr) in self._reverse.items()
+            if host is not None or no_ptr
+        }
+        forward = {
+            host: [sorted(ips), self._forward_ts.get(host, now)]
+            for host, ips in self._forward.items()
+            if ips
+        }
+        try:
+            _dns_cache_path().write_text(
+                json.dumps({"reverse": reverse, "forward": forward}), encoding="utf-8"
+            )
+        except OSError:
+            pass
 
     def needs(self, ua: str | None) -> bool:
         """True if the UA declares a crawler we have something to verify against."""
@@ -144,6 +198,7 @@ class BotVerifier:
         result = _reverse_dns(ip)  # slow; resolved outside the lock
         with self._lock:
             self._reverse[ip] = result
+            self._reverse_ts[ip] = time.time()
         return result
 
     def _cached_forward(self, host: str) -> frozenset[str]:
@@ -153,6 +208,7 @@ class BotVerifier:
         ips = frozenset(_forward_ips(host))
         with self._lock:
             self._forward[host] = ips
+            self._forward_ts[host] = time.time()
         return ips
 
     def verify(  # pylint: disable=too-many-return-statements
@@ -254,4 +310,5 @@ class BotVerifier:
                 verification = future.result()
                 for client_id in work[(ip, ua)]:
                     results[client_id] = verification
+        self._save_dns_cache()  # persist this run's resolutions for the next one
         return results

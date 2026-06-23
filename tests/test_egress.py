@@ -12,6 +12,13 @@ from agent_census.parsing.apache import PRESETS
 _RELAY = EgressNetwork(name="iCloud Private Relay", tag="icloud-private-relay")
 
 
+def test_known_egress_networks_are_registered() -> None:
+    from agent_census.dataload import load_egress_networks
+
+    tags = {network.tag for network in load_egress_networks()}
+    assert {"icloud-private-relay", "tor-exit"} <= tags
+
+
 def test_lookup_uses_remote_ranges_only_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(egress, "fetch_ranges_text", lambda url: "203.0.113.0/24")
     try:

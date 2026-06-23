@@ -54,6 +54,7 @@ _TAG_COLORS: dict[str, str] = {
     "datacenter": "#9333ea",  # origin is hosting, not an eyeball network -> purple
     "ua-rotating": "#d97706",  # many UAs from a hosting/non-browser source -> amber
     "icloud-private-relay": "#0284c7",  # privacy relay; a positive browser signal -> blue
+    "tor-exit": "#6d28d9",  # Tor exit node; anonymised egress -> violet
     # 'shared-ip' is left neutral (grey): many UAs but a benign shared egress.
 }
 

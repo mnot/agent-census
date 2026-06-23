@@ -33,7 +33,7 @@ KIND_BLURB: dict[Kind, str] = {
     Kind.SOCIAL_PREVIEW: "Link-unfurl fetchers building share previews.",
     Kind.AI_CRAWLER: "AI / LLM data-gathering crawlers.",
     Kind.SEO_MARKETING: "SEO / marketing / brand-monitoring crawlers.",
-    Kind.IMPERSONATOR: "Clients faking a declared identity (DNS mismatch or probing).",
+    Kind.IMPERSONATOR: "Clients faking a declared crawler identity (DNS / IP-range mismatch).",
     Kind.SCRAPER: "Content harvesters hitting pages cold, without following links.",
     Kind.VULN_SCANNER: "Clients probing for known-vulnerable paths and misconfigurations.",
     Kind.SPOOFED_BROWSER: "Datacenter clients wearing a browser UA without browser behaviour.",

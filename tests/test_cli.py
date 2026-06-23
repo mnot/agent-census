@@ -59,6 +59,17 @@ def test_config_error_returns_2(tmp_path: Path) -> None:
     assert rc == 2
 
 
+def test_keyboard_interrupt_returns_130(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def boom(*_args: object, **_kwargs: object) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("agent_census.cli.pipeline.analyze", boom)
+    assert main(["analyze", LOG]) == 130
+    assert "interrupted" in capsys.readouterr().err
+
+
 def test_no_command_prints_help_returns_0() -> None:
     assert main([]) == 0
 

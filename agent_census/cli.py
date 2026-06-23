@@ -293,11 +293,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             text = render_inspect(
                 result, client=args.client, kind=args.kind, limit=args.limit, full=args.full
             )
+        _emit(text, args.output)
+    except KeyboardInterrupt:
+        print("\ninterrupted", file=sys.stderr)
+        return 130
     except AgentCensusError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except OSError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    _emit(text, args.output)
     return 0

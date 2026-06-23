@@ -89,6 +89,24 @@ def _response_content_type(entry: LogEntry) -> str:
     return ""
 
 
+def _as_identity(entry: LogEntry) -> tuple[str | None, str | None]:
+    """Autonomous-system (org, number) from a MaxMind env field, or (None, None).
+
+    Matches ``%{MM_ASORG}e`` / ``%{MM_ASN}e`` and the long MaxMind field names,
+    case-insensitively. Returns whatever the log carries; nothing is inferred.
+    """
+    org = number = None
+    for key, value in entry.extra.items():
+        if not value:
+            continue
+        name = key.lower().split(":", 1)[-1]  # drop the 'env:' / 'note:' prefix
+        if org is None and ("asorg" in name or "autonomous_system_organization" in name):
+            org = value
+        elif number is None and ("asn" in name or "autonomous_system_number" in name):
+            number = value
+    return org, number
+
+
 def _is_feed_request(entry: LogEntry, path: str) -> bool:
     """True if the request looks like a feed poll: feed-ish URL or RSS/Atom type."""
     parts = [p for p in path.split("/") if p]
@@ -175,7 +193,7 @@ def _merge_sample(left: list[str] | None, right: list[str] | None) -> list[str] 
     return merged
 
 
-class FeatureAccumulator:
+class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
     """Folds a client's entries into feature metrics without retaining them.
 
     Real logs have a long tail of one-off clients, so the per-instance cost has
@@ -189,7 +207,8 @@ class FeatureAccumulator:
     __slots__ = (
         "_disallowed_check", "count", "total_bytes", "status_counts", "count_404",
         "paths_404", "vuln_hits", "vuln_sample", "traversal_hits", "methods",
-        "distinct_paths", "static_count", "fetched_robots", "user_agent", "first_seen",
+        "distinct_paths", "static_count", "fetched_robots", "user_agent", "as_org",
+        "as_number", "first_seen",
         "last_seen", "_has_prev", "_prev_top", "breadth_changes",
         "breadth_pairs", "ref_total", "ref_onsite", "self_referer_hits", "pages_total",
         "pages_satisfied",
@@ -210,6 +229,8 @@ class FeatureAccumulator:
         self.static_count = 0
         self.fetched_robots = False
         self.user_agent: str | None = None
+        self.as_org: str | None = None
+        self.as_number: str | None = None
         self.first_seen: datetime | None = None
         self.last_seen: datetime | None = None
         self._has_prev = False
@@ -251,6 +272,8 @@ class FeatureAccumulator:
         self.total_bytes += entry.bytes_sent or 0
         if self.user_agent is None and entry.user_agent:
             self.user_agent = entry.user_agent
+        if self.as_org is None and entry.extra:
+            self.as_org, self.as_number = _as_identity(entry)
 
         if entry.status is not None:
             if self.status_counts is None:
@@ -426,6 +449,8 @@ class FeatureAccumulator:
         self.robots_fetched_first = self.robots_fetched_first or other.robots_fetched_first
         if self.user_agent is None:
             self.user_agent = other.user_agent
+        if self.as_org is None:
+            self.as_org, self.as_number = other.as_org, other.as_number
         if other.first_seen is not None and (
             self.first_seen is None or other.first_seen < self.first_seen
         ):
@@ -533,6 +558,8 @@ class FeatureAccumulator:
             ua_declares_bot=uas.declares_bot(self.user_agent),
             ua_empty=uas.is_empty(self.user_agent),
             ua_count_for_ip=ua_count_for_ip,
+            as_org=self.as_org,
+            as_number=self.as_number,
         )
 
 

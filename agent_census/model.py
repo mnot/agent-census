@@ -184,6 +184,11 @@ class ClientFeatures:  # pylint: disable=too-many-instance-attributes
     ua_empty: bool = True
     ua_count_for_ip: int = 1
 
+    # Autonomous-system identity from the log (MaxMind %{MM_ASORG}e / %{MM_ASN}e),
+    # when present. Not inferred -- absent if the log doesn't carry it.
+    as_org: str | None = None
+    as_number: str | None = None
+
 
 @dataclass(frozen=True, slots=True)
 class Signal:

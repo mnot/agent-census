@@ -14,6 +14,24 @@ def test_empty_input() -> None:
     assert feats.request_count == 0
 
 
+def test_as_identity_captured_from_env_fields() -> None:
+    # MaxMind %{MM_ASORG}e / %{MM_ASN}e land in extra; first non-empty wins.
+    feats = extract_features(
+        [
+            entry("/a", extra={"env:MM_ASORG": "Amazon.com, Inc.", "env:MM_ASN": "16509"}),
+            entry("/b", offset=1, extra={"env:MM_ASORG": "Amazon.com, Inc."}),
+        ]
+    )
+    assert feats.as_org == "Amazon.com, Inc."
+    assert feats.as_number == "16509"
+
+
+def test_as_identity_absent_without_env_fields() -> None:
+    feats = extract_features([entry("/a"), entry("/b", offset=1)])
+    assert feats.as_org is None
+    assert feats.as_number is None
+
+
 def test_volume_and_bandwidth() -> None:
     feats = extract_features(
         [entry("/a", bytes_sent=100), entry("/b", bytes_sent=300, offset=1)]

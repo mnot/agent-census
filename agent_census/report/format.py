@@ -55,12 +55,28 @@ def top_evidence(profile: ClientProfile) -> str:
     return evidence[0] if evidence else "–"
 
 
+def as_label(org: str, number: str | None = None) -> str:
+    """Format an AS org (+ optional number) like ``Amazon.com, Inc. (AS16509)``."""
+    if not number:
+        return org
+    num = number[2:] if number[:2].upper() == "AS" else number
+    return f"{org} (AS{num})"
+
+
 def client_label(profile: ClientProfile) -> str:
-    """The ``identity | user-agent`` label, with bot UA boilerplate elided."""
+    """The ``identity | user-agent`` label, with bot UA boilerplate elided.
+
+    For datacenter clients the logged AS org (``%{MM_ASORG}e``) is appended when
+    present, so the listing names the hosting org behind a bare IP/subnet.
+    """
     cid = profile.client_id
     prefix = cid.subnet if cid.subnet is not None else cid.ip
     ua = elide_ua(cid.user_agent, is_browser=profile.classification.primary is Kind.BROWSER)
-    return f"{prefix} | {ua if ua is not None else '-'}"
+    label = f"{prefix} | {ua if ua is not None else '-'}"
+    org = profile.features.as_org
+    if org and "datacenter" in profile.classification.tags:
+        label += f" · {org}"
+    return label
 
 
 def kind_label(kind: Kind) -> str:
@@ -119,7 +135,7 @@ def feature_rows(feats: ClientFeatures) -> list[tuple[str, str]]:
         return f"{value:.2f}" if value is not None else "–"
 
     methods = ", ".join(f"{m} {c}" for m, c in sorted(feats.method_counts.items())) or "–"
-    return [
+    rows = [
         (
             "status mix",
             f"2xx {pct(feats.ratio_2xx)} · 3xx {pct(feats.ratio_3xx)} · "
@@ -152,3 +168,6 @@ def feature_rows(feats: ClientFeatures) -> list[tuple[str, str]]:
         ),
         ("fetched robots.txt", str(feats.fetched_robots_txt)),
     ]
+    if feats.as_org:
+        rows.append(("AS / network", as_label(feats.as_org, feats.as_number)))
+    return rows

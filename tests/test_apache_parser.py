@@ -136,6 +136,19 @@ def test_ssl_variable_directive() -> None:
     assert entry.extra["ssl:SSL_CIPHER"] == "TLS_AES_256_GCM_SHA384"
 
 
+def test_env_directive_captures_as_org_with_spaces() -> None:
+    # MaxMind AS org via %{MM_ASORG}e; quoted so the comma/space org is whole.
+    fmt = '%h %t "%r" %>s %b "%{MM_ASORG}e" "%{MM_ASN}e"'
+    line = (
+        '10.0.0.1 [10/Oct/2000:13:55:36 +0000] "GET / HTTP/1.1" 200 1 '
+        '"Amazon.com, Inc." "16509"'
+    )
+    entry = _one(fmt, line).entry
+    assert entry is not None
+    assert entry.extra["env:MM_ASORG"] == "Amazon.com, Inc."
+    assert entry.extra["env:MM_ASN"] == "16509"
+
+
 def test_port_and_pid_directives() -> None:
     fmt = "%h %t %{canonical}p %{pid}P %>s"
     line = "10.0.0.1 [10/Oct/2000:13:55:36 +0000] 443 1234 200"

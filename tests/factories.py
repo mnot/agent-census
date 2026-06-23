@@ -20,6 +20,7 @@ def entry(
     referer: str | None = None,
     offset: float = 0.0,
     query: str | None = None,
+    extra: dict[str, str] | None = None,
 ) -> LogEntry:
     """Build a LogEntry with sensible defaults; ``offset`` is seconds past BASE."""
     return LogEntry(
@@ -33,4 +34,5 @@ def entry(
         bytes_sent=bytes_sent,
         referer=referer,
         user_agent=user_agent,
+        extra=extra or {},
     )

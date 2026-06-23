@@ -139,3 +139,6 @@ domains = ["timpi.io"]
 # https://www.semanticscholar.org/crawler
 ua_substring = "SemanticScholarBot"
 
+[[agent]]
+# https://www.lyrenth.com/bot
+ua_substring ="AIWebIndex"

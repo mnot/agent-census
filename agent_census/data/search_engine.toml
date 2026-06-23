@@ -4,43 +4,51 @@
 # ranges_url (JSON of published ranges, fetched + cached under --verify-bots).
 
 [[agent]]
+# https://developers.google.com/crawling/docs/crawlers-fetchers/google-common-crawlers
 ua_substring = "Googlebot"
 domains = ["googlebot.com", "google.com"]
-ranges_url = "https://developers.google.com/static/crawling/ipranges/googlebot.json"
+ranges_url = "https://developers.google.com/static/crawling/ipranges/common-crawlers.json"
 
 [[agent]]
+# https://developers.google.com/crawling/docs/crawlers-fetchers/google-common-crawlers
 ua_substring = "Googlebot-Image"
 domains = ["googlebot.com", "google.com"]
+ranges_url = "https://developers.google.com/static/crawling/ipranges/common-crawlers.json"
 
 [[agent]]
+# https://developers.google.com/crawling/docs/crawlers-fetchers/google-common-crawlers
 ua_substring = "GoogleOther"
 domains = ["googlebot.com", "google.com"]
+ranges_url = "https://developers.google.com/static/crawling/ipranges/common-crawlers.json"
 
 [[agent]]
+# https://www.bing.com/webmasters/help/which-crawlers-does-bing-use-8c184ec0
 ua_substring = "Bingbot"
 domains = ["search.msn.com"]
+ranges_url = "https://www.bing.com/toolbox/bingbot.json"
 
 [[agent]]
+# https://www.bing.com/webmasters/help/which-crawlers-does-bing-use-8c184ec0
 ua_substring = "BingPreview"
 domains = ["search.msn.com"]
+ranges_url = "https://www.bing.com/toolbox/bingbot.json"
 
 [[agent]]
 ua_substring = "Slurp"
 domains = ["crawl.yahoo.net"]
 
 [[agent]]
+# https://duckduckgo.com/duckduckgo-help-pages/results/duckduckbot
 ua_substring = "DuckDuckBot"
 domains = ["duckduckgo.com"]
-
-[[agent]]
-ua_substring = "DuckDuckGo"
-domains = ["duckduckgo.com"]
+ranges_url = "https://duckduckgo.com/duckduckbot.json"
 
 [[agent]]
 ua_substring = "Baiduspider"
 domains = ["crawl.baidu.com", "baidu.jp"]
 
 [[agent]]
+# https://yandex.com/support/webmaster/en/robot-workings/check-yandex-robots.html
 ua_substring = "YandexBot"
 domains = ["yandex.com", "yandex.net", "yandex.ru"]
 
@@ -49,18 +57,17 @@ ua_substring = "YandexImages"
 domains = ["yandex.com", "yandex.net", "yandex.ru"]
 
 [[agent]]
+# https://support.apple.com/en-us/119829
 ua_substring = "Applebot"
 domains = ["applebot.apple.com"]
+ranges_url = "https://search.developer.apple.com/applebot.json"
 
 [[agent]]
 ua_substring = "Sogou"
 domains = ["sogou.com"]
 
 [[agent]]
-ua_substring = "Exabot"
-domains = ["exabot.com"]
-
-[[agent]]
+# https://o-seznam.cz/napoveda/vyhledavani/en/seznambot-crawler/
 ua_substring = "SeznamBot"
 domains = ["seznam.cz"]
 
@@ -69,20 +76,26 @@ ua_substring = "PetalBot"
 domains = ["aspiegel.com", "petalsearch.com"]
 
 [[agent]]
+# https://help.qwant.com/bot/
 ua_substring = "Qwantbot"
 domains = ["qwant.com"]
+ranges_url = "https://help.qwant.com/wp-content/uploads/sites/latest/qwantbot.json"
 
 [[agent]]
+# https://www.mojeek.com/bot.html
 ua_substring = "MojeekBot"
 domains = ["mojeek.com"]
+ranges_url = "https://www.mojeek.com/mojeekbot.json"
 
 [[agent]]
 ua_substring = "coccocbot"
 domains = ["coccoc.com"]
 
 [[agent]]
+# https://bot.seekport.com
 ua_substring = "SeekportBot"
 domains = ["seekport.com"]
+# ranges_url = "https://bot.seekport.com/seekportbot_ips.txt"
 
 [[agent]]
 ua_substring = "YisouSpider"

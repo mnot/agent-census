@@ -3,21 +3,29 @@
 # than to serve the site's own audience. Most publish IP ranges, not reverse DNS.
 
 [[agent]]
+# https://ahrefs.com/robot
 ua_substring = "AhrefsBot"
+domains = ["ahrefs.com", "ahrefs.net"]
+ranges_url = "https://api.ahrefs.com/v3/public/crawler-ip-ranges"
 
 [[agent]]
+# https://www.semrush.com/bot/
 ua_substring = "SemrushBot"
 
 [[agent]]
+# https://mj12bot.com
 ua_substring = "MJ12bot"
 
 [[agent]]
+# https://moz.com/help/moz-procedures/crawlers/dotbot
 ua_substring = "DotBot"
 
 [[agent]]
+# https://dataforseo.com/dataforseo-bot
 ua_substring = "DataForSeoBot"
 
 [[agent]]
+# https://www.zoominfo.com/legal/zoominfobot
 ua_substring = "ZoominfoBot"
 
 [[agent]]

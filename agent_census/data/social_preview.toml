@@ -2,12 +2,9 @@
 # preview card shown when a link is shared in a chat or post.
 
 [[agent]]
+# https://developers.facebook.com/docs/sharing/webmasters/web-crawlers/
 ua_substring = "facebookexternalhit"
 domains = ["facebook.com", "fbsv.net"]
-
-[[agent]]
-ua_substring = "Facebot"
-domains = ["facebook.com"]
 
 [[agent]]
 ua_substring = "Twitterbot"

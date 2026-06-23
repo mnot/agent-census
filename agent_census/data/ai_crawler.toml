@@ -4,6 +4,7 @@
 # --verify-bots and the right signal for crawlers that don't support reverse DNS.
 
 [[agent]]
+# https://developers.openai.com/api/docs/bots
 ua_substring = "GPTBot"
 domains = ["openai.com"]
 ranges_url = "https://openai.com/gptbot.json"
@@ -19,45 +20,53 @@ domains = ["openai.com"]
 ranges_url = "https://openai.com/searchbot.json"
 
 [[agent]]
+# https://support.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler
 ua_substring = "ClaudeBot"
 domains = ["anthropic.com", "claude.ai"]
-ranges = ["160.79.104.0/21"]  # https://platform.claude.com/docs/en/api/ip-addresses
+ranges_url = "https://claude.com/crawling/bots.json"
 
 [[agent]]
 ua_substring = "Claude-Web"
 domains = ["anthropic.com"]
+ranges_url = "https://claude.com/crawling/bots.json"
 
 [[agent]]
 ua_substring = "Claude-SearchBot"
 domains = ["anthropic.com"]
+ranges_url = "https://claude.com/crawling/bots.json"
 
 [[agent]]
-ua_substring = "anthropic-ai"
-domains = ["anthropic.com"]
-
-[[agent]]
+# https://commoncrawl.org/ccbot
 ua_substring = "CCBot"
 domains = ["commoncrawl.org"]
+ranges_url = "https://index.commoncrawl.org/ccbot.json"
 
 [[agent]]
 ua_substring = "Google-Extended"
 domains = ["google.com", "googlebot.com"]
 
 [[agent]]
+# https://developers.google.com/crawling/docs/crawlers-fetchers/google-common-crawlers
 ua_substring = "Google-CloudVertexBot"
 domains = ["google.com"]
+ranges_url = "https://developers.google.com/static/crawling/ipranges/common-crawlers.json"
 
 [[agent]]
+# https://docs.perplexity.ai/docs/resources/perplexity-crawlers
 ua_substring = "PerplexityBot"
 domains = ["perplexity.ai"]
+ranges_url = "https://www.perplexity.com/perplexitybot.json"
 
 [[agent]]
 ua_substring = "Perplexity-User"
 domains = ["perplexity.ai"]
+ranges_url = "https://www.perplexity.com/perplexity-user.json"
 
 [[agent]]
+# https://developer.amazon.com/amazonbot
 ua_substring = "Amazonbot"
 domains = ["amazon.com", "crawl.amazonbot.amazon"]
+ranges_url = "https://developer.amazon.com/amazonbot/ip-addresses/"
 
 [[agent]]
 ua_substring = "Bytespider"
@@ -66,10 +75,6 @@ domains = ["bytedance.com"]
 [[agent]]
 ua_substring = "TikTokSpider"
 domains = ["bytedance.com"]
-
-[[agent]]
-ua_substring = "Applebot-Extended"
-domains = ["apple.com", "applebot.apple.com"]
 
 [[agent]]
 ua_substring = "Diffbot"
@@ -96,15 +101,18 @@ ua_substring = "YouBot"
 domains = ["you.com"]
 
 [[agent]]
-ua_substring = "meta-externalagent"
+# https://developers.facebook.com/docs/sharing/webmasters/web-crawlers/
+ua_substring = "Meta-webindexer"
 domains = ["facebook.com"]
 
 [[agent]]
-ua_substring = "Meta-ExternalAgent"
+# https://developers.facebook.com/docs/sharing/webmasters/web-crawlers/
+ua_substring = "Meta-externalagent"
 domains = ["facebook.com"]
 
 [[agent]]
-ua_substring = "FacebookBot"
+# https://developers.facebook.com/docs/sharing/webmasters/web-crawlers/
+ua_substring = "Meta-externalfetcher"
 domains = ["facebook.com"]
 
 [[agent]]

@@ -11,7 +11,6 @@ from __future__ import annotations
 import re
 from functools import lru_cache
 
-from .. import uas
 from ..dataload import load_list
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
@@ -26,7 +25,7 @@ _FEED_UA = re.compile(
 )
 
 
-@lru_cache(maxsize=uas.UA_CACHE_SIZE)
+@lru_cache(maxsize=16384)
 def _ua_is_feed_reader(ua: str | None) -> bool:
     if not ua:
         return False

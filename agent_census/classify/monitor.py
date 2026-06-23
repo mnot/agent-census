@@ -9,7 +9,6 @@ from __future__ import annotations
 import re
 from functools import lru_cache
 
-from .. import uas
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
 
@@ -20,7 +19,7 @@ _MONITOR_UA = re.compile(
 )
 
 
-@lru_cache(maxsize=uas.UA_CACHE_SIZE)
+@lru_cache(maxsize=16384)
 def _ua_is_monitor(ua: str | None) -> bool:
     return bool(ua and _MONITOR_UA.search(ua))
 

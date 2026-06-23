@@ -1,8 +1,13 @@
 """Opt-in reverse/forward DNS verification of declared crawlers.
 
-A client can trivially claim to be Googlebot in its User-Agent. The real check is
-DNS: reverse-resolve the IP, confirm the hostname ends in an expected domain, then
-forward-resolve that hostname and confirm it points back to the same IP.
+A client can trivially claim to be Googlebot in its User-Agent. Two ways to check:
+
+* A ``ranges_url`` (or inline ``ranges``) is **authoritative** when present: the
+  IP is verified iff it falls in the published CIDRs, and an out-of-range IP
+  claiming the crawler is an impersonator -- no DNS involved.
+* Otherwise, DNS: reverse-resolve the IP, confirm the hostname ends in an
+  expected domain, and forward-resolve it back. A client claiming a DNS-verified
+  crawler but having no PTR record at all is treated as an impersonator.
 
 DNS is the slow part, so verification is done as a deduped, concurrent batch:
 each distinct IP is resolved once, and the lookups run across a thread pool (they
@@ -218,8 +223,34 @@ class BotVerifier:
                 evidence=(f"no verifying domain or IP range known for {substring}",),
             )
 
-        # IP-range membership is authoritative and needs no DNS.
         networks = self._networks_for(spec)
+
+        # A ranges_url is authoritative: the published list is the whole truth,
+        # so an IP outside it is an impersonator (no DNS fallback). If we could
+        # not obtain the list, we cannot judge -- unverified rather than guess.
+        if spec.ranges_url:
+            if not networks:
+                return BotVerification(
+                    VerificationStatus.UNVERIFIED,
+                    expected_domains=spec.domains,
+                    evidence=(f"could not fetch the published {substring} IP ranges",),
+                )
+            match = _ip_in(ip, networks)
+            if match is not None:
+                return BotVerification(
+                    VerificationStatus.VERIFIED,
+                    resolved_host=str(match),
+                    expected_domains=spec.domains,
+                    evidence=(f"{ip} is within {match}, a published {substring} range",),
+                )
+            return BotVerification(
+                VerificationStatus.IMPERSONATOR,
+                expected_domains=spec.domains,
+                evidence=(f"{ip} is not in any published {substring} range (authoritative)",),
+            )
+
+        # Inline ranges without a ranges_url are a positive signal but not
+        # exhaustive, so a miss falls back to DNS when domains are configured.
         if networks:
             match = _ip_in(ip, networks)
             if match is not None:
@@ -233,21 +264,17 @@ class BotVerifier:
                 return BotVerification(
                     VerificationStatus.IMPERSONATOR,
                     expected_domains=spec.domains,
-                    evidence=(f"{ip} is not in any published {substring} IP range",),
+                    evidence=(f"{ip} is not in any published {substring} range",),
                 )
 
-        if not spec.domains:
-            return BotVerification(
-                VerificationStatus.UNVERIFIED,
-                evidence=(f"could not obtain a verifying IP range for {substring}",),
-            )
-
+        # Reverse/forward DNS. A crawler verified this way is expected to have a
+        # PTR record, so its absence under this UA is treated as impersonation.
         host = self._cached_reverse(ip)
         if host is None:
             return BotVerification(
-                VerificationStatus.UNVERIFIED,
+                VerificationStatus.IMPERSONATOR,
                 expected_domains=spec.domains,
-                evidence=(f"reverse DNS lookup of {ip} failed",),
+                evidence=(f"{ip} has no reverse-DNS record but its UA claims {substring}",),
             )
         if not _domain_matches(host, spec.domains):
             return BotVerification(

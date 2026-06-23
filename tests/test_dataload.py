@@ -8,8 +8,7 @@ from agent_census.dataload import load_list, load_tokens
 def test_crawler_spec_fields() -> None:
     spec = dict(load_tokens("ai_crawler"))["ClaudeBot"]
     assert spec.domains == ("anthropic.com", "claude.ai")
-    assert spec.ranges == ("160.79.104.0/21",)  # inline-comment source stripped by TOML
-    assert spec.ranges_url is None
+    assert spec.ranges_url == "https://claude.com/crawling/bots.json"
 
 
 def test_ranges_url_loaded() -> None:

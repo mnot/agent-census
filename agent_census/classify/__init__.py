@@ -26,6 +26,7 @@ def classify_client(
     *,
     compliance: ComplianceReport | None = None,
     verification: BotVerification | None = None,
+    datacenter: bool = False,
     unknown_threshold: float = DEFAULT_UNKNOWN_THRESHOLD,
     keep_signals: bool = True,
 ) -> Classification:
@@ -36,6 +37,7 @@ def classify_client(
         features,
         compliance=compliance,
         verification=verification,
+        datacenter=datacenter,
         unknown_threshold=unknown_threshold,
         keep_signals=keep_signals,
     )

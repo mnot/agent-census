@@ -36,6 +36,7 @@ class Kind(str, Enum):
     SCRAPER = "scraper"
     SPAM_BOT = "spam_bot"
     IMPERSONATOR = "impersonator"
+    SPOOFED_BROWSER = "spoofed_browser"
     SINGLETON = "singleton"
     UNKNOWN = "unknown"
 

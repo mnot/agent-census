@@ -51,13 +51,36 @@ def impersonation(verification: BotVerification | None) -> tuple[bool, tuple[str
     return False, ()
 
 
+def looks_like_fake_browser(features: ClientFeatures) -> bool:
+    """A browser User-Agent showing none of the behaviour a real browser shows.
+
+    Real browsers pull a page's sub-resources (CSS/JS/images) and follow links
+    via the referer. A client claiming to be a browser that never co-loads assets
+    and never follows a referer is presenting a costume, not browsing. Needs at
+    least two requests -- a single request reveals nothing either way.
+    """
+    return (
+        features.ua_looks_like_browser
+        and features.request_count >= 2
+        and features.asset_coload_ratio == 0.0
+        and features.referer_following_ratio == 0.0
+    )
+
+
 def derive_tags(
     features: ClientFeatures,
     compliance: ComplianceReport | None,
     verification: BotVerification | None,
+    *,
+    datacenter: bool = False,
 ) -> set[str]:
     """Compute the secondary tags for a client."""
     tags: set[str] = set()
+
+    if datacenter:
+        tags.add("datacenter")
+    if looks_like_fake_browser(features):
+        tags.add("fake-browser")
 
     if features.fetched_robots_txt:
         tags.add("checked-robots")

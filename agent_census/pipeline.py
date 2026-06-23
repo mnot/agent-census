@@ -21,6 +21,7 @@ from . import uas
 from .classify import DEFAULT_UNKNOWN_THRESHOLD, classify_client
 from .dataload import CrawlerSpec, load_tokens
 from .features import DisallowedCheck, FeatureAccumulator
+from .hosting import is_datacenter_ip
 from .identity import ClientKeyStrategy
 from .model import BotVerification, ClientId, ClientProfile, LogEntry, VerificationStatus
 from .parsing.base import LogParser
@@ -226,6 +227,7 @@ def analyze(  # pylint: disable=too-many-locals
             features,
             compliance=compliance,
             verification=verification,
+            datacenter=is_datacenter_ip(key.ip),
             unknown_threshold=unknown_threshold,
             keep_signals=keep_signals,
         )

@@ -17,7 +17,7 @@ from ..model import (
     Kind,
     Signal,
 )
-from .tags import derive_tags, impersonation
+from .tags import derive_tags, impersonation, looks_like_fake_browser
 
 # Tie-break order when two kinds share the top confidence: earlier wins.
 _PRIORITY: tuple[Kind, ...] = (
@@ -33,6 +33,7 @@ _PRIORITY: tuple[Kind, ...] = (
     Kind.BROWSER,
     Kind.SCRAPER,
     Kind.CRAWLER,
+    Kind.SPOOFED_BROWSER,
     Kind.SINGLETON,
     Kind.UNKNOWN,
 )
@@ -58,6 +59,7 @@ def combine(
     *,
     compliance: ComplianceReport | None = None,
     verification: BotVerification | None = None,
+    datacenter: bool = False,
     unknown_threshold: float = DEFAULT_UNKNOWN_THRESHOLD,
     keep_signals: bool = True,
 ) -> Classification:
@@ -71,7 +73,7 @@ def combine(
     for signal in signals:
         by_label[signal.kind] = max(by_label.get(signal.kind, 0.0), signal.confidence)
 
-    tags = derive_tags(features, compliance, verification)
+    tags = derive_tags(features, compliance, verification, datacenter=datacenter)
     stored = tuple(signals) if keep_signals else ()
 
     # Impersonation is decisive: a client faking a declared identity is an
@@ -87,6 +89,16 @@ def combine(
         )
 
     if not by_label or max(by_label.values()) < unknown_threshold:
+        # A would-be-unknown client wearing a browser UA from a hosting IP, with
+        # no browser behaviour, is automation in disguise -- name it as such.
+        if datacenter and looks_like_fake_browser(features):
+            return Classification(
+                primary=Kind.SPOOFED_BROWSER,
+                confidence=0.6,
+                tags=frozenset(tags),
+                evidence=("browser User-Agent from a datacenter IP, without browser behaviour",),
+                all_signals=stored,
+            )
         # A would-be-unknown client with a single request gets its own bucket:
         # one hit is too little to characterize, so we file it by volume.
         if features.request_count == 1:

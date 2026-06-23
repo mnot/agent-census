@@ -70,6 +70,40 @@ def test_combiner_one_request_keeps_confident_kind() -> None:
     assert result.primary is Kind.VULN_SCANNER
 
 
+_FAKE_BROWSER = ClientFeatures(
+    request_count=5,
+    ua_looks_like_browser=True,
+    asset_coload_ratio=0.0,
+    referer_following_ratio=0.0,
+)
+
+
+def test_combiner_spoofed_browser_from_datacenter() -> None:
+    # Browser UA + hosting IP + no browser behaviour, otherwise unknown -> spoofed.
+    signals = [Signal(Kind.BROWSER, 0.3, ("ua only",), "browser")]
+    result = combine(signals, _FAKE_BROWSER, datacenter=True, unknown_threshold=0.45)
+    assert result.primary is Kind.SPOOFED_BROWSER
+    assert {"fake-browser", "datacenter"} <= result.tags
+
+
+def test_combiner_fake_browser_without_datacenter_stays_unknown() -> None:
+    # The same costume from a non-hosting IP is only tagged, not promoted.
+    signals = [Signal(Kind.BROWSER, 0.3, ("ua only",), "browser")]
+    result = combine(signals, _FAKE_BROWSER, datacenter=False, unknown_threshold=0.45)
+    assert result.primary is Kind.UNKNOWN
+    assert "fake-browser" in result.tags
+    assert "datacenter" not in result.tags
+
+
+def test_combiner_real_browser_behaviour_from_datacenter_is_not_spoofed() -> None:
+    # Asset co-loading means real browsing; a hosting IP alone doesn't condemn it.
+    feats = ClientFeatures(request_count=5, ua_looks_like_browser=True, asset_coload_ratio=0.6)
+    signals = [Signal(Kind.BROWSER, 0.3, ("weak",), "browser")]
+    result = combine(signals, feats, datacenter=True, unknown_threshold=0.45)
+    assert result.primary is not Kind.SPOOFED_BROWSER
+    assert "fake-browser" not in result.tags
+
+
 def test_combiner_picks_strongest_label() -> None:
     signals = [
         Signal(Kind.CRAWLER, 0.5, ("a",), "crawler"),

@@ -33,6 +33,7 @@ _KIND_COLORS: dict[Kind, str] = {
     Kind.IMPERSONATOR: "#b91c1c",
     Kind.SCRAPER: "#d97706",
     Kind.VULN_SCANNER: "#dc2626",
+    Kind.SPOOFED_BROWSER: "#ea580c",
     Kind.SPAM_BOT: "#db2777",
     Kind.FEED_READER: "#65a30d",
     Kind.MONITOR: "#0d9488",
@@ -45,6 +46,8 @@ _TAG_COLORS: dict[str, str] = {
     "respects-robots": "#14b8a6",  # well-behaved, but softer/less definitive -> teal
     "impersonator": "#dc2626",
     "ignores-robots": "#d97706",
+    "fake-browser": "#ea580c",  # browser costume, no browser behaviour -> orange
+    "datacenter": "#9333ea",  # origin is hosting, not an eyeball network -> purple
 }
 
 _CSS = """

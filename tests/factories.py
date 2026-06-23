@@ -23,7 +23,6 @@ def entry(
 ) -> LogEntry:
     """Build a LogEntry with sensible defaults; ``offset`` is seconds past BASE."""
     return LogEntry(
-        raw_line=f"{method} {path}",
         line_no=1,
         remote_host=ip,
         timestamp=BASE + timedelta(seconds=offset),

@@ -145,7 +145,7 @@ class ApacheParser(LogParser):
                     raw_line=stripped,
                 )
                 continue
-            yield ParseOutcome(entry=builder.build(stripped, line_no), line_no=line_no)
+            yield ParseOutcome(entry=builder.build(line_no), line_no=line_no)
 
 
 def _factory(opts: Mapping[str, str]) -> ApacheParser:

@@ -250,7 +250,8 @@ def _trace_html(profile: ClientProfile, limit: int, full: bool) -> str:
     )
     rows = []
     for entry in shown:
-        target = (entry.path + ("?" + entry.query if entry.query else ""))[:90]
+        request = (entry.path + ("?" + entry.query if entry.query else "")) or entry.raw_request
+        target = request[:90]
         rows.append(
             f"<tr><td>{_esc(fmt_ts(entry.timestamp))}</td><td>{_esc(entry.method or '–')}</td>"
             f'<td class="mono">{_esc(target or "–")}</td>'

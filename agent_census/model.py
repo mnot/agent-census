@@ -41,9 +41,13 @@ class LogEntry:
     ``None`` means a field was absent (``-`` in the log); an empty string means
     the field was present but empty. That distinction matters: e.g. ``%b`` of
     ``-`` is normalized to ``0`` (no response body) rather than ``None``.
+
+    Entries are retained in bulk for the whole log, so the type stays lean: it
+    keeps the parsed fields, not the original line. ``raw_request`` is populated
+    only when the request line could not be split (malformed/garbage), where it
+    is the sole evidence of what was sent.
     """
 
-    raw_line: str
     line_no: int
 
     # client / network
@@ -61,7 +65,7 @@ class LogEntry:
     path: str = ""
     query: str | None = None
     protocol: str | None = None
-    raw_request: str = ""
+    raw_request: str = ""  # set only for an unparseable request line
 
     # response
     status: int | None = None

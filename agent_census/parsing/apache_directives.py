@@ -11,6 +11,7 @@ fragment that tolerates Apache's ``\\"`` escaping.
 from __future__ import annotations
 
 import re
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -62,9 +63,8 @@ class _Builder:
     host_header: str | None = None
     extra: dict[str, str] = field(default_factory=dict)
 
-    def build(self, raw_line: str, line_no: int) -> LogEntry:
+    def build(self, line_no: int) -> LogEntry:
         return LogEntry(
-            raw_line=raw_line,
             line_no=line_no,
             remote_host=self.remote_host if self.remote_host is not None else "-",
             remote_logname=self.remote_logname,
@@ -99,6 +99,16 @@ class Directive:
 
 def _unescape(value: str) -> str:
     return _UNESCAPE.sub(lambda m: _UNESCAPE_MAP.get(m.group(1), m.group(0)), value)
+
+
+def _istr(value: str) -> str:
+    """Intern a low-cardinality string so its many duplicates share one object.
+
+    A client's User-Agent repeats on every one of its requests, and methods /
+    protocols / hostnames take only a handful of distinct values across a whole
+    log; interning collapses those duplicates and cuts retained memory sharply.
+    """
+    return sys.intern(value)
 
 
 def parse_clf_time(value: str) -> datetime | None:
@@ -142,6 +152,13 @@ def _int_setter(attr: str) -> Setter:
     return setter
 
 
+def _intern_setter(attr: str) -> Setter:
+    def setter(builder: _Builder, value: str) -> None:
+        setattr(builder, attr, None if value == "-" else _istr(value))
+
+    return setter
+
+
 def _extra_setter(key: str) -> Setter:
     def setter(builder: _Builder, value: str) -> None:
         if value != "-":
@@ -168,15 +185,18 @@ def _set_secs(builder: _Builder, value: str) -> None:
 def _set_request(builder: _Builder, value: str) -> None:
     value = _unescape(value)
     if value == "-":
-        builder.raw_request = ""
         return
-    builder.raw_request = value
     parts = value.split(" ")
     if len(parts) == 3:
-        builder.method, target, builder.protocol = parts
-        path, sep, query = target.partition("?")
+        builder.method = _istr(parts[0])
+        builder.protocol = _istr(parts[2])
+        path, sep, query = parts[1].partition("?")
         builder.path = path
         builder.query = query if sep else None
+    else:
+        # Unparseable request line (often a scanner / TLS-on-plaintext probe):
+        # keep it verbatim as the only evidence of what was sent.
+        builder.raw_request = value
 
 
 def _set_path(builder: _Builder, value: str) -> None:
@@ -196,9 +216,9 @@ def _route_request_header(name: str) -> Setter:
         if lname == "referer":
             builder.referer = clean
         elif lname == "user-agent":
-            builder.user_agent = clean
+            builder.user_agent = _istr(clean) if clean is not None else None
         elif lname == "host":
-            builder.host_header = clean
+            builder.host_header = _istr(clean) if clean is not None else None
         elif lname == "x-forwarded-for":
             if clean:
                 builder.forwarded_for = tuple(p.strip() for p in clean.split(",") if p.strip())
@@ -218,10 +238,10 @@ _SIMPLE: dict[str, Directive] = {
     "u": Directive(_UNQUOTED, _str_setter("remote_user")),
     "t": Directive(_BRACKET, _set_time),
     "r": Directive(_QUOTED, _set_request),
-    "m": Directive(_UNQUOTED, _str_setter("method")),
+    "m": Directive(_UNQUOTED, _intern_setter("method")),
     "U": Directive(_URLPATH, _set_path),
     "q": Directive(_QUERY, _set_query),
-    "H": Directive(_UNQUOTED, _str_setter("protocol")),
+    "H": Directive(_UNQUOTED, _intern_setter("protocol")),
     "s": Directive(_UNQUOTED, _int_setter("status")),
     "b": Directive(_UNQUOTED, _set_bytes_clf),
     "B": Directive(_UNQUOTED, _int_setter("bytes_sent")),

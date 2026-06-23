@@ -9,7 +9,7 @@ from .factories import entry
 
 
 def _forwarded(ip: str, xff: tuple[str, ...]) -> LogEntry:
-    return LogEntry(raw_line="", line_no=1, remote_host=ip, forwarded_for=xff)
+    return LogEntry(line_no=1, remote_host=ip, forwarded_for=xff)
 
 
 def test_ip_strategy_merges_user_agents() -> None:

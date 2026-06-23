@@ -240,6 +240,7 @@ def _run_pipeline(args: argparse.Namespace) -> tuple[AnalysisResult, str | None]
         args.logfiles,
         parser,
         strategy,
+        keep_entries=args.command == "inspect",
         compliance_fn=compliance_fn,
         verify_fn=verify_fn,
         unknown_threshold=args.unknown_threshold,

@@ -103,7 +103,8 @@ def _trace_block(profile: ClientProfile, limit: int, full: bool) -> list[str]:
         "| --- | --- | --- | --: | --: | --- |",
     ]
     for entry in shown:
-        target = md_escape((entry.path + ("?" + entry.query if entry.query else ""))[:80])
+        request = (entry.path + ("?" + entry.query if entry.query else "")) or entry.raw_request
+        target = md_escape(request[:80])
         lines.append(
             f"| {fmt_ts(entry.timestamp)} | {entry.method or '–'} | {target or '–'} | "
             f"{entry.status if entry.status is not None else '–'} | "

@@ -111,14 +111,22 @@ def _identity_stats(grouped: dict[ClientId, list[LogEntry]]) -> IdentityStats:
 def build_profiles(
     grouped: dict[ClientId, list[LogEntry]],
     *,
+    keep_entries: bool = True,
     compliance_fn: ComplianceFn | None = None,
     verify_fn: VerifyFn | None = None,
     unknown_threshold: float = DEFAULT_UNKNOWN_THRESHOLD,
 ) -> list[ClientProfile]:
-    """Extract features, classify, and assemble a profile for each client."""
+    """Extract features, classify, and assemble a profile for each client.
+
+    The grouping dict is drained as it goes, so each client's entries become
+    collectable once its features are computed. With ``keep_entries=False`` (the
+    default for ``analyze``, which never shows raw requests) the entries are not
+    retained at all, keeping only the compact features and verdict.
+    """
     ua_counts = _ua_counts_by_ip(grouped)
     profiles: list[ClientProfile] = []
-    for client_id, entries in grouped.items():
+    while grouped:
+        client_id, entries = grouped.popitem()
         features = extract_features(entries, ua_count_for_ip=ua_counts.get(client_id.ip, 1))
         compliance = compliance_fn(client_id, entries, features) if compliance_fn else None
         verification = verify_fn(client_id, features) if verify_fn else None
@@ -131,7 +139,7 @@ def build_profiles(
         profiles.append(
             ClientProfile(
                 client_id=client_id,
-                entries=tuple(entries),
+                entries=tuple(entries) if keep_entries else (),
                 features=features,
                 classification=classification,
                 compliance=compliance,
@@ -146,6 +154,7 @@ def analyze(
     parser: LogParser,
     strategy: ClientKeyStrategy,
     *,
+    keep_entries: bool = True,
     compliance_fn: ComplianceFn | None = None,
     verify_fn: VerifyFn | None = None,
     unknown_threshold: float = DEFAULT_UNKNOWN_THRESHOLD,
@@ -154,11 +163,16 @@ def analyze(
 
     Multiple files are read in order as a single stream and pooled before
     grouping, so a client that appears across rotated logs is treated as one.
+    Pass ``keep_entries=False`` when the raw request traces are not needed (the
+    ``analyze`` report) to avoid retaining every parsed entry.
     """
     paths = [logs] if isinstance(logs, Path) else list(logs)
     grouped, skips = group_entries(parser, read_many(paths), strategy)
+    # Identity stats must be read before build_profiles drains the dict.
+    identity_stats = _identity_stats(grouped)
     profiles = build_profiles(
         grouped,
+        keep_entries=keep_entries,
         compliance_fn=compliance_fn,
         verify_fn=verify_fn,
         unknown_threshold=unknown_threshold,
@@ -168,5 +182,5 @@ def analyze(
         profiles=tuple(profiles),
         skips=skips,
         identity_strategy=strategy.name,
-        identity_stats=_identity_stats(grouped),
+        identity_stats=identity_stats,
     )

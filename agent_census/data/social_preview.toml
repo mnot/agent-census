@@ -8,7 +8,7 @@ domains = ["facebook.com", "fbsv.net"]
 
 [[agent]]
 ua_substring = "Twitterbot"
-domains = ["twitter.com"]
+domains = ["twitter.com", "twttr.com"]
 
 [[agent]]
 ua_substring = "LinkedInBot"

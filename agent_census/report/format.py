@@ -33,6 +33,11 @@ def client_label(profile: ClientProfile) -> str:
     return f"{prefix} | {ua if ua is not None else '-'}"
 
 
+def truncate(text: str, limit: int = 80) -> str:
+    """Shorten ``text`` to ``limit`` chars with an ellipsis (full detail is in inspect)."""
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
 def human_bytes(num: int) -> str:
     """Render a byte count as a compact human-readable string."""
     size = float(num)

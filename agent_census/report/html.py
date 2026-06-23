@@ -12,7 +12,15 @@ import html
 from ..model import ClientProfile, Kind
 from ..pipeline import AnalysisResult
 from .aggregate import KIND_BLURB, KIND_ORDER, by_kind, robots_counts, time_range
-from .format import client_label, elide_ua, feature_rows, fmt_ts, human_bytes, human_duration
+from .format import (
+    client_label,
+    elide_ua,
+    feature_rows,
+    fmt_ts,
+    human_bytes,
+    human_duration,
+    truncate,
+)
 
 _KIND_COLORS: dict[Kind, str] = {
     Kind.BROWSER: "#2563eb",
@@ -227,7 +235,7 @@ _EXPAND_LIMIT = 100
 
 def _client_row(profile: ClientProfile, *, filterable: bool = False) -> str:
     cls = profile.classification
-    evidence = _esc(cls.evidence[0]) if cls.evidence else "–"
+    evidence = _esc(truncate(cls.evidence[0])) if cls.evidence else "–"
     attrs = ""
     if filterable:
         haystack = f"{profile.client_id.ip} {profile.client_id.user_agent or ''}".lower()

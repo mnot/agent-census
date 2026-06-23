@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agent_census.report.format import elide_ua
+from agent_census.report.format import elide_ua, truncate
 
 GOOGLEBOT = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
 GPTBOT = "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.1; +https://openai.com/gptbot)"
@@ -27,3 +27,13 @@ def test_no_marker_left_intact() -> None:
 
 def test_none_passthrough() -> None:
     assert elide_ua(None) is None
+
+
+def test_truncate_leaves_short_text() -> None:
+    assert truncate("short", 80) == "short"
+
+
+def test_truncate_clips_long_text_with_ellipsis() -> None:
+    out = truncate("x" * 100, 80)
+    assert len(out) == 80
+    assert out.endswith("…")

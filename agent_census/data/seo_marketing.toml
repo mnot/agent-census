@@ -32,7 +32,9 @@ ua_substring = "ZoominfoBot"
 ua_substring = "AwarioBot"
 
 [[agent]]
+# https://seranking.com/backlinks-crawler
 ua_substring = "SERankingBacklinksBot"
+domains = ["seranking.com"]
 
 [[agent]]
 ua_substring = "Mediatoolkitbot"

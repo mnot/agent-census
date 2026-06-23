@@ -173,7 +173,8 @@ def fetch_ranges_text(url: str) -> str | None:
 
 
 def parse_prefixes(text: str) -> tuple[str, ...]:
-    """Google / GCP / OpenAI schema: ``{"prefixes": [{"ipv4Prefix"|"ipv6Prefix"}]}``."""
+    """A ``{"prefixes": [...]}`` object whose entries are either CIDR strings
+    (e.g. Yandex Cloud) or ``{"ipv4Prefix"|"ipv6Prefix"}`` dicts (Google / GCP)."""
     try:
         data = json.loads(text)
     except (ValueError, TypeError):
@@ -181,7 +182,9 @@ def parse_prefixes(text: str) -> tuple[str, ...]:
     prefixes = data.get("prefixes", []) if isinstance(data, dict) else []
     out: list[str] = []
     for prefix in prefixes:
-        if isinstance(prefix, dict):
+        if isinstance(prefix, str):
+            out.append(prefix)
+        elif isinstance(prefix, dict):
             cidr = prefix.get("ipv4Prefix") or prefix.get("ipv6Prefix")
             if cidr:
                 out.append(cidr)

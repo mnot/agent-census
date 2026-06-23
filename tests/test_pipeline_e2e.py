@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from agent_census import identity, pipeline
 from agent_census.model import Kind
 from agent_census.parsing import resolve
@@ -160,16 +162,24 @@ def test_eviction_matches_no_eviction(tmp_path: Path) -> None:
     assert len(evicted.profiles) == 18
 
 
-def test_datacenter_fleet_merges_by_subnet_and_ua(tmp_path: Path) -> None:
-    # 170.64.0.0/16 is DigitalOcean (an inline range, so no fetch needed). Two
-    # IPs in the same /24 with one UA collapse; a third /24 and a different UA
-    # stay separate.
+def test_datacenter_fleet_merges_by_subnet_and_ua(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Treat 198.18.x.x (a benchmarking TEST-NET) as datacenter and fold by /24,
+    # so the test does not depend on the hand-curated range data. Two IPs in the
+    # same /24 with one UA collapse; a third /24 and a different UA stay separate.
+    monkeypatch.setattr(pipeline, "is_datacenter_ip", lambda ip: ip.startswith("198.18."))
+    monkeypatch.setattr(
+        pipeline,
+        "datacenter_subnet",
+        lambda ip: ".".join(ip.split(".")[:3]) + ".0/24" if ip.startswith("198.18.") else None,
+    )
     ua = "python-requests/2.31.0"
     rows = [
-        ("170.64.1.5", ua),
-        ("170.64.1.9", ua),  # same /24 + UA -> merges with the above
-        ("170.64.2.5", ua),  # different /24 -> its own entry
-        ("170.64.1.20", "curl/8.0"),  # same /24, different UA -> its own entry
+        ("198.18.1.5", ua),
+        ("198.18.1.9", ua),  # same /24 + UA -> merges with the above
+        ("198.18.2.5", ua),  # different /24 -> its own entry
+        ("198.18.1.20", "curl/8.0"),  # same /24, different UA -> its own entry
     ]
     lines = [
         f'{ip} - - [10/Oct/2023:12:0{i}:00 +0000] "GET /p HTTP/1.1" 200 100 "-" "{agent}"'
@@ -183,13 +193,13 @@ def test_datacenter_fleet_merges_by_subnet_and_ua(tmp_path: Path) -> None:
     merged = [
         p
         for p in result.profiles
-        if p.client_id.ip == "170.64.1.0/24" and p.client_id.user_agent == ua
+        if p.client_id.ip == "198.18.1.0/24" and p.client_id.user_agent == ua
     ]
     assert len(merged) == 1
-    assert set(merged[0].member_ips) == {"170.64.1.5", "170.64.1.9"}
+    assert set(merged[0].member_ips) == {"198.18.1.5", "198.18.1.9"}
     assert "datacenter" in merged[0].classification.tags
     ids = {p.client_id.ip for p in result.profiles}
-    assert "170.64.2.0/24" in ids  # the other subnet stayed separate
+    assert "198.18.2.0/24" in ids  # the other subnet stayed separate
     # three groups: 1.0/24+requests, 2.0/24+requests, 1.0/24+curl
     assert result.identity_stats.client_count == 3
 

@@ -10,6 +10,12 @@ def test_parse_prefixes_gcp_schema() -> None:
     assert extract_cidrs(text, "prefixes") == ("8.8.8.0/24", "2001:db8::/32")
 
 
+def test_parse_prefixes_bare_string_list() -> None:
+    # Yandex Cloud: {"prefixes": ["cidr", ...]} -- plain strings, not dicts.
+    text = '{"prefixes": ["5.187.84.32/28", "2a02:6b8::/32"]}'
+    assert extract_cidrs(text, "prefixes") == ("5.187.84.32/28", "2a02:6b8::/32")
+
+
 def test_parse_aws_schema() -> None:
     text = (
         '{"prefixes": [{"ip_prefix": "52.0.0.0/8"}], '

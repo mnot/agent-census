@@ -5,7 +5,15 @@ from __future__ import annotations
 from ..model import ClientProfile, Kind
 from ..pipeline import AnalysisResult
 from .aggregate import KIND_BLURB, KIND_ORDER, by_kind, robots_counts, time_range
-from .format import client_label, fmt_ts, human_bytes, kind_label, md_escape, truncate
+from .format import (
+    client_label,
+    fmt_ts,
+    human_bytes,
+    kind_label,
+    md_escape,
+    top_evidence,
+    truncate,
+)
 
 
 def _robots_summary(group: list[ClientProfile]) -> str:
@@ -98,7 +106,7 @@ def _kind_section(kind: Kind, group: list[ClientProfile], top: int) -> list[str]
     for profile in group[:top]:
         cls = profile.classification
         tags = ", ".join(sorted(cls.tags)) or "–"
-        evidence = md_escape(truncate(cls.evidence[0])) if cls.evidence else "–"
+        evidence = md_escape(truncate(top_evidence(profile)))
         lines.append(
             f"| {_client_label(profile)} | {profile.features.request_count:,} | "
             f"{human_bytes(profile.features.total_bytes)} | {cls.confidence:.0%} | "

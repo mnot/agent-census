@@ -4,25 +4,55 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from ..model import ClientFeatures, ClientProfile, Kind
+from ..model import ClientFeatures, ClientProfile, Kind, VerificationStatus
+
+_KHTML_MARKER = "(khtml, like gecko)"
 
 
 def elide_ua(ua: str | None, *, is_browser: bool = False) -> str | None:
-    """Trim a bot UA's ``Mozilla/... compatible;`` boilerplate to the agent token.
+    """Trim a bot UA's ``Mozilla/...`` boilerplate down to its agent token.
 
-    e.g. ``Mozilla/5.0 (compatible; Googlebot/2.1; +http://.../bot.html)`` becomes
-    ``Googlebot/2.1; +http://.../bot.html``. Left untouched for browsers (whose
-    Mozilla preamble is meaningful) and for UAs without the ``compatible;`` marker.
+    Two preambles are handled:
+
+    - ``Mozilla/5.0 (compatible; Googlebot/2.1; +url)`` -> ``Googlebot/2.1; +url``
+    - ``...AppleWebKit/605 (KHTML, like Gecko) NetNewsWire/6`` -> ``NetNewsWire/6``
+
+    The second covers macOS/iOS agents (feed readers, etc.) that wear a Safari
+    prefix with their product appended -- the bit that actually identifies them.
+    Left untouched for browsers (whose preamble is meaningful) and for UAs with
+    neither marker.
     """
     if not ua or is_browser:
         return ua
     pos = ua.lower().find("compatible;")
-    if pos == -1:
-        return ua
-    rest = ua[pos + len("compatible;") :].strip()
-    if rest.endswith(")"):  # drop the now-orphaned closing paren of the preamble
-        rest = rest[:-1].rstrip()
-    return rest or ua
+    if pos != -1:
+        rest = ua[pos + len("compatible;") :].strip()
+        if rest.endswith(")"):  # drop the now-orphaned closing paren of the preamble
+            rest = rest[:-1].rstrip()
+        return rest or ua
+    pos = ua.lower().find(_KHTML_MARKER)
+    if pos != -1:
+        rest = ua[pos + len(_KHTML_MARKER) :].strip()
+        return rest or ua
+    return ua
+
+
+def top_evidence(profile: ClientProfile) -> str:
+    """The single most salient evidence line for a client.
+
+    A verified identity is the strongest thing we can say about a client, so it
+    always wins the headline; otherwise fall back to the primary classifier's
+    own evidence.
+    """
+    verification = profile.verification
+    if (
+        verification is not None
+        and verification.status is VerificationStatus.VERIFIED
+        and verification.evidence
+    ):
+        return verification.evidence[0]
+    evidence = profile.classification.evidence
+    return evidence[0] if evidence else "–"
 
 
 def client_label(profile: ClientProfile) -> str:

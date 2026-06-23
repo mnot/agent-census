@@ -22,6 +22,7 @@ from .format import (
     human_bytes,
     human_duration,
     kind_label,
+    top_evidence,
     truncate,
 )
 from .inspect import ROLLUP_MIN_CLIENTS
@@ -286,7 +287,7 @@ _EXPAND_LIMIT = 100
 
 def _client_row(profile: ClientProfile, *, filterable: bool = False) -> str:
     cls = profile.classification
-    evidence = _esc(truncate(cls.evidence[0])) if cls.evidence else "–"
+    evidence = _esc(truncate(top_evidence(profile)))
     attrs = ""
     if filterable:
         haystack = f"{profile.client_id.ip} {profile.client_id.user_agent or ''}".lower()

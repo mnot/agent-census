@@ -48,6 +48,8 @@ _TAG_COLORS: dict[str, str] = {
     "ignores-robots": "#d97706",
     "fake-browser": "#ea580c",  # browser costume, no browser behaviour -> orange
     "datacenter": "#9333ea",  # origin is hosting, not an eyeball network -> purple
+    "ua-rotating": "#d97706",  # many UAs from a hosting/non-browser source -> amber
+    # 'shared-ip' is left neutral (grey): many UAs but a benign shared egress.
 }
 
 _CSS = """

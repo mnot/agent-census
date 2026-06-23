@@ -104,6 +104,24 @@ def test_combiner_real_browser_behaviour_from_datacenter_is_not_spoofed() -> Non
     assert "fake-browser" not in result.tags
 
 
+def test_many_uas_on_residential_ip_is_shared_not_rotating() -> None:
+    # A real browser sharing an IP with many others (NAT/VPN) -> benign shared-ip.
+    feats = ClientFeatures(
+        request_count=20, ua_looks_like_browser=True, asset_coload_ratio=0.7, ua_count_for_ip=8
+    )
+    tags = combine([Signal(Kind.BROWSER, 0.9, ("real",), "browser")], feats).tags
+    assert "shared-ip" in tags
+    assert "ua-rotating" not in tags
+
+
+def test_many_uas_from_datacenter_is_rotating() -> None:
+    # The same UA diversity from a hosting IP reads as evasive rotation.
+    feats = ClientFeatures(request_count=20, ua_looks_like_browser=True, ua_count_for_ip=8)
+    tags = combine([Signal(Kind.BROWSER, 0.3, ("ua",), "browser")], feats, datacenter=True).tags
+    assert "ua-rotating" in tags
+    assert "shared-ip" not in tags
+
+
 def test_combiner_picks_strongest_label() -> None:
     signals = [
         Signal(Kind.CRAWLER, 0.5, ("a",), "crawler"),

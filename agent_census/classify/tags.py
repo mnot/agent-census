@@ -87,7 +87,14 @@ def derive_tags(
     if features.ua_empty:
         tags.add("no-user-agent")
     if features.ua_count_for_ip >= _UA_ROTATION_THRESHOLD:
-        tags.add("ua-rotating")
+        # Many UAs on one IP reads two ways. From a hosting IP, or paired with a
+        # browser costume and no browser behaviour, it's evasive rotation. Other-
+        # wise it's almost always a shared egress (NAT / VPN / proxy / carrier)
+        # where many real clients share the address -- benign, so name it plainly.
+        if datacenter or looks_like_fake_browser(features):
+            tags.add("ua-rotating")
+        else:
+            tags.add("shared-ip")
 
     if compliance is not None:
         if compliance.verdict is RobotsVerdict.RESPECTS:

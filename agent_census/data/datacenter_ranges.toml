@@ -43,11 +43,6 @@ ranges = [
 # Authoritative published lists, fetched only with --fetch-ranges (cached weekly).
 
 [[source]]
-name = "DigitalOcean"
-ranges_url = "https://digitalocean.com/geo/google.csv"
-format = "csv"
-
-[[source]]
 name = "Amazon AWS"
 ranges_url = "https://ip-ranges.amazonaws.com/ip-ranges.json"
 format = "aws"

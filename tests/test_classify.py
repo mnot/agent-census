@@ -279,6 +279,43 @@ def test_feed_reader_fetching_non_feeds_is_tagged() -> None:
     assert "fetches-non-feeds" in result.tags
 
 
+def test_declared_bot_is_not_a_browser_even_when_co_loading() -> None:
+    # amazon-Quick declares itself a bot; co-loading sub-resources (it renders
+    # pages) must not make it a browser -- its declared identity wins.
+    feats = ClientFeatures(
+        request_count=23, asset_coload_ratio=1.0, user_agent="amazon-Quick-on-behalf-of-abc123"
+    )
+    assert classify_client(feats).primary is Kind.AI_CRAWLER
+
+
+def test_coloading_feed_reader_is_not_a_browser_and_not_forged_referer() -> None:
+    feats = ClientFeatures(
+        request_count=166,
+        feed_requests=150,
+        feed_ratio=0.9,
+        asset_coload_ratio=1.0,
+        self_referer_ratio=1.0,  # would tag forged-referer on a would-be browser
+        distinct_paths=10,
+        user_agent="FreshRSS/1.28.1 (Linux; https://freshrss.org)",
+    )
+    result = classify_client(feats)
+    assert result.primary is Kind.FEED_READER
+    assert "forged-referer" not in result.tags  # browser-only signal, not for agents
+
+
+def test_datacenter_browser_ua_without_behaviour_is_spoofed() -> None:
+    feats = ClientFeatures(
+        request_count=26,
+        ua_looks_like_browser=True,
+        asset_coload_ratio=0.0,
+        referer_following_ratio=0.0,
+        static_ratio=0.4,
+        ratio_404=0.0,
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/103.0 Safari/537.36",
+    )
+    assert classify_client(feats, datacenter=True).primary is Kind.SPOOFED_BROWSER
+
+
 def test_feed_minority_is_not_a_feed_reader() -> None:
     # Grazes a feed but mostly hammers pages, no feed-reader UA -> not a feed reader.
     feats = ClientFeatures(

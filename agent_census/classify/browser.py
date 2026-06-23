@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
+from .tags import identifies_as_known_agent
 
 
 class BrowserClassifier(Classifier):
@@ -16,6 +17,12 @@ class BrowserClassifier(Classifier):
     name = "browser"
 
     def evaluate(self, features: ClientFeatures) -> list[Signal]:
+        # A UA that names a feed reader, crawler, or bot is not a browser, even if
+        # it renders pages and co-loads their sub-resources -- its declared
+        # identity wins.
+        if identifies_as_known_agent(features):
+            return []
+
         confidence = 0.0
         evidence: list[str] = []
 

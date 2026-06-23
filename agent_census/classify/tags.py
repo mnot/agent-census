@@ -52,13 +52,13 @@ def impersonation(verification: BotVerification | None) -> tuple[bool, tuple[str
     return False, ()
 
 
-def _identifies_as_known_agent(features: ClientFeatures) -> bool:
-    """True if the UA positively names a non-browser agent it could only be lying about.
+def identifies_as_known_agent(features: ClientFeatures) -> bool:
+    """True if the UA positively names a non-browser agent: a feed reader, a known
+    crawler/archiver, or a self-declared bot.
 
-    Feed readers, known crawlers, and self-declared bots routinely wear a Safari
-    or Chrome prefix with their product token appended (``... NetNewsWire/6``).
-    That is an honest identity, not a browser costume, so it must not count as a
-    fake browser.
+    Such a client is not a browser however it behaves (it can render and co-load
+    sub-resources like one), and the browser-specific signals -- fake-browser,
+    forged-referer -- don't apply to it; its declared identity decides the kind.
     """
     if features.ua_declares_bot or _declares_known_crawler(features):
         return True
@@ -78,7 +78,7 @@ def looks_like_fake_browser(features: ClientFeatures) -> bool:
     """
     return (
         features.ua_looks_like_browser
-        and not _identifies_as_known_agent(features)
+        and not identifies_as_known_agent(features)
         and features.request_count >= 2
         and features.asset_coload_ratio == 0.0
         and features.referer_following_ratio == 0.0
@@ -129,7 +129,11 @@ def derive_tags(
     if features.vuln_path_hits > 0 or features.traversal_hits > 0:
         tags.add("probing")  # badly behaved, but not necessarily a forged identity
 
-    if features.self_referer_ratio >= 0.5 and features.request_count >= 4:
+    if (
+        features.self_referer_ratio >= 0.5
+        and features.request_count >= 4
+        and not identifies_as_known_agent(features)  # only meaningful for would-be browsers
+    ):
         tags.add("forged-referer")  # Referer set to the requested URL -- faked navigation
 
     return tags

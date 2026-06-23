@@ -39,6 +39,17 @@ class RangeSource:
     fmt: str = "prefixes"  # how to parse ranges_url (see iprange.extract_cidrs)
 
 
+@dataclass(frozen=True, slots=True)
+class EgressNetwork:
+    """A named shared-egress network whose clients are merged and tagged."""
+
+    name: str = ""
+    tag: str = ""
+    ranges: tuple[str, ...] = ()
+    ranges_url: str | None = None
+    fmt: str = "prefixes"
+
+
 @lru_cache(maxsize=None)
 def _load(name: str) -> dict[str, Any]:
     text = (files("agent_census.data") / f"{name}.toml").read_text(encoding="utf-8")
@@ -79,3 +90,20 @@ def load_range_sources(name: str) -> tuple[RangeSource, ...]:
             )
         )
     return tuple(sources)
+
+
+@lru_cache(maxsize=None)
+def load_egress_networks() -> tuple[EgressNetwork, ...]:
+    """Return the ``[[network]]`` stanzas from ``egress_networks.toml``."""
+    networks: list[EgressNetwork] = []
+    for entry in _load("egress_networks").get("network", []):
+        networks.append(
+            EgressNetwork(
+                name=entry.get("name", ""),
+                tag=entry.get("tag", ""),
+                ranges=tuple(entry.get("ranges", [])),
+                ranges_url=entry.get("ranges_url"),
+                fmt=entry.get("format", "prefixes"),
+            )
+        )
+    return tuple(networks)

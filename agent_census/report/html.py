@@ -49,6 +49,7 @@ _TAG_COLORS: dict[str, str] = {
     "fake-browser": "#ea580c",  # browser costume, no browser behaviour -> orange
     "datacenter": "#9333ea",  # origin is hosting, not an eyeball network -> purple
     "ua-rotating": "#d97706",  # many UAs from a hosting/non-browser source -> amber
+    "icloud-private-relay": "#0284c7",  # privacy relay; a positive browser signal -> blue
     # 'shared-ip' is left neutral (grey): many UAs but a benign shared egress.
 }
 

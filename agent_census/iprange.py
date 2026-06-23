@@ -22,6 +22,21 @@ Network = ipaddress.IPv4Network | ipaddress.IPv6Network
 _RANGES_TTL = 7 * 24 * 60 * 60  # refresh fetched range files weekly
 _FETCH_TIMEOUT = 10
 
+# Whether fetching providers' published ``ranges_url`` lists is allowed this run
+# (the --fetch-ranges opt-in). Shared by every range-backed feature so one flag
+# governs all network access. Held in a dict to stay mutable without `global`.
+_remote = {"enabled": False}
+
+
+def enable_remote() -> None:
+    """Opt in to fetching published range lists over the network (cached weekly)."""
+    _remote["enabled"] = True
+
+
+def remote_enabled() -> bool:
+    """True if range lists may be fetched this run."""
+    return _remote["enabled"]
+
 
 def parse_networks(cidrs: tuple[str, ...]) -> tuple[Network, ...]:
     """Turn CIDR strings into network objects, silently dropping malformed ones."""

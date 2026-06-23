@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from agent_census import hosting
+from agent_census import hosting, iprange
 from agent_census.hosting import is_datacenter_ip
 
 
@@ -27,9 +27,11 @@ def test_remote_ranges_are_used_only_when_enabled(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(hosting, "fetch_ranges_text", lambda url: "203.0.113.0/24")
     try:
         assert not is_datacenter_ip("203.0.113.7")  # default run is offline
-        hosting.enable_remote_ranges()
+        iprange.enable_remote()
+        hosting._networks.cache_clear()  # pylint: disable=protected-access
+        is_datacenter_ip.cache_clear()
         assert is_datacenter_ip("203.0.113.7")  # now merged from the fetched list
     finally:  # reset module/cache state so other tests stay offline
-        hosting._state["fetch_remote"] = False  # pylint: disable=protected-access
+        iprange._remote["enabled"] = False  # pylint: disable=protected-access
         hosting._networks.cache_clear()  # pylint: disable=protected-access
         is_datacenter_ip.cache_clear()

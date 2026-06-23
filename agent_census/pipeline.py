@@ -13,11 +13,11 @@ from __future__ import annotations
 import gzip
 from collections import OrderedDict, defaultdict
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Protocol
 
-from . import uas
+from . import egress, uas
 from .classify import DEFAULT_UNKNOWN_THRESHOLD, classify_client
 from .dataload import CrawlerSpec, load_tokens
 from .features import DisallowedCheck, FeatureAccumulator
@@ -191,6 +191,13 @@ def analyze(  # pylint: disable=too-many-locals
     resident: dict[ClientId, FeatureAccumulator] = {}
     evictable: OrderedDict[ClientId, FeatureAccumulator] = OrderedDict()
     retired: OrderedDict[ClientId, FeatureAccumulator] = OrderedDict()
+    # Shared-egress traffic is folded as it streams: one accumulator per
+    # (network, UA), keyed past the rotating source IPs, with its member IPs and
+    # tag tracked alongside.
+    egress_acc: OrderedDict[tuple[str, str | None], FeatureAccumulator] = OrderedDict()
+    egress_token: dict[tuple[str, str | None], str | None] = {}
+    egress_members: dict[tuple[str, str | None], set[str]] = {}
+    egress_tag: dict[str, str] = {}
     tokens: dict[ClientId, str | None] = {}
     uas_by_ip: dict[str, set[str | None]] = {}
     ip_refs: dict[str, int] = defaultdict(int)
@@ -205,6 +212,7 @@ def analyze(  # pylint: disable=too-many-locals
         acc: FeatureAccumulator,
         verification: BotVerification | None,
         member: tuple[str, ...],
+        extra_tags: frozenset[str] = frozenset(),
     ) -> None:
         nonlocal singleton_count
         ua_count = len(uas_by_ip.get(key.ip) or (None,))
@@ -231,6 +239,8 @@ def analyze(  # pylint: disable=too-many-locals
             unknown_threshold=unknown_threshold,
             keep_signals=keep_signals,
         )
+        if extra_tags:
+            classification = replace(classification, tags=classification.tags | extra_tags)
         profiles.append(
             ClientProfile(
                 client_id=key,
@@ -273,36 +283,53 @@ def analyze(  # pylint: disable=too-many-locals
             reasons[outcome.skip_reason or "unknown"] += 1
             continue
         parsed += 1
-        key = strategy.key(entry)
-        acc = resident.get(key)
-        if acc is None:
-            acc = evictable.get(key)
-            if acc is not None:
-                evictable.move_to_end(key)
-        if acc is None and key in retired:
-            # A dormant client is back: resume its accumulator, don't recount it.
-            acc = retired.pop(key)
-            evictable[key] = acc
-        if acc is None:
-            client_count += 1
-            ip_refs[key.ip] += 1
-            token = uas.product_token(entry.user_agent) if robots is not None else None
-            tokens[key] = token
-            check = _disallowed_check(robots, token) if robots is not None else None
-            acc = FeatureAccumulator(disallowed_check=check)
-            if quiescent_seconds is not None and not _declares_crawler(entry.user_agent):
+        network = egress.lookup(entry.remote_host)
+        if network is not None:
+            # Fold this request into the network's per-UA bucket; the source IP
+            # is a throwaway relay address, so it is not its own client.
+            gkey = (network.name, entry.user_agent)
+            acc = egress_acc.get(gkey)
+            if acc is None:
+                token = uas.product_token(entry.user_agent) if robots is not None else None
+                check = _disallowed_check(robots, token) if robots is not None else None
+                acc = FeatureAccumulator(disallowed_check=check)
+                egress_acc[gkey] = acc
+                egress_token[gkey] = token
+                egress_members[gkey] = set()
+                egress_tag[network.name] = network.tag
+            acc.add(entry)
+            egress_members[gkey].add(entry.remote_host)
+        else:
+            key = strategy.key(entry)
+            acc = resident.get(key)
+            if acc is None:
+                acc = evictable.get(key)
+                if acc is not None:
+                    evictable.move_to_end(key)
+            if acc is None and key in retired:
+                # A dormant client is back: resume its accumulator, don't recount it.
+                acc = retired.pop(key)
                 evictable[key] = acc
-            else:
-                resident[key] = acc
-        acc.add(entry)
+            if acc is None:
+                client_count += 1
+                ip_refs[key.ip] += 1
+                token = uas.product_token(entry.user_agent) if robots is not None else None
+                tokens[key] = token
+                check = _disallowed_check(robots, token) if robots is not None else None
+                acc = FeatureAccumulator(disallowed_check=check)
+                if quiescent_seconds is not None and not _declares_crawler(entry.user_agent):
+                    evictable[key] = acc
+                else:
+                    resident[key] = acc
+            acc.add(entry)
 
-        agents = uas_by_ip.get(entry.remote_host)
-        if agents is None:
-            uas_by_ip[entry.remote_host] = {entry.user_agent}
-        elif entry.user_agent not in agents:
-            agents.add(entry.user_agent)
-            if len(agents) == 2:
-                multi_ua_ips += 1
+            agents = uas_by_ip.get(entry.remote_host)
+            if agents is None:
+                uas_by_ip[entry.remote_host] = {entry.user_agent}
+            elif entry.user_agent not in agents:
+                agents.add(entry.user_agent)
+                if len(agents) == 2:
+                    multi_ua_ips += 1
 
         if quiescent_seconds is not None and entry.timestamp is not None:
             ts = entry.timestamp.timestamp()
@@ -326,6 +353,18 @@ def analyze(  # pylint: disable=too-many-locals
         emit(key, acc, None, ())
     for key, acc in retired.items():
         emit(key, acc, None, ())
+    for (name, user_agent), acc in egress_acc.items():
+        # One client per (network, UA), identified by the network, not an IP.
+        eid = ClientId(ip=name, user_agent=user_agent)
+        tokens[eid] = egress_token[(name, user_agent)]
+        emit(
+            eid,
+            acc,
+            None,
+            tuple(sorted(egress_members[(name, user_agent)])),
+            extra_tags=frozenset({egress_tag[name]}),
+        )
+        client_count += 1
 
     profiles.sort(key=lambda p: p.features.request_count, reverse=True)
     return AnalysisResult(

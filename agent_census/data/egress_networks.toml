@@ -1,0 +1,15 @@
+# Named shared-egress networks: privacy relays and proxies that front many real
+# users behind a rotating pool of addresses. Traffic from one is genuinely a
+# browser (often a strong signal of it), but the source IP is meaningless as an
+# identity, so we collapse all of a network's requests into one entry per
+# User-Agent and tag it, rather than scattering them across egress IPs.
+#
+# Each [[network]] mirrors a datacenter source ([name], optional inline `ranges`,
+# `ranges_url` + `format`) plus a `tag` applied to its clients. Ranges are
+# fetched only with --fetch-ranges (cached weekly); add more networks freely.
+
+[[network]]
+name = "iCloud Private Relay"
+tag = "icloud-private-relay"
+ranges_url = "https://mask-api.icloud.com/egress-ip-ranges.csv"
+format = "csv"  # first column is the prefix

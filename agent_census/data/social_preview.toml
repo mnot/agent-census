@@ -81,3 +81,7 @@ ua_substring = "Pleroma"
 
 [[agent]]
 ua_substring = "SummalyBot"
+
+[[agent]]
+# https://github.com/Lantern-chat
+ua_substring = "Lantern"

@@ -75,23 +75,23 @@ def test_combiner_tie_breaks_by_priority() -> None:
     assert combine(signals, ClientFeatures()).primary is Kind.BROWSER
 
 
-def test_impersonator_demotes_good_bot() -> None:
+def test_impersonator_demotes_search_engine() -> None:
     feats = ClientFeatures(
         request_count=5, user_agent="Mozilla/5.0 (compatible; Googlebot/2.1)", vuln_path_hits=3
     )
-    signals = [Signal(Kind.GOOD_BOT, 0.8, ("declares Googlebot",), "good_bot")]
+    signals = [Signal(Kind.SEARCH_ENGINE, 0.8, ("declares Googlebot",), "search_engine")]
     result = combine(signals, feats)
     assert "impersonator" in result.tags
-    assert result.primary is not Kind.GOOD_BOT
+    assert result.primary is not Kind.SEARCH_ENGINE
 
 
 def test_verified_tag_from_verification() -> None:
     feats = ClientFeatures(request_count=5, user_agent="Googlebot/2.1")
     verification = BotVerification(VerificationStatus.VERIFIED, resolved_host="x.googlebot.com")
-    signals = [Signal(Kind.GOOD_BOT, 0.8, ("declares Googlebot",), "good_bot")]
+    signals = [Signal(Kind.SEARCH_ENGINE, 0.8, ("declares Googlebot",), "search_engine")]
     result = combine(signals, feats, verification=verification)
     assert "verified" in result.tags
-    assert result.primary is Kind.GOOD_BOT
+    assert result.primary is Kind.SEARCH_ENGINE
 
 
 def test_compliance_tags_applied() -> None:
@@ -148,6 +148,15 @@ def test_pure_feed_reader_not_tagged() -> None:
     result = classify_client(feats)
     assert result.primary is Kind.FEED_READER
     assert "fetches-non-feeds" not in result.tags
+
+
+def test_search_engine_and_social_preview_are_distinct() -> None:
+    google = classify_client(
+        ClientFeatures(request_count=4, user_agent="Mozilla/5.0 (compatible; Googlebot/2.1)")
+    )
+    assert google.primary is Kind.SEARCH_ENGINE
+    facebook = classify_client(ClientFeatures(request_count=2, user_agent="facebookexternalhit/1.1"))
+    assert facebook.primary is Kind.SOCIAL_PREVIEW
 
 
 def test_classify_client_runs_all() -> None:

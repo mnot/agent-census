@@ -12,14 +12,16 @@ from .base import Classifier
 from .browser import BrowserClassifier
 from .crawler import CrawlerClassifier
 from .feed_reader import FeedReaderClassifier
-from .good_bot import GoodBotClassifier
 from .monitor import MonitorClassifier
 from .scraper import ScraperClassifier
+from .search_engine import SearchEngineClassifier
+from .social_preview import SocialPreviewClassifier
 from .spam_bot import SpamBotClassifier
 from .vuln_scanner import VulnScannerClassifier
 
 _CLASSIFIERS: tuple[Classifier, ...] = (
-    GoodBotClassifier(),
+    SearchEngineClassifier(),
+    SocialPreviewClassifier(),
     AiCrawlerClassifier(),
     VulnScannerClassifier(),
     BrowserClassifier(),

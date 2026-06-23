@@ -17,7 +17,8 @@ from .format import feature_rows, fmt_ts, human_bytes, human_duration
 _KIND_COLORS: dict[Kind, str] = {
     Kind.BROWSER: "#2563eb",
     Kind.CRAWLER: "#0891b2",
-    Kind.GOOD_BOT: "#16a34a",
+    Kind.SEARCH_ENGINE: "#16a34a",
+    Kind.SOCIAL_PREVIEW: "#0ea5e9",
     Kind.AI_CRAWLER: "#7c3aed",
     Kind.SCRAPER: "#d97706",
     Kind.VULN_SCANNER: "#dc2626",

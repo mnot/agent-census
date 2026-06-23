@@ -1,6 +1,6 @@
 # AI / LLM data-gathering crawlers and assistants.
 # Format: <UA-token> <verifying-domain> [more-domains...]
-# Same matching rules as good_bots.txt. Verifying domains are best-effort; many
+# Same matching rules as search_engines.txt. Verifying domains are best-effort; many
 # AI crawlers publish IP ranges rather than supporting reverse DNS.
 
 GPTBot openai.com

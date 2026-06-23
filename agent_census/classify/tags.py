@@ -24,7 +24,11 @@ _UA_ROTATION_THRESHOLD = 4
 
 
 def _declares_known_crawler(features: ClientFeatures) -> bool:
-    pairs = load_tokens("good_bots.txt") + load_tokens("ai_crawlers.txt")
+    pairs = (
+        load_tokens("search_engines.txt")
+        + load_tokens("social_preview.txt")
+        + load_tokens("ai_crawlers.txt")
+    )
     return uas.match_known(features.user_agent, pairs) is not None
 
 

@@ -132,8 +132,9 @@ out what it is from its request patterns -- URLs, status codes, and timing. It
 also checks robots.txt compliance and can DNS-verify declared crawlers.
 
 Client kinds:
-  browser       crawler       good_bot      ai_crawler    scraper
-  vuln_scanner  spam_bot      feed_reader   monitor       unknown
+  browser       crawler        search_engine  social_preview  ai_crawler
+  scraper       vuln_scanner   spam_bot       feed_reader     monitor
+  unknown
 
 Output is Markdown (default) or a self-contained HTML page.
 """

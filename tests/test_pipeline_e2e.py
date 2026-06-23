@@ -57,7 +57,7 @@ def test_each_client_classified_as_expected() -> None:
     result = _run()
     assert _kind_of(result, "192.0.2.10") is Kind.BROWSER
     assert _kind_of(result, "203.0.113.66") is Kind.VULN_SCANNER
-    assert _kind_of(result, "66.249.66.1") is Kind.GOOD_BOT
+    assert _kind_of(result, "66.249.66.1") is Kind.SEARCH_ENGINE
     assert _kind_of(result, "20.171.0.5") is Kind.AI_CRAWLER
     assert _kind_of(result, "198.51.100.9") is Kind.MONITOR
     assert _kind_of(result, "45.33.32.156") is Kind.SCRAPER

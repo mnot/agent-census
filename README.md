@@ -5,10 +5,11 @@ A command-line tool that reads a Web server access log and characterises the
 it's there to do, checks whether it respects `robots.txt`, and reports the
 prevalence and resource use of each kind. Output is Markdown.
 
-It distinguishes browsers, crawlers, declared search/preview bots (Googlebot and
-friends), AI crawlers (GPTBot, ClaudeBot, ...), scrapers, vulnerability
-scanners, comment/spam bots, feed readers, and uptime monitors -- and is honest
-about the clients it can't characterise, which land in `unknown`.
+It distinguishes browsers, crawlers, search engines (Googlebot and friends),
+social-preview fetchers (the link-unfurlers behind chat/social cards), AI
+crawlers (GPTBot, ClaudeBot, ...), scrapers, vulnerability scanners, comment/spam
+bots, feed readers, and uptime monitors -- and is honest about the clients it
+can't characterise, which land in `unknown`.
 
 ## Install
 

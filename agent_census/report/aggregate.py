@@ -11,7 +11,8 @@ from ..model import ClientProfile, Kind
 KIND_ORDER: tuple[Kind, ...] = (
     Kind.BROWSER,
     Kind.CRAWLER,
-    Kind.GOOD_BOT,
+    Kind.SEARCH_ENGINE,
+    Kind.SOCIAL_PREVIEW,
     Kind.AI_CRAWLER,
     Kind.SCRAPER,
     Kind.VULN_SCANNER,
@@ -24,7 +25,8 @@ KIND_ORDER: tuple[Kind, ...] = (
 KIND_BLURB: dict[Kind, str] = {
     Kind.BROWSER: "Interactive browsers loading pages and their sub-resources.",
     Kind.CRAWLER: "Bots walking the site by following links at a steady pace.",
-    Kind.GOOD_BOT: "Declared search-engine and social-preview crawlers.",
+    Kind.SEARCH_ENGINE: "Declared search-engine crawlers indexing the site.",
+    Kind.SOCIAL_PREVIEW: "Link-unfurl fetchers building share previews.",
     Kind.AI_CRAWLER: "AI / LLM data-gathering crawlers.",
     Kind.SCRAPER: "Content harvesters hitting pages cold, without following links.",
     Kind.VULN_SCANNER: "Clients probing for known-vulnerable paths and misconfigurations.",

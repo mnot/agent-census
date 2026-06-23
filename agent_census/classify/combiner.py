@@ -21,7 +21,8 @@ from .tags import derive_tags
 
 # Tie-break order when two kinds share the top confidence: earlier wins.
 _PRIORITY: tuple[Kind, ...] = (
-    Kind.GOOD_BOT,
+    Kind.SEARCH_ENGINE,
+    Kind.SOCIAL_PREVIEW,
     Kind.AI_CRAWLER,
     Kind.VULN_SCANNER,
     Kind.SPAM_BOT,
@@ -69,8 +70,9 @@ def combine(
 
     tags = derive_tags(features, compliance, verification)
     if "impersonator" in tags:
-        # A claimed good/AI bot that DNS or behavior contradicts is not one.
-        by_label.pop(Kind.GOOD_BOT, None)
+        # A claimed crawler that DNS or behavior contradicts is not one.
+        by_label.pop(Kind.SEARCH_ENGINE, None)
+        by_label.pop(Kind.SOCIAL_PREVIEW, None)
         by_label.pop(Kind.AI_CRAWLER, None)
 
     stored = tuple(signals) if keep_signals else ()

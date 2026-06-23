@@ -44,6 +44,7 @@ domains = ["duckduckgo.com"]
 ranges_url = "https://duckduckgo.com/duckduckbot.json"
 
 [[agent]]
+# https://help.baidu.com/question?prod_id=99&class=0&id=3001
 ua_substring = "Baiduspider"
 domains = ["crawl.baidu.com", "baidu.jp"]
 

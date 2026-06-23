@@ -145,8 +145,26 @@ def _known_crawler(ua: str | None) -> tuple[str, CrawlerSpec] | None:
     return uas.match_known(ua, pairs)
 
 
-def _reverse_dns(ip: str) -> str | None:
-    return _bounded(lambda: socket.gethostbyaddr(ip)[0])
+# POSIX netdb.h h_errno values for socket.herror: a genuinely-absent record vs.
+# a transient resolver failure (TRY_AGAIN / NO_RECOVERY).
+_HOST_NOT_FOUND = 1
+_NO_DATA = 4
+
+
+def _reverse_lookup(ip: str) -> tuple[str | None, bool]:
+    """Return (hostname, no_ptr): no_ptr is True only for a definitive no-record."""
+    try:
+        return socket.gethostbyaddr(ip)[0], False
+    except socket.herror as exc:
+        return None, bool(exc.args) and exc.args[0] in (_HOST_NOT_FOUND, _NO_DATA)
+    except OSError:
+        return None, False
+
+
+def _reverse_dns(ip: str) -> tuple[str | None, bool]:
+    """Reverse DNS bounded by a timeout; a timeout is transient, not a no-record."""
+    result = _bounded(lambda: _reverse_lookup(ip))
+    return result if result is not None else (None, False)
 
 
 def _forward_ips(host: str) -> set[str]:
@@ -165,7 +183,7 @@ class BotVerifier:
     def __init__(self, max_workers: int = _MAX_WORKERS) -> None:
         self._max_workers = max_workers
         self._lock = threading.Lock()
-        self._reverse: dict[str, str | None] = {}
+        self._reverse: dict[str, tuple[str | None, bool]] = {}
         self._forward: dict[str, frozenset[str]] = {}
         self._ranges: dict[str, tuple[_Network, ...]] = {}
 
@@ -191,14 +209,14 @@ class BotVerifier:
             networks.extend(cached)
         return tuple(networks)
 
-    def _cached_reverse(self, ip: str) -> str | None:
+    def _cached_reverse(self, ip: str) -> tuple[str | None, bool]:
         with self._lock:
             if ip in self._reverse:
                 return self._reverse[ip]
-        host = _reverse_dns(ip)  # slow; resolved outside the lock
+        result = _reverse_dns(ip)  # slow; resolved outside the lock
         with self._lock:
-            self._reverse[ip] = host
-        return host
+            self._reverse[ip] = result
+        return result
 
     def _cached_forward(self, host: str) -> frozenset[str]:
         with self._lock:
@@ -269,12 +287,18 @@ class BotVerifier:
 
         # Reverse/forward DNS. A crawler verified this way is expected to have a
         # PTR record, so its absence under this UA is treated as impersonation.
-        host = self._cached_reverse(ip)
+        host, no_ptr = self._cached_reverse(ip)
         if host is None:
+            if no_ptr:
+                return BotVerification(
+                    VerificationStatus.IMPERSONATOR,
+                    expected_domains=spec.domains,
+                    evidence=(f"{ip} has no reverse-DNS record but its UA claims {substring}",),
+                )
             return BotVerification(
-                VerificationStatus.IMPERSONATOR,
+                VerificationStatus.UNVERIFIED,
                 expected_domains=spec.domains,
-                evidence=(f"{ip} has no reverse-DNS record but its UA claims {substring}",),
+                evidence=(f"reverse DNS lookup of {ip} failed (transient)",),
             )
         if not _domain_matches(host, spec.domains):
             return BotVerification(

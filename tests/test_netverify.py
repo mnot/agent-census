@@ -34,30 +34,36 @@ def test_needs_only_declared_crawlers() -> None:
 
 def test_verified_round_trip(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_spec(monkeypatch, "DnsBot", CrawlerSpec(domains=("example.com",)))
-    monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: "crawl-1.example.com")
+    monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: ("crawl-1.example.com", False))
     monkeypatch.setattr(netverify, "_forward_ips", lambda host: {"66.249.66.1"})
     assert BotVerifier().verify("66.249.66.1", "DnsBot/1.0").status is VerificationStatus.VERIFIED
 
 
 def test_impersonator_on_domain_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_spec(monkeypatch, "DnsBot", CrawlerSpec(domains=("example.com",)))
-    monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: "host.evil.example")
+    monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: ("host.evil.example", False))
     assert BotVerifier().verify("203.0.113.9", "DnsBot/1.0").status is VerificationStatus.IMPERSONATOR
 
 
 def test_missing_ptr_is_impersonator(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_spec(monkeypatch, "DnsBot", CrawlerSpec(domains=("example.com",)))
-    monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: None)
+    monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: (None, True))  # definitive no-PTR
     assert BotVerifier().verify("203.0.113.9", "DnsBot/1.0").status is VerificationStatus.IMPERSONATOR
+
+
+def test_transient_reverse_failure_is_unverified(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_spec(monkeypatch, "DnsBot", CrawlerSpec(domains=("example.com",)))
+    monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: (None, False))  # timeout / SERVFAIL
+    assert BotVerifier().verify("203.0.113.9", "DnsBot/1.0").status is VerificationStatus.UNVERIFIED
 
 
 def test_verify_all_dedupes_and_caches(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_spec(monkeypatch, "DnsBot", CrawlerSpec(domains=("example.com",)))
     calls: list[str] = []
 
-    def fake_reverse(ip: str) -> str:
+    def fake_reverse(ip: str) -> tuple[str | None, bool]:
         calls.append(ip)
-        return "crawl.example.com"
+        return "crawl.example.com", False
 
     monkeypatch.setattr(netverify, "_reverse_dns", fake_reverse)
     monkeypatch.setattr(netverify, "_forward_ips", lambda host: {"66.249.66.1", "66.249.66.2"})
@@ -153,5 +159,5 @@ def test_reverse_dns_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(netverify, "_DNS_TIMEOUT", 0.1)
     monkeypatch.setattr(netverify.socket, "gethostbyaddr", lambda ip: time.sleep(5))
     start = time.time()
-    assert netverify._reverse_dns("1.2.3.4") is None
+    assert netverify._reverse_dns("1.2.3.4") == (None, False)  # timeout -> transient
     assert time.time() - start < 1.0  # bounded by the timeout, not the 5s sleep

@@ -20,6 +20,8 @@ from collections.abc import Iterable
 from pathlib import Path
 
 Network = ipaddress.IPv4Network | ipaddress.IPv6Network
+Interval = tuple[int, int]  # (first address, last address) as ints, one IP version
+Intervals = tuple[list[Interval], list[Interval]]  # (v4, v6)
 
 
 class RangeIndex:
@@ -35,13 +37,24 @@ class RangeIndex:
 
     __slots__ = ("_starts4", "_maxend4", "_starts6", "_maxend6")
 
-    def __init__(self, networks: tuple[Network, ...]) -> None:
-        self._starts4, self._maxend4 = self._index(n for n in networks if n.version == 4)
-        self._starts6, self._maxend6 = self._index(n for n in networks if n.version == 6)
+    def __init__(self, v4: list[Interval], v6: list[Interval]) -> None:
+        self._starts4, self._maxend4 = self._build(v4)
+        self._starts6, self._maxend6 = self._build(v6)
+
+    @classmethod
+    def from_networks(cls, networks: Iterable[Network]) -> RangeIndex:
+        """Build directly from network objects (splitting by IP version)."""
+        v4: list[Interval] = []
+        v6: list[Interval] = []
+        for net in networks:
+            (v4 if net.version == 4 else v6).append(
+                (int(net.network_address), int(net.broadcast_address))
+            )
+        return cls(v4, v6)
 
     @staticmethod
-    def _index(nets: Iterable[Network]) -> tuple[list[int], list[int]]:
-        pairs = sorted((int(n.network_address), int(n.broadcast_address)) for n in nets)
+    def _build(intervals: list[Interval]) -> tuple[list[int], list[int]]:
+        pairs = sorted(intervals)
         starts = [start for start, _ in pairs]
         maxend: list[int] = []
         running = -1
@@ -67,6 +80,19 @@ class RangeIndex:
 
 _RANGES_TTL = 7 * 24 * 60 * 60  # refresh fetched range files weekly
 _FETCH_TIMEOUT = 10
+_INTERVALS_CACHE_VERSION = 1  # bump to invalidate cached parses when a parser changes
+
+
+def network_intervals(cidrs: tuple[str, ...]) -> Intervals:
+    """Parse CIDR strings into (v4, v6) integer intervals, dropping malformed ones."""
+    v4: list[Interval] = []
+    v6: list[Interval] = []
+    for net in parse_networks(cidrs):
+        (v4 if net.version == 4 else v6).append(
+            (int(net.network_address), int(net.broadcast_address))
+        )
+    return v4, v6
+
 
 # Whether fetching providers' published ``ranges_url`` lists is allowed this run
 # (controlled by --fetch-ranges / --no-fetch-ranges; on by default). Shared by
@@ -261,3 +287,48 @@ def extract_cidrs(text: str, fmt: str) -> tuple[str, ...]:
     """Extract CIDR strings from ``text`` according to the named ``fmt``."""
     parser = _PARSERS.get(fmt, parse_prefixes)
     return parser(text)
+
+
+def _intervals_cache_path(url: str, fmt: str) -> Path:
+    base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+    directory = Path(base) / "agent-census" / "ranges"
+    directory.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha1(f"{url}|{fmt}|v{_INTERVALS_CACHE_VERSION}".encode("utf-8")).hexdigest()
+    return directory / (digest + ".intervals.json")
+
+
+def _read_intervals(path: Path) -> Intervals | None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return ([tuple(pair) for pair in data["v4"]], [tuple(pair) for pair in data["v6"]])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def fetch_range_intervals(url: str, fmt: str) -> Intervals:
+    """(v4, v6) intervals for ``url``'s published list, caching the *parsed* result.
+
+    The parsed integer intervals are cached weekly so repeat runs skip refetching
+    and re-parsing tens of thousands of CIDRs into objects. On a cold/stale cache
+    the raw text is fetched (itself weekly-cached), parsed, and the intervals are
+    written back; if even that fails, a stale interval cache is used if present.
+    """
+    path = _intervals_cache_path(url, fmt)
+    try:
+        fresh = path.exists() and (time.time() - path.stat().st_mtime) < _RANGES_TTL
+    except OSError:
+        fresh = False
+    if fresh:
+        cached = _read_intervals(path)
+        if cached is not None:
+            return cached
+    text = fetch_ranges_text(url)
+    if text is not None:
+        v4, v6 = network_intervals(extract_cidrs(text, fmt))
+        try:
+            path.write_text(json.dumps({"v4": v4, "v6": v6}), encoding="utf-8")
+        except OSError:
+            pass
+        return v4, v6
+    stale = _read_intervals(path)  # fetch failed -- fall back to a stale parse if we have one
+    return stale if stale is not None else ([], [])

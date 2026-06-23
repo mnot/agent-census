@@ -24,7 +24,11 @@ def test_garbage_ip_is_false() -> None:
 
 def test_remote_ranges_are_used_only_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
     # An IP only present in a fetched list is invisible until --fetch-ranges.
-    monkeypatch.setattr(hosting, "fetch_ranges_text", lambda url: "203.0.113.0/24")
+    from agent_census.iprange import network_intervals
+
+    monkeypatch.setattr(
+        hosting, "fetch_range_intervals", lambda url, fmt: network_intervals(("203.0.113.0/24",))
+    )
     try:
         assert not is_datacenter_ip("203.0.113.7")  # default run is offline
         iprange.enable_remote()

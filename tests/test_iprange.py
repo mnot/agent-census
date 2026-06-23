@@ -52,7 +52,7 @@ def test_unknown_format_falls_back_to_prefixes() -> None:
 
 
 def test_range_index_membership() -> None:
-    idx = RangeIndex(parse_networks(("10.0.0.0/8", "192.168.0.0/16", "2001:db8::/32")))
+    idx = RangeIndex.from_networks(parse_networks(("10.0.0.0/8", "192.168.0.0/16", "2001:db8::/32")))
     assert idx.contains("10.1.2.3")
     assert idx.contains("192.168.5.5")
     assert idx.contains("2001:db8::1")
@@ -62,7 +62,26 @@ def test_range_index_membership() -> None:
 
 
 def test_range_index_empty_is_false() -> None:
-    assert not RangeIndex(()).contains("1.2.3.4")
+    assert not RangeIndex([], []).contains("1.2.3.4")
+
+
+def test_fetch_range_intervals_caches_the_parse(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import agent_census.iprange as ir
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    calls = {"n": 0}
+
+    def fake_get(_url: str) -> str:
+        calls["n"] += 1
+        return "203.0.113.0/24\n198.51.100.0/24\n"
+
+    monkeypatch.setattr(ir, "_http_get", fake_get)
+    url = "https://example.invalid/list.txt"
+    v4, v6 = ir.fetch_range_intervals(url, "text")
+    assert len(v4) == 2 and not v6
+    again, _ = ir.fetch_range_intervals(url, "text")
+    assert again == v4
+    assert calls["n"] == 1  # second call served from the parsed-intervals cache
 
 
 def test_ip_in_respects_version_and_membership() -> None:

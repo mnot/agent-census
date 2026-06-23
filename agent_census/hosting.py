@@ -14,28 +14,24 @@ from __future__ import annotations
 from functools import lru_cache
 
 from .dataload import load_range_sources
-from .iprange import (
-    Network,
-    RangeIndex,
-    extract_cidrs,
-    fetch_ranges_text,
-    parse_networks,
-    remote_enabled,
-)
+from .iprange import Interval, RangeIndex, fetch_range_intervals, network_intervals, remote_enabled
 
 _DATA = "datacenter_ranges"
 
 
 @lru_cache(maxsize=None)
 def _index() -> RangeIndex:
-    nets: list[Network] = []
+    v4: list[Interval] = []
+    v6: list[Interval] = []
     for source in load_range_sources(_DATA):
-        nets.extend(parse_networks(source.ranges))
+        inline4, inline6 = network_intervals(source.ranges)
+        v4 += inline4
+        v6 += inline6
         if remote_enabled() and source.ranges_url:
-            text = fetch_ranges_text(source.ranges_url)
-            if text:
-                nets.extend(parse_networks(extract_cidrs(text, source.fmt)))
-    return RangeIndex(tuple(nets))
+            fetched4, fetched6 = fetch_range_intervals(source.ranges_url, source.fmt)
+            v4 += fetched4
+            v6 += fetched6
+    return RangeIndex(v4, v6)
 
 
 @lru_cache(maxsize=None)

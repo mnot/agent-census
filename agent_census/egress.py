@@ -13,27 +13,22 @@ from __future__ import annotations
 from functools import lru_cache
 
 from .dataload import EgressNetwork, load_egress_networks
-from .iprange import (
-    Network,
-    RangeIndex,
-    extract_cidrs,
-    fetch_ranges_text,
-    parse_networks,
-    remote_enabled,
-)
+from .iprange import Interval, RangeIndex, fetch_range_intervals, network_intervals, remote_enabled
 
 
 @lru_cache(maxsize=None)
 def _networks() -> tuple[tuple[EgressNetwork, RangeIndex], ...]:
     built: list[tuple[EgressNetwork, RangeIndex]] = []
     for network in load_egress_networks():
-        nets: list[Network] = list(parse_networks(network.ranges))
+        inline4, inline6 = network_intervals(network.ranges)
+        v4: list[Interval] = list(inline4)
+        v6: list[Interval] = list(inline6)
         if remote_enabled() and network.ranges_url:
-            text = fetch_ranges_text(network.ranges_url)
-            if text:
-                nets.extend(parse_networks(extract_cidrs(text, network.fmt)))
-        if nets:
-            built.append((network, RangeIndex(tuple(nets))))
+            fetched4, fetched6 = fetch_range_intervals(network.ranges_url, network.fmt)
+            v4 += fetched4
+            v6 += fetched6
+        if v4 or v6:
+            built.append((network, RangeIndex(v4, v6)))
     return tuple(built)
 
 

@@ -19,15 +19,12 @@ ranges_url = "https://sourcecidr.com/feeds/linkedin.json"
 [[agent]]
 # https://api.slack.com/robots
 ua_substring = "Slackbot"
-domains = ["slack.com"]
 
 [[agent]]
 ua_substring = "Slackbot-LinkExpanding"
-domains = ["slack.com"]
 
 [[agent]]
 ua_substring = "Slack-ImgProxy"
-domains = ["slack.com"]
 
 [[agent]]
 ua_substring = "Discordbot"

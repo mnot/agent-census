@@ -28,6 +28,13 @@ _BOT_RE = re.compile(
     re.I,
 )
 
+# A '+'-prefixed contact URL or e-mail is the convention bots use to give
+# webmasters a way to reach the operator -- "(+https://example.com/bot)" or
+# "+ops@example.com". A real browser never advertises one, so it marks
+# self-identified automation even when the product token carries no bot/crawl
+# word (e.g. "Claude-User", "SomeFetcher") and wears a browser-shaped shell.
+_BOT_CONTACT_RE = re.compile(r"\+(?:https?://|www\.|mailto:|[\w.%+-]+@)", re.I)
+
 # Best-effort product token, e.g. "Googlebot/2.1 (...)" -> "Googlebot".
 _TOKEN_RE = re.compile(r"([A-Za-z][A-Za-z0-9._-]+)/[0-9]")
 
@@ -50,7 +57,7 @@ def declares_bot(ua: str | None) -> bool:
     """True when the UA self-identifies as automation."""
     if is_empty(ua) or ua is None:
         return False
-    return bool(_BOT_RE.search(ua))
+    return bool(_BOT_RE.search(ua) or _BOT_CONTACT_RE.search(ua))
 
 
 def match_known(ua: str | None, pairs: tuple[tuple[str, _P], ...]) -> tuple[str, _P] | None:

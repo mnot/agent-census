@@ -235,6 +235,27 @@ def test_combiner_spoofed_browser_from_datacenter() -> None:
     assert {"fake-browser", "datacenter"} <= result.tags
 
 
+def test_contact_marker_in_ua_reads_as_a_bot_not_a_browser() -> None:
+    from agent_census import uas
+
+    # A browser-shaped shell, but it advertises a +contact: that is how a bot
+    # names its operator, so it is automation, not a browser.
+    shelled = (
+        "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; "
+        "SomeFetcher/1.0; +https://some.example/bot)"
+    )
+    assert uas.declares_bot(shelled)
+    assert not uas.looks_like_browser(shelled)
+    # An e-mail contact counts too.
+    assert uas.declares_bot("Mozilla/5.0 (compatible; FooAgent/2.0; +ops@foo.example)")
+    # A genuine browser carries no contact marker and is unaffected.
+    real = (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
+        "(KHTML, like Gecko) Version/17 Safari/605.1.15"
+    )
+    assert uas.looks_like_browser(real) and not uas.declares_bot(real)
+
+
 def test_combiner_fake_browser_without_datacenter_stays_unknown() -> None:
     # The same costume from a non-hosting IP is only tagged, not promoted.
     signals = [Signal(Kind.BROWSER, 0.3, ("ua only",), "browser")]
@@ -569,9 +590,9 @@ def test_cold_refetching_is_not_a_browser() -> None:
     assert classify_client(feats).primary is not Kind.BROWSER
 
 
-def test_high_volume_all_distinct_stays_a_browser() -> None:
-    # No 304s, but every URL fetched once: nothing to revalidate, so the absence
-    # of 304s says nothing and a genuine browser is left alone.
+def test_moderate_volume_all_distinct_stays_a_browser() -> None:
+    # A normal-sized session of distinct URLs with no 304s says nothing (nothing
+    # was revisited), so a genuine browser is left alone below the volume bar.
     feats = ClientFeatures(
         request_count=300,
         distinct_paths=300,
@@ -581,6 +602,21 @@ def test_high_volume_all_distinct_stays_a_browser() -> None:
         status_counts={200: 300},
     )
     assert classify_client(feats).primary is Kind.BROWSER
+
+
+def test_large_volume_no_304_is_not_a_browser() -> None:
+    # Browser-shaped and all-distinct, but a large number of requests without one
+    # 304: a real browser would have revalidated or served from cache (fewer
+    # requests). Zero revalidation at this scale -> not a browser.
+    feats = ClientFeatures(
+        request_count=2500,
+        distinct_paths=2500,
+        asset_coload_ratio=0.7,
+        ua_looks_like_browser=True,
+        ratio_404=0.0,
+        status_counts={200: 2500},
+    )
+    assert classify_client(feats).primary is not Kind.BROWSER
 
 
 def test_head_corroborates_a_feed_reader() -> None:

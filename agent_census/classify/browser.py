@@ -71,22 +71,29 @@ class BrowserClassifier(Classifier):
             confidence -= 0.15
             evidence.append("fetched /robots.txt — a crawler's habit, not a browser's")
 
-        # A browser holding a cache revalidates what it re-requests and gets 304s.
-        # A client that re-fetches URLs it already pulled yet never receives a 304
-        # is fetching cold, cacheless -- not how a browser behaves. Fetching
-        # distinct URLs once each yields no 304s legitimately, so this looks only
-        # at revisits: requests beyond the first touch of each path.
+        # A browser revalidates what it re-requests (earning 304s) and serves
+        # cached assets without hitting the server at all -- so at any real volume
+        # a genuine browser leaves some 304s behind, or simply makes few requests.
+        # A client that re-fetches the same URLs, or just makes a large number of
+        # requests, yet never receives a single 304 holds no cache: not browser
+        # behaviour. Only meaningful once paths are measured, and a 304 can only
+        # arise from a re-request, so distinct-once fetching at low volume is spared.
         revisits = features.request_count - features.distinct_paths
         no_304 = features.status_counts.get(304, 0) == 0
-        if evidence and features.distinct_paths > 0 and revisits >= 20 and no_304:
-            if revisits >= features.request_count * 0.5:
-                # Mostly re-fetching the same URLs cold: the dominant behaviour, so
-                # cap the browser hypothesis below the confident threshold.
+        cold_refetch = revisits >= 20
+        high_volume = features.request_count >= 500
+        if evidence and no_304 and features.distinct_paths > 0 and (cold_refetch or high_volume):
+            dominant = (cold_refetch and revisits >= features.request_count * 0.5) or (
+                features.request_count >= 2000
+            )
+            if dominant:
+                # Re-fetching dominates, or the volume is large enough that zero
+                # revalidations is itself damning: cap below the confident threshold.
                 confidence = min(confidence, 0.3)
-                evidence.append("re-fetches the same URLs cold, never a 304 — no browser cache")
+                evidence.append("heavy traffic without a single 304 — holds no browser cache")
             else:
                 confidence -= 0.2
-                evidence.append("re-fetches URLs without ever revalidating (no 304s)")
+                evidence.append("many requests, never revalidated (no 304s)")
 
         # A person at a browser never fetches attack paths. Vuln probing or
         # directory traversal means this is automation wearing a browser engine

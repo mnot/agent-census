@@ -164,8 +164,8 @@ td.copy.copied { background: #16a34a55; }
 details { margin: .25rem 0 1rem; }
 summary { cursor: pointer; color: #6b7280; font-size: .9rem; padding: .25rem 0; }
 tr.asum { cursor: pointer; }
-tr.asum .tri { display: inline-block; margin-right: .4rem; color: #6b7280;
-  font-size: .8rem; transition: transform .12s; }
+tr.asum .tri { display: inline-block; margin-right: .5rem; color: #2563eb;
+  font-size: 1rem; line-height: 1; vertical-align: middle; transition: transform .12s; }
 tbody.actor.open tr.asum .tri { transform: rotate(90deg); }
 .actor-ua { color: #6b7280; font-size: .82rem; margin-left: .5rem; }
 tbody.actor .amem { display: none; }
@@ -511,7 +511,7 @@ def _actor_tbody(actor: ActorGroup, *, filterable: bool = False) -> str:
         row_attrs = f"class='asum frow' data-filter=\"{_esc(haystack)}\""
     summary = (
         f"<tr {row_attrs}>"
-        f"<td class='cid'><span class='tri'>▸</span>{_esc(spread)}"
+        f"<td class='cid'><span class='tri'>▶</span>{_esc(spread)}"
         f'<span class="actor-ua mono">{_esc(ua or "–")}</span></td>'
         f"<td class='num'>{actor.requests:,}</td>"
         f"<td class='num'>{human_bytes(actor.total_bytes)}</td>"

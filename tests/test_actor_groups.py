@@ -90,7 +90,7 @@ def test_html_collapsed_group_lists_members_in_a_disclosure() -> None:
     html = html_section(Kind.SCRAPER, profiles, _rollup(clients=2, requests=12), top=5)
     assert "tbody class='actor'" in html
     # Footprint sits right after the triangle in the summary row.
-    assert "<span class='tri'>▸</span>2 IPs" in html
+    assert "<span class='tri'>▶</span>2 IPs" in html
     assert "9.9.9.1" in html and "9.9.9.2" in html  # both members listed as rows
     assert "class='amem'" in html  # members are real table rows, not a sub-table
     assert "Acme (AS64500)" in html  # member AS shown

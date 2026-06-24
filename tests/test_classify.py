@@ -93,6 +93,26 @@ def test_probing_browser_is_not_a_confident_browser() -> None:
     assert classify_client(clean).primary is Kind.BROWSER
 
 
+def test_self_declared_bot_harvesting_is_a_crawler() -> None:
+    # AlexCollieBot: declares a crawler, walks many pages, no browser behaviour.
+    # Re-requests a modest path set (low coverage), so it must still clear as a
+    # crawler rather than fall to unknown.
+    feats = ClientFeatures(
+        request_count=199,
+        distinct_paths=47,
+        coverage=47 / 199,
+        asset_coload_ratio=0.0,
+        ua_looks_like_browser=False,
+        ua_declares_bot=True,
+        ua_empty=False,
+        referer_following_ratio=0.2,
+        ratio_2xx=0.5,
+        user_agent="AlexCollieBot/1.0 (+https://alexcollie.com/bot; crawler@alexcollie.com)",
+    )
+    result = classify_client(feats, datacenter=True)
+    assert result.primary is Kind.CRAWLER
+
+
 def test_combiner_unknown_below_threshold() -> None:
     signals = [Signal(Kind.BROWSER, 0.3, ("weak",), "browser")]
     result = combine(signals, ClientFeatures(request_count=5), unknown_threshold=0.45)

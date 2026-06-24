@@ -40,6 +40,12 @@ class CrawlerClassifier(Classifier):
         if features.ua_declares_bot:
             confidence += 0.15
             evidence.append("User-Agent self-identifies as a bot")
+            # A self-declared bot walking many pages with no browser sub-resource
+            # loading is a crawler even without broad unique coverage -- the kind of
+            # "MyBot/1.0 (+url)" client that re-requests a modest path set.
+            if features.distinct_paths >= 20 and features.asset_coload_ratio < 0.1:
+                confidence += 0.3
+                evidence.append("walks many pages without browser sub-resource loading")
 
         if features.ratio_2xx > 0.7 and features.asset_coload_ratio < 0.1:
             confidence += 0.1

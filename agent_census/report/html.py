@@ -446,7 +446,7 @@ _SECTION_HEAD = (
     "<th class='num'>Conf.</th><th>Tags</th><th>Top evidence</th></tr>"
 )
 # Per-kind cap rendered into the HTML (visible rows + the expandable set).
-_EXPAND_LIMIT = 100
+_EXPAND_LIMIT = 500
 
 
 def _client_cell(profile: ClientProfile) -> str:
@@ -543,7 +543,7 @@ def _kind_section(kind: Kind, group: list[ClientProfile], rollup: KindRollup, to
         parts.append(
             # Shared name -> native exclusive accordion: opening one closes the rest.
             '<details name="kind-extra"><summary>'
-            f"Show {len(extra):,} more</summary>"
+            "Show more</summary>"
             '<input class="filter" type="search" '
             'placeholder="filter these by IP, User-Agent, or AS name…" '
             'aria-label="filter clients">'

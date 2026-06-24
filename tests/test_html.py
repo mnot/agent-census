@@ -64,7 +64,7 @@ def test_kind_section_disclosure_and_filter(tmp_path: Path) -> None:
     html = render_report_html(result, source="x", top=5)
 
     assert '<details name="kind-extra">' in html  # shared name -> exclusive accordion
-    assert "Show 3 more" in html
+    assert "Show more" in html
     assert 'class="filter"' in html  # filter input revealed in the disclosure
     assert html.count('class="frow"') == 3  # the 3 extra rows are filterable
 

@@ -110,6 +110,10 @@ def derive_tags(
     if looks_like_fake_browser(features):
         tags.add("fake-browser")
 
+    if features.status_counts.get(304, 0) > 0:
+        # A 304 means the client made a conditional request and held a cached copy
+        # -- a real cache, which corroborates a browser or a polite feed reader.
+        tags.add("has-cache")
     if features.fetched_robots_txt:
         tags.add("checked-robots")
     if features.ua_empty:

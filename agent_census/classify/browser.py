@@ -59,6 +59,11 @@ class BrowserClassifier(Classifier):
             confidence += 0.05
             evidence.append(f"{features.static_ratio:.0%} static-asset requests")
 
+        if features.status_counts.get(304, 0) > 0:
+            # Conditional requests answered 304 mean a real cache -- a browser tell.
+            confidence += 0.1
+            evidence.append("revalidates from cache (304 Not Modified)")
+
         # A person at a browser never fetches attack paths. Vuln probing or
         # directory traversal means this is automation wearing a browser engine
         # (e.g. headless Chrome), so cap the browser hypothesis below the unknown

@@ -68,6 +68,12 @@ class FeedReaderClassifier(Classifier):
             confidence += 0.1
             evidence.append("steady polling interval")
 
+        if features.status_counts.get(304, 0) > 0:
+            # A polite reader sends conditional requests and gets 304s when the feed
+            # is unchanged -- caching, the hallmark of a well-behaved poller.
+            confidence += 0.1
+            evidence.append("conditional polling (304 Not Modified)")
+
         if not evidence:
             return []
         return [self._signal(confidence, evidence)]

@@ -69,6 +69,8 @@ _TAG_HELP: dict[str, str] = {
     "not a consumer or ISP network.",
     "fake-browser": "Presents a browser User-Agent but shows no browser behaviour: "
     "no asset co-loading, no referer-following.",
+    "has-cache": "Received 304 Not Modified responses — makes conditional requests "
+    "and holds a real cache, the mark of a browser or a polite poller.",
     "checked-robots": "Requested /robots.txt at some point.",
     "no-user-agent": "Sent no User-Agent header.",
     "ua-rotating": "Many distinct User-Agents from one IP, paired with a hosting origin "

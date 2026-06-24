@@ -5,6 +5,7 @@ from __future__ import annotations
 from agent_census.classify import classify_client
 from agent_census.classify.browser import BrowserClassifier
 from agent_census.classify.combiner import combine
+from agent_census.classify.feed_reader import FeedReaderClassifier
 from agent_census.classify.vuln_scanner import VulnScannerClassifier
 from agent_census.model import (
     BotVerification,
@@ -245,6 +246,27 @@ def test_verified_tag_from_verification() -> None:
     result = combine(signals, feats, verification=verification)
     assert "verified" in result.tags
     assert result.primary is Kind.SEARCH_ENGINE
+
+
+def test_has_cache_tag_on_304() -> None:
+    cached = ClientFeatures(request_count=5, status_counts={200: 4, 304: 1})
+    signals = [Signal(Kind.BROWSER, 0.6, ("browses",), "browser")]
+    assert "has-cache" in combine(signals, cached).tags
+    # No 304 -> no tag.
+    plain = ClientFeatures(request_count=5, status_counts={200: 5})
+    assert "has-cache" not in combine(signals, plain).tags
+
+
+def test_304_lifts_browser_and_feed_reader_confidence() -> None:
+    base = dict(request_count=10, asset_coload_ratio=0.6, ua_looks_like_browser=True, ratio_404=0.0)
+    without = BrowserClassifier().evaluate(ClientFeatures(**base, status_counts={200: 10}))
+    with_cache = BrowserClassifier().evaluate(ClientFeatures(**base, status_counts={304: 2}))
+    assert with_cache[0].confidence > without[0].confidence
+
+    feed = dict(request_count=10, feed_requests=10, feed_ratio=1.0)
+    f_without = FeedReaderClassifier().evaluate(ClientFeatures(**feed, status_counts={200: 10}))
+    f_with = FeedReaderClassifier().evaluate(ClientFeatures(**feed, status_counts={304: 5}))
+    assert f_with[0].confidence > f_without[0].confidence
 
 
 def test_compliance_tags_applied() -> None:

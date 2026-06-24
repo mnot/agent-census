@@ -8,6 +8,7 @@ themselves on import; importing this package populates the registry.
 from __future__ import annotations
 
 from . import apache  # noqa: F401  (import for registration side effect)
+from . import cloudflare  # noqa: F401  (import for registration side effect)
 from .base import LogParser, ParseOutcome
 from .registry import available, register, resolve
 

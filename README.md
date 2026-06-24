@@ -46,6 +46,16 @@ agent-census analyze access.log \
 The presets `common`, `combined`, and `vhost_combined` are available via
 `--log-format-preset`. Options may appear before, after, or between the log files.
 
+Cloudflare Logpush logs (newline-delimited JSON) are also supported, as another
+preset:
+
+```
+agent-census analyze cloudflare-logs.json --log-format-preset cloudflare
+```
+
+Cloudflare logs carry the client's AS number, so network and ASN-based detection
+work without any extra configuration.
+
 ### What to log
 
 The Apache `combined` format already carries everything the core analysis needs.

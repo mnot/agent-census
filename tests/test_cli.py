@@ -51,6 +51,21 @@ def test_html_flag(tmp_path: Path) -> None:
     assert out.read_text(encoding="utf-8").startswith("<!doctype html>")
 
 
+def test_analyze_cloudflare_preset(tmp_path: Path) -> None:
+    # --log-format-preset cloudflare selects the JSON parser, not an Apache format.
+    log = tmp_path / "cf.log"
+    log.write_text(
+        '{"ClientIP":"203.0.113.5","ClientRequestMethod":"GET","ClientRequestURI":"/p",'
+        '"EdgeResponseStatus":200,"ClientRequestUserAgent":"curl/8","EdgeResponseBytes":10,'
+        '"EdgeStartTimestamp":"2026-06-21T01:50:50Z"}\n',
+        encoding="utf-8",
+    )
+    out = tmp_path / "r.md"
+    rc = main(["analyze", str(log), "--log-format-preset", "cloudflare", *OFFLINE, "-o", str(out)])
+    assert rc == 0
+    assert "1 parsed" in out.read_text(encoding="utf-8")
+
+
 def test_inspect_by_kind(tmp_path: Path) -> None:
     out = tmp_path / "i.md"
     rc = main(

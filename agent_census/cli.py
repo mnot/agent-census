@@ -15,7 +15,7 @@ from .classify import DEFAULT_UNKNOWN_THRESHOLD
 from .errors import AgentCensusError
 from .identity import ClientKeyStrategy
 from .netverify import BotVerifier
-from .parsing import resolve
+from .parsing import available, resolve
 from .parsing.apache import PRESETS
 from .parsing.base import LogParser
 from .pipeline import AnalysisResult, collect_entries
@@ -82,8 +82,9 @@ def _add_shared(parser: argparse.ArgumentParser) -> None:
     )
     fmt.add_argument(
         "--log-format-preset",
-        choices=sorted(PRESETS),
-        help="a named format instead of --log-format",
+        choices=sorted(set(PRESETS) | (set(available()) - {"apache"})),
+        help="a named format instead of --log-format: an Apache preset "
+        "(common / combined / vhost_combined) or 'cloudflare' (Logpush JSON)",
     )
     fmt_group.add_argument(
         "--identity",
@@ -247,6 +248,15 @@ def _resolve_format(args: argparse.Namespace) -> str:
     return PRESETS["combined"]
 
 
+def _build_log_parser(args: argparse.Namespace) -> LogParser:
+    """Pick the parser. A preset naming a non-Apache parser (e.g. cloudflare)
+    selects it directly; otherwise it's Apache with a format string."""
+    preset = args.log_format_preset
+    if preset and preset not in PRESETS:
+        return resolve(preset, {})
+    return resolve("apache", {"format": _resolve_format(args)})
+
+
 def _load_robots(args: argparse.Namespace) -> RobotsDoc | None:
     if args.robots_file:
         return from_file(args.robots_file)
@@ -312,7 +322,7 @@ def _apply_persisted_settings(args: argparse.Namespace) -> None:
 
 
 def _run_pipeline(args: argparse.Namespace) -> _RunContext:
-    parser = resolve("apache", {"format": _resolve_format(args)})
+    parser = _build_log_parser(args)
     strategy = identity.get_strategy(args.identity)
 
     robots_doc = _load_robots(args)

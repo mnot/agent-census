@@ -489,6 +489,18 @@ def test_has_cache_tag_on_304() -> None:
     assert "has-cache" not in combine(signals, plain).tags
 
 
+def test_behavioural_tags_promoted_from_evidence() -> None:
+    storm = ClientFeatures(request_count=30, ratio_404=0.9, distinct_404_paths=20)
+    assert "404-storm" in classify_client(storm).tags
+    exotic = ClientFeatures(request_count=5, exotic_method_count=3)
+    assert "exotic-method" in classify_client(exotic).tags
+    metro = ClientFeatures(request_count=20, rate_regularity=0.05)
+    assert "metronomic" in classify_client(metro).tags
+    # A plain client earns none of them.
+    plain = ClientFeatures(request_count=20, ratio_404=0.0, rate_regularity=0.8)
+    assert not ({"404-storm", "exotic-method", "metronomic"} & classify_client(plain).tags)
+
+
 def test_uses_head_tag() -> None:
     signals = [Signal(Kind.MONITOR, 0.6, ("monitors",), "monitor")]
     heading = ClientFeatures(request_count=10, head_ratio=0.5)

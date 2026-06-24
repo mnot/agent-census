@@ -101,6 +101,12 @@ _TAG_HELP: dict[str, str] = {
     "asn-attributed": "Recognised by its origin AS number, configured as a known crawler "
     "network, rather than by its User-Agent.",
     "probing": "Requested known-vulnerable paths or used directory-traversal patterns.",
+    "exotic-method": "Used uncommon HTTP methods (PUT/DELETE/PROPFIND/CONNECT…) — typical of "
+    "scanners and WebDAV probes, not browsers.",
+    "404-storm": "A high share of 404s spread across many distinct paths — scanning for "
+    "content, or a broken integration.",
+    "metronomic": "Near-constant intervals between requests — clockwork timing characteristic "
+    "of automation, not a human.",
     "forged-referer": "Sends a Referer equal to the requested URL — fabricated "
     "navigation, not something a real browser produces.",
     "fetches-non-feeds": "A feed reader that also requested non-feed resources.",

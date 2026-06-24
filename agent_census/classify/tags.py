@@ -160,6 +160,17 @@ def derive_tags(
     if features.vuln_path_hits > 0 or features.traversal_hits > 0:
         tags.add("probing")  # badly behaved, but not necessarily a forged identity
 
+    if features.exotic_method_count > 0:
+        tags.add("exotic-method")  # PUT/DELETE/PROPFIND/CONNECT … — scanners, WebDAV probes
+
+    if features.ratio_404 > 0.6 and features.distinct_404_paths >= 15:
+        # Many distinct misses: scanning for content, or a broken integration.
+        tags.add("404-storm")
+
+    regularity = features.rate_regularity
+    if regularity is not None and regularity < 0.15 and features.request_count >= 5:
+        tags.add("metronomic")  # near-constant intervals — clockwork automation, not a human
+
     if (
         features.self_referer_ratio >= 0.5
         and features.request_count >= 4

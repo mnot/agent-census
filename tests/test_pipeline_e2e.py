@@ -320,6 +320,47 @@ def test_markdown_network_table_bolds_row_leader() -> None:
     assert "**100**" not in text  # the trailing network is not the leader
 
 
+def test_verified_crawler_buckets_under_its_operator_not_residential(tmp_path: Path) -> None:
+    # A verified crawler whose IP is in no datacenter range must still land in the
+    # hosting group (under its operator domain), never residential.
+    from agent_census.model import BotVerification, ClientId, VerificationStatus
+    from agent_census.pipeline import RESIDENTIAL_NETWORK
+
+    class _StubVerifier:
+        def needs(self, ua: str | None) -> bool:
+            return ua is not None and "MyBot" in ua
+
+        def verify_all(
+            self, items: object
+        ) -> dict[ClientId, BotVerification]:
+            return {
+                cid: BotVerification(
+                    VerificationStatus.VERIFIED,
+                    resolved_host="mybot.example",
+                    evidence=("ok",),
+                )
+                for cid, _ua in items  # type: ignore[attr-defined]
+            }
+
+    lines = [
+        f'9.9.9.{i} - - [10/Oct/2023:12:00:0{i} +0000] "GET /p{i} HTTP/1.1" 200 100 '
+        '"-" "MyBot/1.0 (+https://mybot.example)"'
+        for i in range(3)
+    ]
+    log = tmp_path / "bot.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    result = pipeline.analyze(
+        log, parser, identity.get_strategy("ip_ua"), verifier=_StubVerifier()
+    )
+
+    assert "mybot.example" in result.network_rollups
+    assert result.network_categories["mybot.example"] == "datacenter"  # hosting group
+    assert RESIDENTIAL_NETWORK not in result.network_rollups
+    profile = next(p for p in result.profiles if p.client_id.ip == "mybot.example")
+    assert profile.network == "mybot.example"
+
+
 def test_returning_client_coalesces_after_eviction(tmp_path: Path) -> None:
     # One client (one ip+ua) requests on day 1, then again on day 3. A filler
     # client on day 2 advances the clock past the 12h quiescent window, so the

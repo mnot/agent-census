@@ -352,8 +352,17 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements
             if provider is None:
                 provider = datacenter_provider_for_asn(_parse_asn(features.as_number))
             in_datacenter = provider is not None if datacenter is None else datacenter
-            network = provider if provider is not None else RESIDENTIAL_NETWORK
-            network_category = _NET_DATACENTER if provider is not None else _NET_RESIDENTIAL
+            if provider is not None:
+                network, network_category = provider, _NET_DATACENTER
+            elif verification is not None and verification.status is VerificationStatus.VERIFIED:
+                # A verified crawler runs from its operator's own infrastructure --
+                # implicitly hosted, even when that IP/ASN isn't in our provider
+                # lists. Bucket it under the operator (its verified domain), in the
+                # hosting group; the small ones fold into "Other hosting" like any
+                # datacenter. Classification is left untouched.
+                network, network_category = _matched_domain(verification), _NET_DATACENTER
+            else:
+                network, network_category = RESIDENTIAL_NETWORK, _NET_RESIDENTIAL
         else:
             in_datacenter = is_datacenter_ip(key.ip) if datacenter is None else datacenter
         classification = classify_client(

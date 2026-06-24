@@ -10,8 +10,9 @@ from agent_census import identity, pipeline
 from agent_census.parsing import resolve
 from agent_census.pipeline import RESIDENTIAL_NETWORK
 from agent_census.parsing.apache import PRESETS
+from agent_census.model import Classification, ClientFeatures, ClientId, ClientProfile, Kind
 from agent_census.report import render_inspect_html, render_report_html, select_profiles
-from agent_census.report.html import _esc
+from agent_census.report.html import _client_row, _esc
 
 DATA = Path(__file__).parent / "data"
 
@@ -139,6 +140,22 @@ def test_network_table_renders_with_providers(
     # Body cells carry their raw count for the JS toggle; the control + script are present.
     assert "td class='num mxcell" in html and "data-v=" in html
     assert "id='netmode'" in html and "id='nettab'" in html
+
+
+def test_filter_haystack_includes_as_name() -> None:
+    # A filterable (disclosure) row carries the shown AS name in data-filter so the
+    # search box matches on it, alongside IP and User-Agent.
+    profile = ClientProfile(
+        client_id=ClientId(ip="52.1.1.0/24", user_agent="curl/8.0"),
+        entries=(),
+        features=ClientFeatures(as_org="Amazon.com, Inc."),
+        classification=Classification(
+            primary=Kind.SCRAPER, confidence=0.7, evidence=(), tags=frozenset({"datacenter"})
+        ),
+    )
+    row = _client_row(profile, filterable=True)
+    assert 'data-filter="' in row
+    assert "amazon.com, inc." in row.lower()  # AS name folded into the haystack
 
 
 def test_tags_have_hover_descriptions() -> None:

@@ -425,7 +425,10 @@ def _client_row(profile: ClientProfile, *, filterable: bool = False) -> str:
     evidence = _esc(truncate(top_evidence(profile)))
     attrs = ""
     if filterable:
-        haystack = f"{profile.client_id.ip} {profile.client_id.user_agent or ''}".lower()
+        _, org, _ = client_id_parts(profile)  # include the shown AS name in the filter
+        haystack = " ".join(
+            (profile.client_id.ip, profile.client_id.user_agent or "", org or "")
+        ).lower()
         attrs = f' class="frow" data-filter="{_esc(haystack)}"'
     return (
         f"<tr{attrs}>{_client_cell(profile)}"
@@ -451,7 +454,8 @@ def _kind_section(kind: Kind, group: list[ClientProfile], rollup: KindRollup, to
             "<details><summary>"
             f"Show {len(extra):,} more</summary>"
             '<input class="filter" type="search" '
-            'placeholder="filter these by IP or User-Agent…" aria-label="filter clients">'
+            'placeholder="filter these by IP, User-Agent, or AS name…" '
+            'aria-label="filter clients">'
             f"<table>{_SECTION_HEAD}{extra_rows}</table>"
             "</details>"
         )

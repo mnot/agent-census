@@ -366,8 +366,14 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements
             if provider is None:
                 provider = datacenter_provider_for_asn(_parse_asn(features.as_number))
             in_datacenter = provider is not None if datacenter is None else datacenter
+            asn_agent = uas.match_asn_any(features.as_number)
             if provider is not None:
                 network, network_category = provider, _NET_DATACENTER
+            elif asn_agent is not None:
+                # An ASN-recognised crawler network (e.g. Sberbank). Name it on the
+                # hosting side of the cross-tab rather than letting it fall through
+                # to residential; classification is the ASN classifier's job.
+                network, network_category = asn_agent, _NET_DATACENTER
             elif verification is not None and verification.status is VerificationStatus.VERIFIED:
                 # A verified crawler runs from its operator's own infrastructure --
                 # implicitly hosted, even when that IP/ASN isn't in our provider

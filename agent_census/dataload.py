@@ -68,19 +68,51 @@ def load_list(name: str) -> tuple[str, ...]:
     return tuple(_load(name).get(name, []))
 
 
+# Crawler/bot categories: one TOML file each, an [[agent]] table per agent.
+KNOWN_AGENT_CATEGORIES = (
+    "search_engine",
+    "social_preview",
+    "archiver",
+    "ai_crawler",
+    "seo_marketing",
+)
+
+
 @lru_cache(maxsize=None)
 def load_tokens(category: str) -> tuple[tuple[str, CrawlerSpec], ...]:
-    """Return ``(ua_substring, spec)`` pairs from ``<category>.toml``."""
+    """Return ``(ua_substring, spec)`` pairs from ``<category>.toml``.
+
+    Agents recognised by AS number rather than a UA token (no ``ua_substring``)
+    are skipped here; see :func:`load_asn_agents`.
+    """
     pairs: list[tuple[str, CrawlerSpec]] = []
     for entry in _load(category).get("agent", []):
+        ua = entry.get("ua_substring")
+        if not ua:
+            continue
         spec = CrawlerSpec(
             domains=tuple(entry.get("domains", [])),
             ranges=tuple(entry.get("ranges", [])),
             ranges_url=entry.get("ranges_url"),
             rdns_fallback=bool(entry.get("rdns_fallback", False)),
         )
-        pairs.append((entry["ua_substring"], spec))
+        pairs.append((ua, spec))
     return tuple(pairs)
+
+
+@lru_cache(maxsize=None)
+def load_asn_agents(category: str) -> tuple[tuple[int, str], ...]:
+    """Return ``(asn, label)`` for agents in ``<category>.toml`` recognised by ASN.
+
+    An agent recognised by origin AS number carries an ``asns`` list and a
+    ``name`` (its display label) instead of a ``ua_substring``.
+    """
+    out: list[tuple[int, str]] = []
+    for entry in _load(category).get("agent", []):
+        label = entry.get("name") or entry.get("ua_substring") or category
+        for asn in entry.get("asns", []):
+            out.append((int(asn), label))
+    return tuple(out)
 
 
 @lru_cache(maxsize=None)

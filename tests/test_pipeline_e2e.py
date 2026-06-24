@@ -388,6 +388,32 @@ def test_respect_counted_in_summary_without_per_client_tag(tmp_path: Path) -> No
     assert all("respects-robots" not in p.classification.tags for p in result.profiles)
 
 
+def test_crawler_recognised_by_logged_asn(tmp_path: Path) -> None:
+    # A client from AS35237 (Sberbank) with a spoofed browser UA, recognised by
+    # its logged AS number: ai_crawler, attributed to "Sberbank", tagged
+    # asn-attributed, and not flagged datacenter (it's no longer in that list).
+    fmt = '%h %l %u %t "%r" %>s %b "%{Referer}i" "%{User-Agent}i" "%{MM_ASN}e"'
+    ua = (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/91.0.4472.124 Safari/537.36"
+    )
+    lines = [
+        f'5.188.0.{i} - - [10/Oct/2023:12:00:0{i} +0000] "GET /p{i} HTTP/1.1" 200 100 '
+        f'"-" "{ua}" "35237"'
+        for i in range(5)
+    ]
+    log = tmp_path / "sber.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": fmt})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
+
+    assert "Sberbank" in result.network_rollups
+    crawlers = [p for p in result.profiles if p.classification.primary is Kind.AI_CRAWLER]
+    assert crawlers and all(p.network == "Sberbank" for p in crawlers)
+    tags = crawlers[0].classification.tags
+    assert "asn-attributed" in tags and "datacenter" not in tags
+
+
 def test_returning_client_coalesces_after_eviction(tmp_path: Path) -> None:
     # One client (one ip+ua) requests on day 1, then again on day 3. A filler
     # client on day 2 advances the clock past the 12h quiescent window, so the

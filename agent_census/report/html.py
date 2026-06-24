@@ -80,6 +80,8 @@ _TAG_HELP: dict[str, str] = {
     "verified": "Reverse/forward DNS or a published IP range confirmed the declared "
     "crawler identity.",
     "declares-known-bot": "User-Agent names a known crawler (identity verified separately).",
+    "asn-attributed": "Recognised by its origin AS number, configured as a known crawler "
+    "network, rather than by its User-Agent.",
     "probing": "Requested known-vulnerable paths or used directory-traversal patterns.",
     "forged-referer": "Sends a Referer equal to the requested URL — fabricated "
     "navigation, not something a real browser produces.",

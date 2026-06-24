@@ -58,6 +58,7 @@ def test_datacenter_provider_for_asn_maps_known_numbers() -> None:
     assert hosting.datacenter_provider_for_asn(24940) == "Hetzner"
     assert hosting.datacenter_provider_for_asn(64500) is None  # private-use ASN, unlisted
     assert hosting.datacenter_provider_for_asn(None) is None
+    assert hosting.datacenter_provider_for_asn(35237) is None  # moved to ai_crawler (Sberbank)
 
 
 def test_datacenter_provider_names_the_owner(monkeypatch: pytest.MonkeyPatch) -> None:

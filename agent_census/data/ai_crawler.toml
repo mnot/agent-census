@@ -144,3 +144,11 @@ ua_substring = "SemanticScholarBot"
 [[agent]]
 # https://www.lyrenth.com/bot
 ua_substring ="AIWebIndex"
+
+# Recognised by origin AS number, not a User-Agent token: this network crawls
+# behind rotating spoofed-browser UAs (HeadlessChrome, old Chrome), so there is
+# no stable token to match.
+# See also: https://www.reuters.com/technology/artificial-intelligence/after-deepseek-leap-forward-russias-sberbank-plans-joint-ai-research-with-china-2025-02-06/
+[[agent]]
+name = "Sberbank"
+asns = [35237]

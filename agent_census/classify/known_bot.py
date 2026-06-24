@@ -22,7 +22,7 @@ class KnownBotClassifier(Classifier):
     def evaluate(self, features: ClientFeatures) -> list[Signal]:
         known = uas.match_category(features.user_agent, self.category)
         if known is None:
-            return []
+            return self._by_asn(features)
         token, _spec = known
         confidence = 0.7
         evidence = [f"User-Agent declares {token!r}, a known {self.descriptor}"]
@@ -33,3 +33,19 @@ class KnownBotClassifier(Classifier):
             confidence += 0.05
             evidence.append("no vulnerability probing observed")
         return [self._signal(confidence, evidence)]
+
+    def _by_asn(self, features: ClientFeatures) -> list[Signal]:
+        """Recognise an agent by its origin AS number when the UA doesn't name it.
+
+        Some operators crawl behind rotating, spoofed browser User-Agents; the
+        constant is the network they come from, which a configured ASN names.
+        """
+        label = uas.match_asn(features.as_number, self.category)
+        if label is None:
+            return []
+        asn = uas.parse_asn(features.as_number)
+        return [
+            self._signal(
+                0.6, [f"origin AS{asn} is {label}, a recognised {self.descriptor} network"]
+            )
+        ]

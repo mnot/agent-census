@@ -116,6 +116,9 @@ def derive_tags(
         tags.add("has-cache")
     if features.fetched_robots_txt:
         tags.add("checked-robots")
+    if uas.match_asn_any(features.as_number):
+        # Recognised by origin AS number (a configured crawler network), not its UA.
+        tags.add("asn-attributed")
     if features.ua_empty:
         tags.add("no-user-agent")
     if features.ua_count_for_ip >= _UA_ROTATION_THRESHOLD:

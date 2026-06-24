@@ -32,8 +32,8 @@ name = "OVH"
 asns = [16276, 35540]
 
 [[source]]
-name = "Cloud.ru / SberCloud"
-asns = [35237, 208677]
+name = "Cloud.ru"
+asns = [208677]
 
 [[source]]
 name = "Amazon AWS"

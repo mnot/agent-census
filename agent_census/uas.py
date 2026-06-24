@@ -12,7 +12,7 @@ import re
 from functools import lru_cache
 from typing import TypeVar
 
-from .dataload import CrawlerSpec, load_tokens
+from .dataload import KNOWN_AGENT_CATEGORIES, CrawlerSpec, load_asn_agents, load_tokens
 
 _P = TypeVar("_P")
 
@@ -83,6 +83,42 @@ def match_category(ua: str | None, category: str) -> tuple[str, CrawlerSpec] | N
     for low_sub, sub, spec in _lowered(category):
         if low_sub in low:
             return sub, spec
+    return None
+
+
+def parse_asn(value: str | None) -> int | None:
+    """Parse a logged AS number (``35237`` or ``AS35237``) to an int, or None."""
+    if not value:
+        return None
+    text = value.strip()
+    if text[:2].lower() == "as":
+        text = text[2:]
+    try:
+        return int(text)
+    except ValueError:
+        return None
+
+
+@lru_cache(maxsize=None)
+def _asn_index(category: str) -> dict[int, str]:
+    return dict(load_asn_agents(category))
+
+
+def match_asn(as_number: str | None, category: str) -> str | None:
+    """Label if the logged AS number names an ASN-recognised agent in ``category``."""
+    asn = parse_asn(as_number)
+    return _asn_index(category).get(asn) if asn is not None else None
+
+
+def match_asn_any(as_number: str | None) -> str | None:
+    """Label if the AS number names an ASN-recognised agent in any known category."""
+    asn = parse_asn(as_number)
+    if asn is None:
+        return None
+    for category in KNOWN_AGENT_CATEGORIES:
+        label = _asn_index(category).get(asn)
+        if label is not None:
+            return label
     return None
 
 

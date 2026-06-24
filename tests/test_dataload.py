@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agent_census.dataload import load_list, load_range_sources, load_tokens
+from agent_census.dataload import load_asn_agents, load_list, load_range_sources, load_tokens
 
 
 def test_crawler_spec_fields() -> None:
@@ -20,6 +20,12 @@ def test_flat_lists_load() -> None:
     assert "/.env" in load_list("vuln_paths")
     assert "sqlmap" in load_list("scanner_ua")
     assert "NetNewsWire" in load_list("feed_readers")
+
+
+def test_asn_recognised_agents_loaded() -> None:
+    assert (35237, "Sberbank") in load_asn_agents("ai_crawler")
+    # An ASN-only agent (no ua_substring) is skipped by the UA-token loader.
+    assert all(ua for ua, _spec in load_tokens("ai_crawler"))
 
 
 def test_range_source_asns_parse_as_ints() -> None:

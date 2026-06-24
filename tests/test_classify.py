@@ -113,6 +113,27 @@ def test_self_declared_bot_harvesting_is_a_crawler() -> None:
     assert result.primary is Kind.CRAWLER
 
 
+def test_crawler_recognised_by_origin_asn() -> None:
+    # AS35237 (Sberbank) crawls behind spoofed browser UAs; recognised by ASN,
+    # classified ai_crawler and tagged asn-attributed.
+    feats = ClientFeatures(
+        request_count=80,
+        distinct_paths=40,
+        coverage=0.5,
+        asset_coload_ratio=0.0,
+        ua_looks_like_browser=True,
+        ua_empty=False,
+        referer_following_ratio=1.0,
+        ratio_2xx=0.9,
+        user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML) "
+        "Chrome/91.0.4472.124 Safari/537.36",
+        as_number="35237",
+    )
+    result = classify_client(feats)
+    assert result.primary is Kind.AI_CRAWLER
+    assert "asn-attributed" in result.tags
+
+
 def test_combiner_unknown_below_threshold() -> None:
     signals = [Signal(Kind.BROWSER, 0.3, ("weak",), "browser")]
     result = combine(signals, ClientFeatures(request_count=5), unknown_threshold=0.45)

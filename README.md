@@ -2,14 +2,18 @@
 
 A command-line tool that reads a Web server access log and characterises the
 *clients* hitting your site: it identifies each distinct client, works out what
-it's there to do, checks whether it respects `robots.txt`, and reports the
-prevalence and resource use of each kind. Output is Markdown.
+it's there to do from how it behaves, checks whether it respects `robots.txt`,
+and reports how much of your traffic each kind accounts for. Output is Markdown,
+or a self-contained HTML page.
 
-It distinguishes browsers, crawlers, search engines (Googlebot and friends),
-social-preview fetchers (the link-unfurlers behind chat/social cards), AI
-crawlers (GPTBot, ClaudeBot, ...), scrapers, vulnerability scanners, comment/spam
-bots, feed readers, and uptime monitors -- and is honest about the clients it
-can't characterise, which land in `unknown`.
+It tells browsers apart from crawlers, search engines (Googlebot and friends),
+social-preview fetchers (the link-unfurlers behind chat and social cards), AI
+crawlers (GPTBot, ClaudeBot, ...), archivers (the Internet Archive, Common
+Crawl), SEO and marketing crawlers, scrapers, vulnerability scanners, comment/spam
+bots, feed readers, and uptime monitors. It also flags clients pretending to be
+something they're not -- a datacentre IP wearing a desktop browser's User-Agent
+(`spoofed_browser`), or one that fails crawler verification (`impersonator`) --
+and is honest about the clients it can't characterise, which land in `unknown`.
 
 ## Install
 
@@ -46,13 +50,17 @@ There are presets (`common`, `combined`, `vhost_combined`) via
 `--log-format-preset` so you needn't type the common ones. Options may appear
 before, after, or between the log files.
 
-Output is Markdown by default; pass `--html` for a self-contained, styled HTML
-page (one file, no external assets) that you can open in a browser. It works for
-both `analyze` and `inspect`:
+Output is Markdown by default; pass `--html` for a self-contained, styled page
+(one file, no external assets) you can open in a browser. Both work for `analyze`
+and `inspect`:
 
 ```
 agent-census analyze access.log --html -o census.html
 ```
+
+The report leads with a summary of each kind, then a cross-tab of where each
+kind's traffic came from (see [Networks and hosting](#networks-and-hosting)),
+then the notable clients within each kind.
 
 ### robots.txt compliance
 
@@ -63,20 +71,24 @@ the default, because it should match the period the log covers:
 agent-census analyze access.log --robots-file ./robots.txt
 ```
 
-You can fetch it live instead, but that's opt-in -- a live `robots.txt` may not
-match the rules that were in force when the log was written, so the report says
-so loudly:
+You can fetch it live instead by naming a host or URL -- doing so opts into the
+fetch. A live `robots.txt` may not match the rules that were in force when the
+log was written, so the report says so:
 
 ```
-agent-census analyze access.log --host example.com --fetch-robots
+agent-census analyze access.log --host example.com
 ```
+
+The summary's robots column reads `N✓ / M✗ / K?`: respected the rules, ignored
+them, or made too few requests to tell (a client that simply hasn't wandered
+into a disallowed area yet isn't credited either way).
 
 ### Verifying declared crawlers
 
 A client can claim to be Googlebot in its User-Agent for free. The real check is
 the client's IP: membership in a crawler's published address ranges, or
-reverse/forward DNS for crawlers that rely on it. This runs **by default** (it
-makes network calls — DNS lookups and the occasional ranges fetch); turn it off
+reverse/forward DNS for crawlers that rely on it. It runs **by default** (it
+makes network calls -- DNS lookups and the occasional ranges fetch); turn it off
 for a fully offline, faster run:
 
 ```
@@ -89,6 +101,26 @@ reverse DNS doesn't check out) is classed `impersonator`. Even with verification
 off, a "Googlebot" that probes for `/.env` is still flagged `impersonator` from
 its behaviour alone.
 
+### Networks and hosting
+
+A client's origin network is part of its story: a "browser" arriving from a
+datacentre rather than a consumer ISP is almost certainly automation in
+disguise. agent-census recognises the major cloud and hosting providers (AWS,
+Google Cloud, Cloudflare, Hetzner, ...) by their published IP ranges, folds
+shared-egress traffic (iCloud Private Relay, Tor) into one entry per network,
+and reports a kind-by-network cross-tab so you can see what comes from where. In
+the HTML report that table is interactive: toggle between raw counts, share of
+each kind, and share of each network, with the busy cells shaded.
+
+Range lists are fetched and cached weekly by default; `--no-fetch-ranges` stays
+offline on the bundled data.
+
+If your log carries the client's autonomous-system details -- e.g. from
+MaxMind's `mod_maxminddb` as `%{MM_ASORG}e` (the organisation) and `%{MM_ASN}e`
+(the number), quoted in your `LogFormat` -- datacentre clients are named by their
+hosting organisation, and you can list extra AS numbers to treat as datacentres
+by editing the bundled `datacenter_ranges.toml`.
+
 ### Inspecting a client
 
 When you want to see *why* something was classified the way it was, use
@@ -98,7 +130,11 @@ measured features, the `robots.txt` finding, and the actual request trace:
 ```
 agent-census inspect access.log --kind vuln_scanner
 agent-census inspect access.log --client 203.0.113.66
+agent-census inspect access.log --kind scraper --network aws
 ```
+
+`--network` filters by origin network (a substring of its name) and composes
+with `--kind`, so the two together drill into a single cell of the cross-tab.
 
 ### Identity
 
@@ -113,25 +149,30 @@ the data so you can tell whether it fit.
 agent-census analyze access.log --identity forwarded
 ```
 
+### Remembered settings
+
+A few options are sticky, so you needn't retype them: `--log-format` /
+`--log-format-preset`, `--identity`, and `--robots-file` / `--robots-url` are
+saved to `~/.config/agent-census/config.json` and reused on later runs that omit
+them. Passing one updates the saved value.
+
 ## How it works
 
-The pipeline is **parse -> group into clients -> extract features -> classify ->
-report**. Parsing normalises every log line into a common record, so support for
-other servers (nginx, ...) is a matter of adding a parser; nothing downstream
-changes.
-
-Classification is deliberately modular: each kind has its own classifier that
-reads only the measured features and votes with a confidence and a list of
-human-readable reasons. A combiner picks the strongest vote (or `unknown` below
-a threshold) and layers on secondary tags (`respects-robots`, `verified`,
-`impersonator`, ...). Each classifier lives in its own file under
-`agent_census/classify/` and can be read, tested, and evolved on its own.
+agent-census classifies by *behaviour*, not just the User-Agent string -- which
+is trivially forged. Each client's requests are reduced to a set of measured
+features (request volume, status mix, timing regularity, sub-resource
+co-loading, path coverage, and so on), and a set of independent classifiers vote
+on what the client is, each with a confidence and a list of human-readable
+reasons. The strongest vote wins, or `unknown` when nothing clears a threshold;
+secondary tags (`verified`, `ignores-robots`, `datacenter`, `has-cache`, ...)
+annotate the verdict.
 
 A word of caution: the confidence weights and the unknown-threshold are
 hand-tuned starting points, not gospel. Sanity-check the classifications on your
-own logs before trusting the headline percentages.
+own logs before trusting the headline percentages -- and `inspect` is there to
+show you exactly why any client landed where it did.
 
-## Development
+## Contributing
 
-Standard `make` targets: `make venv` (set `PY` to your Python), `make test`,
-`make lint`, `make typecheck`, `make tidy`.
+Contributions are welcome -- see [CONTRIBUTING.md](CONTRIBUTING.md) for the
+development setup, conventions, and a sketch of how the code is structured.

@@ -7,6 +7,24 @@ Contributions - in the form of code, bugs, or ideas - are very welcome!
 By contributing code, bugs or enhancements to this project (whether that be through pull requests, the issues list, e-mail or other means), you are licensing your contribution under the [project's terms](LICENSE.md).
 
 
+## How the Code is Structured
+
+The pipeline is **parse → group into clients → extract features → classify →
+report**. Parsing normalises every log line into a common record, so adding
+support for another server (nginx, ...) is a matter of writing a parser and
+registering it; nothing downstream changes.
+
+Classification is deliberately modular: each kind lives in its own file under
+`agent_census/classify/`, reads only the measured features, and votes with a
+confidence and a list of human-readable reasons. A combiner aggregates the votes
+into a primary kind plus secondary tags. Each classifier can be read, tested,
+and evolved on its own -- usually the easiest place to start.
+
+The confidence weights and the unknown-threshold are hand-tuned starting points;
+calibrating them against real, labelled logs is one of the more valuable things
+a contributor can do.
+
+
 ## Coding Conventions
 
 We use [isort](https://pypi.org/project/isort/) and [black](https://pypi.org/project/black/) for Python formatting, which can be run with `make tidy`.

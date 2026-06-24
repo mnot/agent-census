@@ -144,7 +144,7 @@ def _network_table(result: AnalysisResult) -> list[str]:
 
 
 def _client_label(profile: ClientProfile) -> str:
-    return md_escape(client_label(profile)[:80])
+    return md_escape(client_label(profile)[:140])
 
 
 def _actor_label(actor: ActorGroup) -> str:
@@ -153,7 +153,7 @@ def _actor_label(actor: ActorGroup) -> str:
         return _client_label(actor.lead)
     _, _, ua = client_id_parts(actor.lead)
     spread = actor_spread(actor.distinct_ips, actor.distinct_asns)
-    return md_escape(f"{spread} | {ua if ua is not None else '-'}"[:80])
+    return md_escape(f"{spread} | {ua if ua is not None else '-'}"[:140])
 
 
 def _kind_section(

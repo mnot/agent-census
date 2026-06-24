@@ -158,8 +158,8 @@ td.cid { max-width: 26rem; }
 .cid-id { font-weight: 600; }
 .cid-as { color: #6b7280; font-size: .8rem; word-break: break-word; margin: 1px 0; }
 .cid-ua { color: #6b7280; font-size: .82rem; margin-top: 1px;
-  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2;
-  -webkit-box-orient: vertical; overflow: hidden; }
+  display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3;
+  -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
 .muted { color: #6b7280; }
 .evlist { margin: .25rem 0 .25rem 1rem; padding: 0; }
 .evlist li { margin: .1rem 0; }
@@ -703,7 +703,7 @@ def _rollup_card(profiles: list[ClientProfile]) -> str:
         cls = profile.classification
         ua = elide_ua(profile.features.user_agent, is_browser=cls.primary is Kind.BROWSER) or "–"
         rows.append(
-            f'<tr><td class="mono">{_esc(truncate(ua, 80))}</td>'
+            f'<tr><td class="mono">{_esc(truncate(ua, 160))}</td>'
             f"<td>{_kind_badge(cls.primary)}</td>"
             f"<td class='num'>{cls.confidence:.0%}</td>"
             f"<td class='num'>{profile.features.request_count:,}</td>"

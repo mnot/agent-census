@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
 from ..model import ClientFeatures, ClientProfile, Kind, VerificationStatus
 
 _KHTML_MARKER = "(khtml, like gecko)"
+# Layout-engine tokens: their presence in a trimmed preamble means the UA wore a
+# real browser costume (worth flagging) rather than plain Mozilla boilerplate.
+_ENGINE_RE = re.compile(r"applewebkit|gecko|khtml|trident|presto", re.I)
 
 
 def elide_ua(ua: str | None, *, is_browser: bool = False) -> str | None:
@@ -14,12 +18,14 @@ def elide_ua(ua: str | None, *, is_browser: bool = False) -> str | None:
 
     Two preambles are handled:
 
-    - ``Mozilla/5.0 (compatible; Googlebot/2.1; +url)`` -> ``Googlebot/2.1; +url``
-    - ``...AppleWebKit/605 (KHTML, like Gecko) NetNewsWire/6`` -> ``NetNewsWire/6``
+    - ``Mozilla/5.0 (compatible; Googlebot/2.1; +url)`` -> ``… Googlebot/2.1; +url``
+    - ``...AppleWebKit/605 (KHTML, like Gecko) NetNewsWire/6`` -> ``[browser] NetNewsWire/6``
 
     The second covers macOS/iOS agents (feed readers, etc.) that wear a Safari
     prefix with their product appended -- the bit that actually identifies them.
-    Left untouched for browsers (whose preamble is meaningful) and for UAs with
+    A leading marker shows a preamble was trimmed: ``[browser]`` when the elided
+    shell carried a real layout engine (a browser costume), else ``…``. Left
+    untouched for browsers (whose preamble is meaningful) and for UAs with
     neither marker.
     """
     if not ua or is_browser:
@@ -29,11 +35,14 @@ def elide_ua(ua: str | None, *, is_browser: bool = False) -> str | None:
         rest = ua[pos + len("compatible;") :].strip()
         if rest.endswith(")"):  # drop the now-orphaned closing paren of the preamble
             rest = rest[:-1].rstrip()
-        return rest or ua
+        if not rest:
+            return ua
+        marker = "[browser]" if _ENGINE_RE.search(ua[:pos]) else "…"
+        return f"{marker} {rest}"
     pos = ua.lower().find(_KHTML_MARKER)
     if pos != -1:
         rest = ua[pos + len(_KHTML_MARKER) :].strip()
-        return rest or ua
+        return f"[browser] {rest}" if rest else ua
     return ua
 
 

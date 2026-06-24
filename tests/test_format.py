@@ -19,8 +19,10 @@ REAL_BROWSER = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.
 
 
 def test_elides_compatible_preamble() -> None:
-    assert elide_ua(GOOGLEBOT) == "Googlebot/2.1; +http://www.google.com/bot.html"
-    assert elide_ua(GPTBOT) == "GPTBot/1.1; +https://openai.com/gptbot"
+    # Plain Mozilla-compatible boilerplate (no engine) -> a "…" elision marker.
+    assert elide_ua(GOOGLEBOT) == "… Googlebot/2.1; +http://www.google.com/bot.html"
+    # GPTBot's shell carries AppleWebKit/KHTML -> flagged as a browser costume.
+    assert elide_ua(GPTBOT) == "[browser] GPTBot/1.1; +https://openai.com/gptbot"
 
 
 def test_browser_ua_left_intact() -> None:
@@ -43,7 +45,7 @@ def test_elides_khtml_preamble_for_non_browser() -> None:
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
         "(KHTML, like Gecko) NetNewsWire/6.1"
     )
-    assert elide_ua(ua) == "NetNewsWire/6.1"
+    assert elide_ua(ua) == "[browser] NetNewsWire/6.1"  # wore a WebKit shell
     assert elide_ua(ua, is_browser=True) == ua  # a real browser keeps its preamble
 
 

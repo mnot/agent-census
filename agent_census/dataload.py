@@ -9,15 +9,103 @@ hold an ``[[agent]]`` array of tables, each with a ``ua_substring`` and optional
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
 from importlib.resources import files
 from typing import Any
 
+from .errors import ConfigError
+from .iprange import KNOWN_FORMATS
+
 if sys.version_info >= (3, 11):
     import tomllib
 else:  # Python 3.10 has no stdlib tomllib.
     import tomli as tomllib
+
+
+def _type_ok(value: object, kind: str) -> bool:
+    """True if ``value`` matches a schema type token (str / bool / str[] / int[])."""
+    if kind == "str":
+        return isinstance(value, str)
+    if kind == "bool":
+        return isinstance(value, bool)
+    if kind == "str[]":
+        return isinstance(value, list) and all(isinstance(x, str) for x in value)
+    if kind == "int[]":
+        # bool is an int subclass in Python; exclude it so `true` isn't a valid ASN.
+        return isinstance(value, list) and all(
+            isinstance(x, int) and not isinstance(x, bool) for x in value
+        )
+    raise AssertionError(f"unknown schema type {kind!r}")  # pragma: no cover
+
+
+def _check_top_level(filename: str, data: dict[str, Any], allowed: set[str]) -> None:
+    extra = set(data) - allowed
+    if extra:
+        raise ConfigError(
+            f"{filename}: unexpected top-level key(s) {', '.join(sorted(extra))} "
+            f"(expected {', '.join(sorted(allowed))})"
+        )
+
+
+def _validate_records(
+    filename: str,
+    array: str,
+    entries: object,
+    schema: dict[str, str],
+    require: Callable[[dict[str, Any]], str] | None = None,
+) -> list[dict[str, Any]]:
+    """Check every ``[[array]]`` table for unknown keys, bad types, and `require`."""
+    if not isinstance(entries, list):
+        raise ConfigError(f"{filename}: [[{array}]] must be an array of tables")
+    for index, entry in enumerate(entries, start=1):
+        ctx = f"{filename}: [[{array}]] #{index}"
+        if not isinstance(entry, dict):
+            raise ConfigError(f"{ctx}: expected a table")
+        for key, value in entry.items():
+            if key not in schema:
+                raise ConfigError(
+                    f"{ctx}: unknown key '{key}' (allowed: {', '.join(sorted(schema))})"
+                )
+            if not _type_ok(value, schema[key]):
+                raise ConfigError(f"{ctx}: '{key}' must be {schema[key]}")
+        problem = require(entry) if require else ""
+        if problem:
+            raise ConfigError(f"{ctx}: {problem}")
+    return entries
+
+
+def _bad_format(entry: dict[str, Any]) -> str:
+    fmt = entry.get("format")
+    if fmt is not None and fmt not in KNOWN_FORMATS:
+        return f"unknown format '{fmt}' (allowed: {', '.join(sorted(KNOWN_FORMATS))})"
+    return ""
+
+
+_AGENT_SCHEMA = {
+    "ua_substring": "str",
+    "name": "str",
+    "domains": "str[]",
+    "ranges": "str[]",
+    "ranges_url": "str",
+    "asns": "int[]",
+    "rdns_fallback": "bool",
+}
+_SOURCE_SCHEMA = {
+    "name": "str",
+    "ranges": "str[]",
+    "ranges_url": "str",
+    "format": "str",
+    "asns": "int[]",
+}
+_NETWORK_SCHEMA = {
+    "name": "str",
+    "tag": "str",
+    "ranges": "str[]",
+    "ranges_url": "str",
+    "format": "str",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,7 +153,12 @@ def _load(name: str) -> dict[str, Any]:
 @lru_cache(maxsize=None)
 def load_list(name: str) -> tuple[str, ...]:
     """Return the flat array from ``<name>.toml`` (keyed by ``name``)."""
-    return tuple(_load(name).get(name, []))
+    data = _load(name)
+    _check_top_level(f"{name}.toml", data, {name})
+    value = data.get(name, [])
+    if not _type_ok(value, "str[]"):
+        raise ConfigError(f"{name}.toml: '{name}' must be a list of strings")
+    return tuple(value)
 
 
 # Crawler/bot categories: one TOML file each, an [[agent]] table per agent.
@@ -78,6 +171,23 @@ KNOWN_AGENT_CATEGORIES = (
 )
 
 
+def _require_agent(entry: dict[str, Any]) -> str:
+    if not (entry.get("ua_substring") or entry.get("asns")):
+        return "an agent needs a 'ua_substring' or 'asns'"
+    return ""
+
+
+@lru_cache(maxsize=None)
+def _agents(category: str) -> tuple[dict[str, Any], ...]:
+    """The validated ``[[agent]]`` tables of ``<category>.toml`` (raw dicts)."""
+    data = _load(category)
+    _check_top_level(f"{category}.toml", data, {"agent"})
+    entries = _validate_records(
+        f"{category}.toml", "agent", data.get("agent", []), _AGENT_SCHEMA, _require_agent
+    )
+    return tuple(entries)
+
+
 @lru_cache(maxsize=None)
 def load_tokens(category: str) -> tuple[tuple[str, CrawlerSpec], ...]:
     """Return ``(ua_substring, spec)`` pairs from ``<category>.toml``.
@@ -86,7 +196,7 @@ def load_tokens(category: str) -> tuple[tuple[str, CrawlerSpec], ...]:
     are skipped here; see :func:`load_asn_agents`.
     """
     pairs: list[tuple[str, CrawlerSpec]] = []
-    for entry in _load(category).get("agent", []):
+    for entry in _agents(category):
         ua = entry.get("ua_substring")
         if not ua:
             continue
@@ -108,7 +218,7 @@ def load_asn_agents(category: str) -> tuple[tuple[int, str], ...]:
     ``name`` (its display label) instead of a ``ua_substring``.
     """
     out: list[tuple[int, str]] = []
-    for entry in _load(category).get("agent", []):
+    for entry in _agents(category):
         label = entry.get("name") or entry.get("ua_substring") or category
         for asn in entry.get("asns", []):
             out.append((int(asn), label))
@@ -118,8 +228,13 @@ def load_asn_agents(category: str) -> tuple[tuple[int, str], ...]:
 @lru_cache(maxsize=None)
 def load_range_sources(name: str) -> tuple[RangeSource, ...]:
     """Return the ``[[source]]`` range stanzas from ``<name>.toml``."""
+    data = _load(name)
+    _check_top_level(f"{name}.toml", data, {"source"})
+    entries = _validate_records(
+        f"{name}.toml", "source", data.get("source", []), _SOURCE_SCHEMA, _bad_format
+    )
     sources: list[RangeSource] = []
-    for entry in _load(name).get("source", []):
+    for entry in entries:
         sources.append(
             RangeSource(
                 name=entry.get("name", ""),
@@ -135,8 +250,13 @@ def load_range_sources(name: str) -> tuple[RangeSource, ...]:
 @lru_cache(maxsize=None)
 def load_egress_networks() -> tuple[EgressNetwork, ...]:
     """Return the ``[[network]]`` stanzas from ``egress_networks.toml``."""
+    data = _load("egress_networks")
+    _check_top_level("egress_networks.toml", data, {"network"})
+    entries = _validate_records(
+        "egress_networks.toml", "network", data.get("network", []), _NETWORK_SCHEMA, _bad_format
+    )
     networks: list[EgressNetwork] = []
-    for entry in _load("egress_networks").get("network", []):
+    for entry in entries:
         networks.append(
             EgressNetwork(
                 name=entry.get("name", ""),

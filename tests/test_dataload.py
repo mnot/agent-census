@@ -2,7 +2,22 @@
 
 from __future__ import annotations
 
-from agent_census.dataload import load_asn_agents, load_list, load_range_sources, load_tokens
+import pytest
+
+from agent_census.dataload import (
+    _AGENT_SCHEMA,
+    _bad_format,
+    _check_top_level,
+    _require_agent,
+    _validate_records,
+    KNOWN_AGENT_CATEGORIES,
+    load_asn_agents,
+    load_egress_networks,
+    load_list,
+    load_range_sources,
+    load_tokens,
+)
+from agent_census.errors import ConfigError
 
 
 def test_crawler_spec_fields() -> None:
@@ -33,3 +48,49 @@ def test_range_source_asns_parse_as_ints() -> None:
     assert 16509 in by_name["Amazon AWS"].asns  # EC2
     assert 24940 in by_name["Hetzner"].asns
     assert all(isinstance(asn, int) for s in by_name.values() for asn in s.asns)
+
+
+def test_all_bundled_data_files_validate() -> None:
+    # A guard: every shipped data file passes validation (no unknown keys etc.).
+    for name in ("vuln_paths", "scanner_ua", "feed_readers"):
+        assert load_list(name)
+    for category in KNOWN_AGENT_CATEGORIES:
+        load_tokens(category)
+        load_asn_agents(category)
+    assert load_range_sources("datacenter_ranges")
+    assert load_egress_networks()
+
+
+def test_validate_rejects_unknown_key() -> None:
+    with pytest.raises(ConfigError, match="unknown key 'doamins'"):
+        _validate_records(
+            "x.toml", "agent", [{"ua_substring": "X", "doamins": ["a"]}], _AGENT_SCHEMA
+        )
+
+
+def test_validate_rejects_bad_type() -> None:
+    # asns must be a list of ints, not strings.
+    with pytest.raises(ConfigError, match=r"'asns' must be int\[\]"):
+        _validate_records("x.toml", "agent", [{"name": "X", "asns": ["35237"]}], _AGENT_SCHEMA)
+
+
+def test_validate_rejects_missing_required() -> None:
+    with pytest.raises(ConfigError, match="ua_substring' or 'asns'"):
+        _validate_records("x.toml", "agent", [{"domains": ["a"]}], _AGENT_SCHEMA, _require_agent)
+
+
+def test_validate_rejects_non_table_entry() -> None:
+    with pytest.raises(ConfigError, match="expected a table"):
+        _validate_records("x.toml", "agent", ["just a string"], _AGENT_SCHEMA)
+
+
+def test_bad_format_flagged() -> None:
+    assert "unknown format 'yaml'" in _bad_format({"format": "yaml"})
+    assert _bad_format({"format": "ripestat"}) == ""
+    assert _bad_format({}) == ""
+
+
+def test_top_level_rejects_stray_key() -> None:
+    # A mistyped array name ([[agents]] instead of [[agent]]) is caught.
+    with pytest.raises(ConfigError, match="unexpected top-level key"):
+        _check_top_level("x.toml", {"agent": [], "agents": []}, {"agent"})

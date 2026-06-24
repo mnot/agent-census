@@ -315,6 +315,10 @@ _PARSERS = {
 }
 
 
+# The range-list formats a data file may name in its `format` field.
+KNOWN_FORMATS = frozenset(_PARSERS)
+
+
 def extract_cidrs(text: str, fmt: str) -> tuple[str, ...]:
     """Extract CIDR strings from ``text`` according to the named ``fmt``."""
     parser = _PARSERS.get(fmt, parse_prefixes)

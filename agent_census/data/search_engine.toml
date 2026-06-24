@@ -22,6 +22,11 @@ domains = ["googlebot.com", "google.com"]
 ranges_url = "https://developers.google.com/static/crawling/ipranges/common-crawlers.json"
 
 [[agent]]
+# https://developer.chrome.com/blog/private-prefetch-proxy/
+ua_substring = "Chrome Privacy Preserving Prefetch Proxy"
+asns = [15169]
+
+[[agent]]
 # https://www.bing.com/webmasters/help/which-crawlers-does-bing-use-8c184ec0
 ua_substring = "Bingbot"
 domains = ["search.msn.com"]
@@ -119,3 +124,7 @@ ua_substring = "ImageMetaBot"
 [[agent]]
 # https://beamosearch.com/
 ua_substring = "BeamoBot"
+
+[[agent]]
+# https://search.synapto.com.br
+ua_substring = "SynaptoRadarBot"

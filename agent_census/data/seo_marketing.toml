@@ -11,6 +11,7 @@ ranges_url = "https://api.ahrefs.com/v3/public/crawler-ip-ranges"
 [[agent]]
 # https://www.semrush.com/bot/
 ua_substring = "SemrushBot"
+asns = [209366]
 
 [[agent]]
 # https://mj12bot.com

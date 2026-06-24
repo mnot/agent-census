@@ -43,6 +43,7 @@ domains = ["crawl.yahoo.net"]
 ua_substring = "DuckDuckBot"
 domains = ["duckduckgo.com"]
 ranges_url = "https://duckduckgo.com/duckduckbot.json"
+rdns_fallback = true
 
 [[agent]]
 # https://help.baidu.com/question?prod_id=99&class=0&id=3001

@@ -8,36 +8,38 @@
 ua_substring = "GPTBot"
 domains = ["openai.com"]
 ranges_url = "https://openai.com/gptbot.json"
+rdns_fallback = true
 
 [[agent]]
 ua_substring = "ChatGPT-User"
 domains = ["openai.com"]
 ranges_url = "https://openai.com/chatgpt-user.json"
+rdns_fallback = true
 
 [[agent]]
 ua_substring = "OAI-SearchBot"
 domains = ["openai.com"]
 ranges_url = "https://openai.com/searchbot.json"
+rdns_fallback = true
 
 [[agent]]
 # https://support.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler
 ua_substring = "ClaudeBot"
 domains = ["anthropic.com", "claude.ai"]
 ranges_url = "https://claude.com/crawling/bots.json"
+rdns_fallback = true
 
 [[agent]]
 ua_substring = "Claude-Web"
 domains = ["anthropic.com"]
 ranges_url = "https://claude.com/crawling/bots.json"
+rdns_fallback = true
 
 [[agent]]
 ua_substring = "Claude-SearchBot"
 domains = ["anthropic.com"]
 ranges_url = "https://claude.com/crawling/bots.json"
-
-[[agent]]
-ua_substring = "Google-Extended"
-domains = ["google.com", "googlebot.com"]
+rdns_fallback = true
 
 [[agent]]
 # https://developers.google.com/crawling/docs/crawlers-fetchers/google-common-crawlers
@@ -50,11 +52,13 @@ ranges_url = "https://developers.google.com/static/crawling/ipranges/common-craw
 ua_substring = "PerplexityBot"
 domains = ["perplexity.ai"]
 ranges_url = "https://www.perplexity.com/perplexitybot.json"
+rdns_fallback = true
 
 [[agent]]
 ua_substring = "Perplexity-User"
 domains = ["perplexity.ai"]
 ranges_url = "https://www.perplexity.com/perplexity-user.json"
+rdns_fallback = true
 
 [[agent]]
 # https://docs.mistral.ai/robots
@@ -116,10 +120,6 @@ domains = ["facebook.com"]
 # https://developers.facebook.com/docs/sharing/webmasters/web-crawlers/
 ua_substring = "Meta-externalfetcher"
 domains = ["facebook.com"]
-
-[[agent]]
-ua_substring = "MistralBot"
-domains = ["mistral.ai"]
 
 [[agent]]
 ua_substring = "kagibot"

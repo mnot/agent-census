@@ -28,13 +28,25 @@ ROLLUP_MIN_CLIENTS = 5
 
 
 def select_profiles(
-    result: AnalysisResult, *, client: str | None, kind: str | None
+    result: AnalysisResult,
+    *,
+    client: str | None,
+    kind: str | None,
+    network: str | None = None,
 ) -> list[ClientProfile]:
-    """Pick the profiles to inspect by client substring and/or kind."""
+    """Pick the profiles to inspect by client substring, kind, and/or network.
+
+    The filters compose (AND), so ``kind`` + ``network`` drills into one cell of
+    the kind x network cross-tab. ``network`` is a case-insensitive substring of
+    the origin-network label (e.g. ``aws``, ``relay``, ``residential``).
+    """
     profiles = list(result.profiles)
     if kind is not None:
         want = kind.strip().lower().replace(" ", "_").replace("-", "_")
         profiles = [p for p in profiles if p.classification.primary.value == want]
+    if network is not None:
+        needle = network.lower()
+        profiles = [p for p in profiles if p.network and needle in p.network.lower()]
     if client is not None:
         needle = client.lower()
         profiles = [
@@ -53,6 +65,7 @@ def _identity_block(profile: ClientProfile) -> list[str]:
         f"- **Tags:** {', '.join(sorted(cls.tags)) or '–'}",
         f"- **IP:** {profile.client_id.ip}"
         + (f" ({len(profile.member_ips)} IPs merged)" if profile.member_ips else ""),
+        f"- **Network:** {profile.network}" if profile.network else "- **Network:** –",
         f"- **User-Agent:** "
         f"{md_escape(elide_ua(feats.user_agent, is_browser=cls.primary is Kind.BROWSER) or '–')}",
         f"- **Requests:** {feats.request_count:,} · "

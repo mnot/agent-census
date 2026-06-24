@@ -274,3 +274,6 @@ class ClientProfile:
     verification: BotVerification | None = None
     # For a merged verified-bot entry: the individual IPs collapsed into it.
     member_ips: tuple[str, ...] = ()
+    # Origin-network bucket this client was attributed to (hosting provider /
+    # egress network / residential), matching the cross-tab columns.
+    network: str | None = None

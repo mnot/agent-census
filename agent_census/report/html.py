@@ -555,7 +555,8 @@ def _profile_card(profile: ClientProfile, limit: int, full: bool) -> str:
         f"<li>{_kind_badge(cls.primary)} {conf}</li>"
         f"<li><strong>Tags:</strong> {_tags_html(cls.tags)}</li>"
         f"<li><strong>IP:</strong> <code>{_esc(profile.client_id.ip)}</code></li>"
-        f'<li><strong>User-Agent:</strong> <span class="mono">{ua}</span></li>'
+        + (f"<li><strong>Network:</strong> {_esc(profile.network)}</li>" if profile.network else "")
+        + f'<li><strong>User-Agent:</strong> <span class="mono">{ua}</span></li>'
         f"<li><strong>Requests:</strong> {feats.request_count:,} · "
         f"<strong>Bandwidth:</strong> {human_bytes(feats.total_bytes)} · "
         f"<strong>Span:</strong> {human_duration(feats.duration_seconds)}</li>"

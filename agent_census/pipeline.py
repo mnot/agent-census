@@ -374,6 +374,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements
             compliance=compliance,
             verification=verification,
             member_ips=member,
+            network=network,
         )
         kind = classification.primary
         rollups[kind].add(features, classification.tags)  # every client counts here

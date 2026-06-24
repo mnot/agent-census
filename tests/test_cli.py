@@ -62,6 +62,24 @@ def test_inspect_by_kind(tmp_path: Path) -> None:
     assert "/.env" in text and "Request trace" in text
 
 
+def test_inspect_by_network_and_kind(tmp_path: Path) -> None:
+    # The sample log is all residential (offline, no datacenter ranges), so the
+    # vuln_scanner sits in the residential bucket; AWS should match nothing.
+    hit = tmp_path / "hit.md"
+    rc = main(
+        ["inspect", LOG, *OFFLINE, "--kind", "vuln_scanner", "--network", "residential",
+         "-o", str(hit)]
+    )
+    assert rc == 0
+    text = hit.read_text(encoding="utf-8")
+    assert "Why this classification" in text and "**Network:** Residential" in text
+
+    miss = tmp_path / "miss.md"
+    rc = main(["inspect", LOG, *OFFLINE, "--kind", "vuln_scanner", "--network", "aws", "-o", str(miss)])
+    assert rc == 0
+    assert "No matching clients" in miss.read_text(encoding="utf-8")
+
+
 def test_config_error_returns_2(tmp_path: Path) -> None:
     # --host without --fetch-robots is a usage error.
     rc = main(["analyze", LOG, "--host", "example.com", "-o", str(tmp_path / "x.md")])

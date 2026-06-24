@@ -228,6 +228,12 @@ def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argumen
     )
     inspect_sel.add_argument("--kind", metavar="KIND", help="inspect all clients of this kind")
     inspect_sel.add_argument(
+        "--network",
+        metavar="NET",
+        help="inspect clients in this origin network (substring, e.g. aws / relay / "
+        "residential; combine with --kind to drill into one cross-tab cell)",
+    )
+    inspect_sel.add_argument(
         "--limit", type=int, default=20, metavar="N", help="trace rows per client (default: 20)"
     )
     inspect_sel.add_argument("--full", action="store_true", help="show every request in the trace")
@@ -302,7 +308,7 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
 
 def _inspect_text(ctx: _RunContext, args: argparse.Namespace) -> str:
     """Render inspect output, collecting raw entries only for the matched clients."""
-    selected = select_profiles(ctx.result, client=args.client, kind=args.kind)
+    selected = select_profiles(ctx.result, client=args.client, kind=args.kind, network=args.network)
     entries = collect_entries(args.logfiles, ctx.parser, ctx.strategy, selected)
     selected = [dataclasses.replace(p, entries=entries.get(p.client_id, ())) for p in selected]
     if args.html:

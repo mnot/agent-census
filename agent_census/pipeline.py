@@ -22,6 +22,7 @@ from typing import Protocol
 
 from . import egress, uas
 from .classify import DEFAULT_UNKNOWN_THRESHOLD, classify_client
+from .dataload import CrawlerSpec
 from .features import DisallowedCheck, FeatureAccumulator
 from .hosting import (
     asn_for_ip,
@@ -29,6 +30,7 @@ from .hosting import (
     datacenter_provider_for_asn,
     datacenter_subnet,
     is_datacenter_ip,
+    subnet_of,
 )
 from .identity import ClientKeyStrategy
 from .model import (
@@ -73,11 +75,6 @@ _NET_EGRESS = "egress"
 _NET_RESIDENTIAL = "residential"
 
 
-def _declares_crawler(ua: str | None) -> bool:
-    """True if the UA names any known crawler (kept resident, never evicted)."""
-    return any(uas.match_category(ua, category) for category in _CRAWLER_CATEGORIES)
-
-
 def _parse_asn(value: str | None) -> int | None:
     """Parse a logged AS number (``16509`` or ``AS16509``) to an int, or None."""
     if not value:
@@ -89,6 +86,38 @@ def _parse_asn(value: str | None) -> int | None:
         return int(text)
     except ValueError:
         return None
+
+
+def _logged_asn(entry: LogEntry) -> str | None:
+    """The AS number a log line carries (MM_ASN / ClientASN / ...), or None."""
+    for key, value in entry.extra.items():
+        name = key.lower().split(":", 1)[-1]
+        if value and ("asn" in name or "autonomous_system_number" in name):
+            return value
+    return None
+
+
+def _asn_of(entry: LogEntry, ip: str) -> str | None:
+    """The AS number for a line: what the log carries, else recovered by IP feed."""
+    logged = _logged_asn(entry)
+    if logged is not None:
+        return logged
+    recovered = asn_for_ip(ip)
+    return str(recovered) if recovered is not None else None
+
+
+def _declared_spec(ua: str | None) -> tuple[str, CrawlerSpec] | None:
+    """First ``(token, spec)`` whose token the UA declares, across crawler kinds."""
+    for category in _CRAWLER_CATEGORIES:
+        known = uas.match_category(ua, category)
+        if known is not None:
+            return known
+    return None
+
+
+def _verifiable(spec: CrawlerSpec) -> bool:
+    """True if a declared crawler can be DNS/range-verified (so keep it per-IP)."""
+    return bool(spec.domains or spec.ranges or spec.ranges_url)
 
 
 class BotVerifier(Protocol):
@@ -316,6 +345,17 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements
     dc_acc: OrderedDict[tuple[str, str | None], FeatureAccumulator] = OrderedDict()
     dc_token: dict[tuple[str, str | None], str | None] = {}
     dc_members: dict[tuple[str, str | None], set[str]] = {}
+    # A recognised ASN operator (e.g. Sberbank) collapses to ONE entry across all
+    # its IPs and UAs -- the AS is the identity. Keyed by (label, None).
+    asn_acc: OrderedDict[tuple[str, str | None], FeatureAccumulator] = OrderedDict()
+    asn_token: dict[tuple[str, str | None], str | None] = {}
+    asn_members: dict[tuple[str, str | None], set[str]] = {}
+    asn_number: dict[str, str] = {}  # label -> its AS number, for classification
+    # A declared crawler we can't verify per-IP folds by (token, /24-or-/48): a
+    # forgeable UA only earns network-level collapse, not internet-wide.
+    cr_acc: OrderedDict[tuple[str, str | None], FeatureAccumulator] = OrderedDict()
+    cr_token: dict[tuple[str, str | None], str | None] = {}
+    cr_members: dict[tuple[str, str | None], set[str]] = {}
     tokens: dict[ClientId, str | None] = {}
     uas_by_ip: dict[str, set[str | None]] = {}
     ip_refs: dict[str, int] = defaultdict(int)
@@ -341,10 +381,13 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements
         datacenter: bool | None = None,
         network: str | None = None,
         network_category: str | None = None,
+        force_asn: str | None = None,
     ) -> None:
         nonlocal singleton_count
         ua_count = len(uas_by_ip.get(key.ip) or (None,))
         features = acc.finalize(ua_count_for_ip=ua_count)
+        if force_asn is not None:
+            features = replace(features, as_number=force_asn)
         if not features.as_number:
             # The log didn't carry the AS number; recover it from the IP via a
             # crawler ASN's published prefixes (so ASN recognition, attribution,
@@ -473,6 +516,40 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements
         acc.add(entry)
         members[gkey].add(entry.remote_host)
 
+    def route_regular(entry: LogEntry, declared: bool) -> None:
+        """Group a non-folded request the ordinary way (resident/evictable/retired)."""
+        nonlocal client_count, multi_ua_ips
+        key = strategy.key(entry)
+        acc = resident.get(key)
+        if acc is None:
+            acc = evictable.get(key)
+            if acc is not None:
+                evictable.move_to_end(key)
+        if acc is None and key in retired:
+            # A dormant client is back: resume its accumulator, don't recount it.
+            acc = retired.pop(key)
+            evictable[key] = acc
+        if acc is None:
+            client_count += 1
+            ip_refs[key.ip] += 1
+            token = uas.product_token(entry.user_agent) if robots is not None else None
+            tokens[key] = token
+            check = _disallowed_check(robots, token) if robots is not None else None
+            acc = FeatureAccumulator(disallowed_check=check)
+            if quiescent_seconds is not None and not declared:
+                evictable[key] = acc
+            else:
+                resident[key] = acc
+        acc.add(entry)
+
+        agents = uas_by_ip.get(entry.remote_host)
+        if agents is None:
+            uas_by_ip[entry.remote_host] = {entry.user_agent}
+        elif entry.user_agent not in agents:
+            agents.add(entry.user_agent)
+            if len(agents) == 2:
+                multi_ua_ips += 1
+
     for outcome in parser.parse_lines(read_many(paths)):
         total += 1
         entry = outcome.entry
@@ -481,47 +558,27 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements
             reasons[outcome.skip_reason or "unknown"] += 1
             continue
         parsed += 1
-        network = egress.lookup(entry.remote_host)
-        subnet = None if network is not None else datacenter_subnet(entry.remote_host)
+        ip, ua = entry.remote_host, entry.user_agent
+        network = egress.lookup(ip)
+        asn = _asn_of(entry, ip)
+        entity = uas.match_asn_any(asn)
+        crawler = _declared_spec(ua)
         if network is not None:
             # A relay/proxy egress IP is a throwaway; fold by network + UA.
-            fold(egress_acc, egress_token, egress_members, (network.name, entry.user_agent), entry)
+            fold(egress_acc, egress_token, egress_members, (network.name, ua), entry)
             egress_tag.setdefault(network.name, network.tag)
-        elif subnet is not None and not _declares_crawler(entry.user_agent):
+        elif entity is not None and asn is not None:
+            # A recognised ASN operator: one entry for the whole AS, IP and UA alike.
+            fold(asn_acc, asn_token, asn_members, (entity, None), entry)
+            asn_number[entity] = asn
+        elif crawler is not None and (verifier is None or not _verifiable(crawler[1])):
+            # A declared crawler we can't verify per-IP: collapse by (/24-or-/48, token).
+            fold(cr_acc, cr_token, cr_members, (subnet_of(ip) or ip, crawler[0]), entry)
+        elif crawler is None and (subnet := datacenter_subnet(ip)) is not None:
             # An adjacent datacenter fleet (same /24 or /48 + UA) is one actor.
-            # Declared crawlers are left out so they still reach DNS verification.
-            fold(dc_acc, dc_token, dc_members, (subnet, entry.user_agent), entry)
+            fold(dc_acc, dc_token, dc_members, (subnet, ua), entry)
         else:
-            key = strategy.key(entry)
-            acc = resident.get(key)
-            if acc is None:
-                acc = evictable.get(key)
-                if acc is not None:
-                    evictable.move_to_end(key)
-            if acc is None and key in retired:
-                # A dormant client is back: resume its accumulator, don't recount it.
-                acc = retired.pop(key)
-                evictable[key] = acc
-            if acc is None:
-                client_count += 1
-                ip_refs[key.ip] += 1
-                token = uas.product_token(entry.user_agent) if robots is not None else None
-                tokens[key] = token
-                check = _disallowed_check(robots, token) if robots is not None else None
-                acc = FeatureAccumulator(disallowed_check=check)
-                if quiescent_seconds is not None and not _declares_crawler(entry.user_agent):
-                    evictable[key] = acc
-                else:
-                    resident[key] = acc
-            acc.add(entry)
-
-            agents = uas_by_ip.get(entry.remote_host)
-            if agents is None:
-                uas_by_ip[entry.remote_host] = {entry.user_agent}
-            elif entry.user_agent not in agents:
-                agents.add(entry.user_agent)
-                if len(agents) == 2:
-                    multi_ua_ips += 1
+            route_regular(entry, crawler is not None)
 
         if quiescent_seconds is not None and entry.timestamp is not None:
             ts = entry.timestamp.timestamp()
@@ -573,6 +630,37 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements
             datacenter=True,
             network=datacenter_provider(rep_ip) or OTHER_HOSTING,
             network_category=_NET_DATACENTER,
+        )
+        client_count += 1
+    for (label, _), acc in asn_acc.items():
+        # A recognised ASN operator: one entry for the whole AS, identified by the
+        # operator label, not an IP. Forcing the AS number drives classification
+        # (the ASN classifier) and lets emit name the network on the hosting side.
+        aid = ClientId(ip=label, user_agent=None)
+        tokens[aid] = asn_token[(label, None)]
+        emit(
+            aid,
+            acc,
+            None,
+            tuple(sorted(asn_members[(label, None)])),
+            force_asn=asn_number[label],
+        )
+        client_count += 1
+    for (subnet, token), acc in cr_acc.items():
+        # A declared but unverifiable crawler: one entry per (subnet, token). The
+        # subnet is the identity; UA variants within it have already collapsed.
+        cid = ClientId(ip=subnet, user_agent=acc.user_agent)
+        tokens[cid] = cr_token[(subnet, token)]
+        members = cr_members[(subnet, token)]
+        rep_ip = next(iter(members), "")  # any member resolves to the same provider
+        provider = datacenter_provider(rep_ip)
+        emit(
+            cid,
+            acc,
+            None,
+            tuple(sorted(members)),
+            network=provider or RESIDENTIAL_NETWORK,
+            network_category=_NET_DATACENTER if provider else _NET_RESIDENTIAL,
         )
         client_count += 1
 

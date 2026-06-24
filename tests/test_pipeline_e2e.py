@@ -59,8 +59,10 @@ def test_each_client_classified_as_expected() -> None:
     result = _run()
     assert _kind_of(result, "192.0.2.10") is Kind.BROWSER
     assert _kind_of(result, "203.0.113.66") is Kind.VULN_SCANNER
-    assert _kind_of(result, "66.249.66.1") is Kind.SEARCH_ENGINE
-    assert _kind_of(result, "20.171.0.5") is Kind.AI_CRAWLER
+    # Declared crawlers fold to one entry per /24 when verification is off (as in
+    # _run): Googlebot and GPTBot are keyed by their subnet, not their bare IP.
+    assert _kind_of(result, "66.249.66.0/24") is Kind.SEARCH_ENGINE
+    assert _kind_of(result, "20.171.0.0/24") is Kind.AI_CRAWLER
     assert _kind_of(result, "198.51.100.9") is Kind.MONITOR
     assert _kind_of(result, "45.33.32.156") is Kind.SCRAPER
 
@@ -68,7 +70,7 @@ def test_each_client_classified_as_expected() -> None:
 def test_gptbot_ignores_robots_but_stays_ai_crawler() -> None:
     result = _run()
     for profile in result.profiles:
-        if profile.client_id.ip == "20.171.0.5":
+        if profile.client_id.ip == "20.171.0.0/24":
             assert profile.classification.primary is Kind.AI_CRAWLER
             assert "ignores-robots" in profile.classification.tags
             assert "impersonator" not in profile.classification.tags
@@ -412,6 +414,54 @@ def test_crawler_recognised_by_logged_asn(tmp_path: Path) -> None:
     assert crawlers and all(p.network == "Sberbank" for p in crawlers)
     tags = crawlers[0].classification.tags
     assert "asn-attributed" in tags and "datacenter" not in tags
+
+
+def test_asn_operator_collapses_across_ips_and_uas(tmp_path: Path) -> None:
+    # An ASN-recognised operator is one identity: distinct IPs (across /24s) AND
+    # distinct UAs all fold into a SINGLE entry keyed by the operator label.
+    fmt = '%h %l %u %t "%r" %>s %b "%{Referer}i" "%{User-Agent}i" "%{MM_ASN}e"'
+    uas = ("Chrome/91.0 Safari/537.36", "curl/8.0", "python-requests/2.31.0")
+    rows = [("5.188.0.1", uas[0]), ("5.188.7.2", uas[1]), ("93.158.0.3", uas[2])]
+    lines = [
+        f'{ip} - - [10/Oct/2023:12:00:0{i} +0000] "GET /p{i} HTTP/1.1" 200 100 '
+        f'"-" "{ua}" "35237"'
+        for i, (ip, ua) in enumerate(rows)
+    ]
+    log = tmp_path / "sber.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": fmt})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
+
+    sber = [p for p in result.profiles if p.network == "Sberbank"]
+    assert len(sber) == 1  # one entry for the whole AS, IPs and UAs alike
+    assert set(sber[0].member_ips) == {"5.188.0.1", "5.188.7.2", "93.158.0.3"}
+    assert sber[0].features.request_count == 3
+    assert result.identity_stats.client_count == 1
+
+
+def test_declared_crawler_folds_per_subnet_when_unverified(tmp_path: Path) -> None:
+    # With verification off, a declared crawler folds to one entry per /24,
+    # collapsing UA variants; a different /24 stays its own entry.
+    rows = [
+        ("66.249.66.1", "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"),
+        ("66.249.66.9", "Mozilla/5.0 (compatible; Googlebot/2.2; +http://www.google.com/bot.html)"),
+        ("66.249.70.4", "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"),
+    ]
+    lines = [
+        f'{ip} - - [10/Oct/2023:12:00:0{i} +0000] "GET /a{i} HTTP/1.1" 200 100 "-" "{ua}"'
+        for i, (ip, ua) in enumerate(rows)
+    ]
+    log = tmp_path / "bot.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
+
+    ids = {p.client_id.ip for p in result.profiles}
+    assert "66.249.66.0/24" in ids and "66.249.70.0/24" in ids
+    first = next(p for p in result.profiles if p.client_id.ip == "66.249.66.0/24")
+    assert set(first.member_ips) == {"66.249.66.1", "66.249.66.9"}  # two UA variants, one entry
+    assert first.features.request_count == 2
+    assert result.identity_stats.client_count == 2  # two subnets, not three IPs
 
 
 def test_crawler_recognised_by_asn_range_without_logged_asn(

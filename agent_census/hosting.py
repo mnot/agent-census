@@ -111,17 +111,21 @@ def is_datacenter_ip(ip: str) -> bool:
 
 
 @lru_cache(maxsize=None)
-def datacenter_subnet(ip: str) -> str | None:
-    """The /24 (v4) or /48 (v6) of a datacenter IP, or None if it isn't one.
+def subnet_of(ip: str) -> str | None:
+    """The /24 (v4) or /48 (v6) containing ``ip``, or None if unparseable.
 
-    Used to lump an adjacent VM fleet -- same subnet, same client -- into one
-    entry rather than scattering it across near-identical addresses.
+    The unit for lumping near-identical addresses (an adjacent fleet) into one
+    entry instead of scattering them across rotating IPs.
     """
-    if not is_datacenter_ip(ip):
-        return None
     try:
         addr = ipaddress.ip_address(ip)
     except ValueError:
         return None
     prefix = 24 if addr.version == 4 else 48
     return format(ipaddress.ip_network(f"{ip}/{prefix}", strict=False))
+
+
+@lru_cache(maxsize=None)
+def datacenter_subnet(ip: str) -> str | None:
+    """The /24 or /48 of a datacenter IP, or None if it isn't in a hosting range."""
+    return subnet_of(ip) if is_datacenter_ip(ip) else None

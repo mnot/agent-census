@@ -40,5 +40,6 @@ def _reset_range_state(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Non
     hosting.asn_for_ip.cache_clear()
     hosting.is_datacenter_ip.cache_clear()
     hosting.datacenter_subnet.cache_clear()
+    hosting.subnet_of.cache_clear()
     egress._networks.cache_clear()  # pylint: disable=protected-access
     egress.lookup.cache_clear()

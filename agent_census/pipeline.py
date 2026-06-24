@@ -129,6 +129,10 @@ class KindRollup:
     total_bytes: int = 0
     respects_robots: int = 0
     ignores_robots: int = 0
+    # Robots checked but the verdict was UNKNOWN -- too little activity to judge
+    # (or no applicable rule). Counted only when robots data is present, so when
+    # it is, respects + ignores + unknown == clients.
+    unknown_robots: int = 0
     first_seen: datetime | None = None
     last_seen: datetime | None = None
 
@@ -137,15 +141,19 @@ class _RollupAcc:
     """Mutable per-kind accumulator, frozen into a :class:`KindRollup` at the end."""
 
     __slots__ = (
-        "clients", "requests", "total_bytes", "respects", "ignores", "first_seen", "last_seen",
+        "clients", "requests", "total_bytes", "respects", "ignores", "unknown",
+        "first_seen", "last_seen",
     )  # fmt: skip
 
     def __init__(self) -> None:
-        self.clients = self.requests = self.total_bytes = self.respects = self.ignores = 0
+        self.clients = self.requests = self.total_bytes = 0
+        self.respects = self.ignores = self.unknown = 0
         self.first_seen: datetime | None = None
         self.last_seen: datetime | None = None
 
-    def add(self, features: ClientFeatures, *, respects: bool, ignores: bool) -> None:
+    def add(
+        self, features: ClientFeatures, *, respects: bool, ignores: bool, unknown: bool
+    ) -> None:
         self.clients += 1
         self.requests += features.request_count
         self.total_bytes += features.total_bytes
@@ -155,6 +163,8 @@ class _RollupAcc:
             self.respects += 1
         elif ignores:
             self.ignores += 1
+        elif unknown:
+            self.unknown += 1
         first, last = features.first_seen, features.last_seen
         if first is not None and (self.first_seen is None or first < self.first_seen):
             self.first_seen = first
@@ -168,6 +178,7 @@ class _RollupAcc:
             total_bytes=self.total_bytes,
             respects_robots=self.respects,
             ignores_robots=self.ignores,
+            unknown_robots=self.unknown,
             first_seen=self.first_seen,
             last_seen=self.last_seen,
         )
@@ -392,8 +403,11 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements
         verdict = compliance.verdict if compliance is not None else None
         respects = verdict is RobotsVerdict.RESPECTS
         ignores = verdict is RobotsVerdict.IGNORES
-        rollups[kind].add(features, respects=respects, ignores=ignores)  # every client counts
-        net_rollups[network][kind].add(features, respects=respects, ignores=ignores)
+        unknown_r = verdict is RobotsVerdict.UNKNOWN
+        rollups[kind].add(features, respects=respects, ignores=ignores, unknown=unknown_r)
+        net_rollups[network][kind].add(
+            features, respects=respects, ignores=ignores, unknown=unknown_r
+        )
         net_categories.setdefault(network, network_category or _NET_RESIDENTIAL)
         # Keep only the highest-volume profiles per kind in detail; the rest are
         # already fully reflected in the rollup above.

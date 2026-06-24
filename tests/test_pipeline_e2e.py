@@ -367,16 +367,24 @@ def test_respect_counted_in_summary_without_per_client_tag(tmp_path: Path) -> No
     from agent_census.robots.parser import RobotsRules
 
     rules = RobotsRules("User-agent: *\nDisallow: /private/\n")
-    lines = [
+    busy = [  # >= 5 requests, all allowed -> verdict RESPECTS
         f'8.8.8.8 - - [10/Oct/2023:12:00:0{i} +0000] "GET /ok{i} HTTP/1.1" 200 100 "-" "curl/8.0"'
-        for i in range(6)  # >= 5 requests, all allowed -> verdict RESPECTS
+        for i in range(6)
+    ]
+    idle = [  # < 5 requests, none disallowed -> verdict UNKNOWN (too little to judge)
+        '8.8.4.4 - - [10/Oct/2023:12:05:00 +0000] "GET /ok HTTP/1.1" 200 100 "-" "wget/1.21"'
     ]
     log = tmp_path / "respect.log"
-    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    log.write_text("\n".join(busy + idle) + "\n", encoding="utf-8")
     parser = resolve("apache", {"format": PRESETS["combined"]})
     result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"), robots=rules)
 
-    assert sum(r.respects_robots for r in result.rollups.values()) >= 1  # still counted
+    rollups = result.rollups.values()
+    assert sum(r.respects_robots for r in rollups) >= 1  # the busy client
+    assert sum(r.unknown_robots for r in rollups) >= 1  # the idle client -> "?"
+    # With robots present, every client lands in exactly one bucket.
+    accounted = sum(r.respects_robots + r.ignores_robots + r.unknown_robots for r in rollups)
+    assert accounted == sum(r.clients for r in rollups)
     assert all("respects-robots" not in p.classification.tags for p in result.profiles)
 
 

@@ -265,7 +265,7 @@ def _summary_table(result: AnalysisResult) -> str:
     robots_help = (
         "✓ respect: requested no disallowed paths\n"
         "✗ ignore: requested disallowed paths\n"
-        "(clients with no applicable rules are omitted)"
+        "? can't tell: fewer than 5 requests, or no applicable rule"
     )
     head = (
         "<tr><th>Kind</th><th class='num'>Clients</th><th class='num'>Requests</th>"
@@ -277,9 +277,15 @@ def _summary_table(result: AnalysisResult) -> str:
         rollup = rollups.get(kind)
         if rollup is None or rollup.clients == 0:
             continue
-        respects, ignores = rollup.respects_robots, rollup.ignores_robots
+        respects, ignores, unk = (
+            rollup.respects_robots,
+            rollup.ignores_robots,
+            rollup.unknown_robots,
+        )
         robots = (
-            f"{respects}✓ / {ignores}✗" if (respects or ignores) else '<span class="muted">–</span>'
+            f"{respects}✓ / {ignores}✗ / {unk}?"
+            if (respects or ignores or unk)
+            else '<span class="muted">–</span>'
         )
         rows.append(
             f'<tr><td><a href="#{kind.value}">{_kind_badge(kind)}</a></td>'

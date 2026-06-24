@@ -17,9 +17,15 @@ from .format import (
 
 
 def _robots_summary(rollup: KindRollup) -> str:
-    if not rollup.respects_robots and not rollup.ignores_robots:
+    respects, ignores, unknown = (
+        rollup.respects_robots,
+        rollup.ignores_robots,
+        rollup.unknown_robots,
+    )
+    if not (respects or ignores or unknown):
         return "–"
-    return f"{rollup.respects_robots}✓ / {rollup.ignores_robots}✗"
+    # respects + ignores + unknown == clients (when robots data is present).
+    return f"{respects}✓ / {ignores}✗ / {unknown}?"
 
 
 def _header(
@@ -83,7 +89,8 @@ def _summary_table(result: AnalysisResult) -> list[str]:
     if any_robots:
         lines.append(
             "_robots: ✓ respect (requested no disallowed paths) · "
-            "✗ ignore (requested disallowed paths); clients with no applicable rules are omitted._"
+            "✗ ignore (requested disallowed paths) · "
+            "? can't tell (fewer than 5 requests, or no applicable rule)._"
         )
         lines.append("")
     return lines

@@ -28,7 +28,7 @@
 name = "Hetzner"  # https://ipinfo.io/AS24940
 ranges_url = "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS24940"
 format = "ripestat"
-asns = [24940]
+asns = [24940, 212317]
 
 [[source]]
 name = "OVH"  # https://ipinfo.io/AS16276

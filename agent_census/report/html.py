@@ -163,11 +163,15 @@ td.copy:hover { background: #8882; }
 td.copy.copied { background: #16a34a55; }
 details { margin: .25rem 0 1rem; }
 summary { cursor: pointer; color: #6b7280; font-size: .9rem; padding: .25rem 0; }
-details.actor { margin: 0; }
-details.actor > summary { color: inherit; padding: 0; }
-details.actor > summary .cid-ua { color: #6b7280; }
-table.members { width: auto; margin: .35rem 0 .25rem 1.25rem; font-size: .85rem; }
-table.members th, table.members td { padding: .15rem .5rem; }
+tr.asum { cursor: pointer; }
+tr.asum .tri { display: inline-block; margin-right: .4rem; color: #6b7280;
+  font-size: .8rem; transition: transform .12s; }
+tbody.actor.open tr.asum .tri { transform: rotate(90deg); }
+.actor-ua { color: #6b7280; font-size: .82rem; margin-left: .5rem; }
+tbody.actor .amem { display: none; }
+tbody.actor.open .amem { display: table-row; }
+tr.amem td.cid { padding-left: 1.6rem; }
+tr.amem .cid-as { color: #6b7280; font-size: .82rem; }
 input.filter { display: block; width: 100%; max-width: 30rem; margin: .5rem 0;
   padding: .4rem .55rem; border: 1px solid #8886; border-radius: 6px;
   background: Canvas; color: CanvasText; font: inherit; }
@@ -198,6 +202,14 @@ document.addEventListener('click', function (event) {
   } else {
     fallback();
   }
+}, false);
+
+document.addEventListener('click', function (event) {
+  if (event.target.closest('[data-copy]')) return;  // a copy cell, not a toggle
+  var row = event.target.closest('tr.asum');
+  if (!row) return;
+  var body = row.parentNode;
+  if (body && body.classList.contains('actor')) body.classList.toggle('open');
 }, false);
 
 document.addEventListener('input', function (event) {
@@ -463,54 +475,51 @@ def _client_row(profile: ClientProfile, *, filterable: bool = False) -> str:
     )
 
 
-_MEMBER_HEAD = (
-    "<tr><th>IP / subnet</th><th>AS</th><th class='num'>Requests</th>"
-    "<th class='num'>Bandwidth</th></tr>"
-)
-
-
-def _member_row(profile: ClientProfile) -> str:
+def _member_tr(profile: ClientProfile) -> str:
+    """A collapsed member as a real table row: IP/AS in Client, its own req/bytes."""
     prefix, _, _ = client_id_parts(profile)
     asn = as_display(profile.features.as_org, profile.features.as_number)
+    asn_html = f" <span class='cid-as'>{_esc(asn)}</span>" if asn != "–" else ""
     return (
-        f"<tr><td class='mono'>{_esc(prefix)}</td><td>{_esc(asn)}</td>"
+        f"<tr class='amem'><td class='cid copy' data-copy='{_esc(profile.client_id.ip)}' "
+        "title='Click to copy this id for: inspect --client'>"
+        f"<span class='mono'>{_esc(prefix)}</span>{asn_html}</td>"
         f"<td class='num'>{profile.features.request_count:,}</td>"
-        f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td></tr>"
+        f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
+        "<td></td><td></td><td></td></tr>"
     )
 
 
-def _actor_cell(actor: ActorGroup) -> str:
-    """The collapsed group's Client cell: a disclosure listing its members."""
+def _actor_tbody(actor: ActorGroup, *, filterable: bool = False) -> str:
+    """One actor as a ``<tbody>``: a lone client, or a collapsible summary + members.
+
+    The members are ordinary rows sharing the table's Requests/Bandwidth columns,
+    hidden until the summary row is clicked (toggled by the page script).
+    """
+    if not actor.collapsed:
+        return f"<tbody>{_client_row(actor.lead, filterable=filterable)}</tbody>"
+    cls = actor.lead.classification
     _, _, ua = client_id_parts(actor.lead)
     spread = actor_spread(actor.distinct_ips, actor.distinct_asns)
-    members = "".join(_member_row(m) for m in actor.members)
-    return (
-        "<td class='cid'><details class='actor'>"
-        f'<summary><span class="mono cid-ua">{_esc(ua or "–")}</span>'
-        f' <span class="muted">— {_esc(spread)}</span></summary>'
-        f"<table class='members'>{_MEMBER_HEAD}{members}</table></details></td>"
-    )
-
-
-def _actor_row(actor: ActorGroup, *, filterable: bool = False) -> str:
-    if not actor.collapsed:
-        return _client_row(actor.lead, filterable=filterable)
-    cls = actor.lead.classification
     evidence = _esc(truncate(top_evidence(actor.lead)))
-    attrs = ""
+    row_attrs = "class='asum'"
     if filterable:
         haystack = " ".join(
             f"{m.client_id.ip} {m.client_id.user_agent or ''} {m.features.as_org or ''}"
             for m in actor.members
         ).lower()
-        attrs = f' class="frow" data-filter="{_esc(haystack)}"'
-    return (
-        f"<tr{attrs}>{_actor_cell(actor)}"
+        row_attrs = f"class='asum frow' data-filter=\"{_esc(haystack)}\""
+    summary = (
+        f"<tr {row_attrs}>"
+        f"<td class='cid'><span class='tri'>▸</span>{_esc(spread)}"
+        f'<span class="actor-ua mono">{_esc(ua or "–")}</span></td>'
         f"<td class='num'>{actor.requests:,}</td>"
         f"<td class='num'>{human_bytes(actor.total_bytes)}</td>"
         f"<td class='num'>{cls.confidence:.0%}</td>"
         f"<td>{_tags_html(cls.tags)}</td><td>{evidence}</td></tr>"
     )
+    members = "".join(_member_tr(m) for m in actor.members)
+    return f"<tbody class='actor'>{summary}{members}</tbody>"
 
 
 def _kind_section(kind: Kind, group: list[ClientProfile], rollup: KindRollup, top: int) -> str:
@@ -519,11 +528,12 @@ def _kind_section(kind: Kind, group: list[ClientProfile], rollup: KindRollup, to
     parts = [
         f'<h2 id="{kind.value}">{title}</h2>',
         f'<p class="blurb">{_esc(KIND_BLURB.get(kind, ""))}</p>',
-        f"<table>{_SECTION_HEAD}{''.join(_actor_row(a) for a in actors[:top])}</table>",
+        f"<table><thead>{_SECTION_HEAD}</thead>"
+        f"{''.join(_actor_tbody(a) for a in actors[:top])}</table>",
     ]
     extra = actors[top:_EXPAND_LIMIT]
     if extra:
-        extra_rows = "".join(_actor_row(a, filterable=True) for a in extra)
+        extra_rows = "".join(_actor_tbody(a, filterable=True) for a in extra)
         parts.append(
             # Shared name -> native exclusive accordion: opening one closes the rest.
             '<details name="kind-extra"><summary>'
@@ -531,7 +541,7 @@ def _kind_section(kind: Kind, group: list[ClientProfile], rollup: KindRollup, to
             '<input class="filter" type="search" '
             'placeholder="filter these by IP, User-Agent, or AS name…" '
             'aria-label="filter clients">'
-            f"<table>{_SECTION_HEAD}{extra_rows}</table>"
+            f"<table><thead>{_SECTION_HEAD}</thead>{extra_rows}</table>"
             "</details>"
         )
     # rollup.clients is the exact total; only the highest-volume ones are detailed.

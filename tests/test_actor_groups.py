@@ -88,13 +88,19 @@ def test_html_collapsed_group_lists_members_in_a_disclosure() -> None:
         _profile("9.9.9.2", "bot/1", requests=4),
     ]
     html = html_section(Kind.SCRAPER, profiles, _rollup(clients=2, requests=12), top=5)
-    assert "details class='actor'" in html
-    assert "9.9.9.1" in html and "9.9.9.2" in html  # both members listed
+    assert "tbody class='actor'" in html
+    # Footprint sits right after the triangle in the summary row.
+    assert "<span class='tri'>▸</span>2 IPs" in html
+    assert "9.9.9.1" in html and "9.9.9.2" in html  # both members listed as rows
+    assert "class='amem'" in html  # members are real table rows, not a sub-table
     assert "Acme (AS64500)" in html  # member AS shown
-    assert ">12<" in html  # summed requests in the group row
+    assert ">12<" in html  # summed requests in the summary row
+    # Members reuse the existing Requests column with their own counts.
+    assert ">8<" in html and ">4<" in html
+    assert "<table class='members'>" not in html  # no separate sub-table
 
 
 def test_html_single_client_is_not_collapsed() -> None:
     html = html_section(Kind.SCRAPER, [_profile("9.9.9.1", "solo/1")], _rollup(1, 10), top=5)
-    assert "details class='actor'" not in html
+    assert "tbody class='actor'" not in html
     assert 'data-copy="9.9.9.1"' in html  # ordinary copyable client cell

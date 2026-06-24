@@ -80,7 +80,6 @@ ua_substring = "Bytespider"
 
 [[agent]]
 ua_substring = "TikTokSpider"
-domains = ["bytedance.com"]
 
 [[agent]]
 ua_substring = "Diffbot"

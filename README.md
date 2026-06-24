@@ -65,21 +65,22 @@ Required (all present in `combined`):
 - **User-Agent** (`"%{User-Agent}i"`) -- browser, bot, and declared-crawler
   recognition.
 
-Recommended (also in `combined`):
+Recommended. The first two are already in `combined`; the rest aren't in any
+preset, so add them to a custom `LogFormat` (quoted) -- they're worth it:
 
-- **Referer** (`"%{Referer}i"`) -- referer-following, which separates crawlers
-  from scrapers and flags fabricated referers.
-- **Bytes sent** (`%b`, or `%B`) -- the bandwidth figures in the report.
-
-Optional, each unlocking a feature -- add them to your `LogFormat`, quoted:
-
-- **`"%{MM_ASORG}e"` and `"%{MM_ASN}e"`** (MaxMind `mod_maxminddb`) -- name
-  datacentre clients by their hosting organisation, and recognise datacentres and
-  ASN-listed crawlers by AS number. See [Networks and hosting](#networks-and-hosting).
-- **`"%{Content-Type}o"`** -- the response media type, which sharpens feed-reader
-  detection (an RSS/Atom type, not just a feed-shaped URL).
-- **`"%{X-Forwarded-For}i"`** -- only if you're behind a CDN or proxy, for
-  `--identity forwarded`.
+- **Referer** (`"%{Referer}i"`, in `combined`) -- referer-following, which
+  separates crawlers from scrapers and flags fabricated referers.
+- **Bytes sent** (`%b` or `%B`, in `combined`) -- the bandwidth figures in the
+  report.
+- **AS organisation and number** (`"%{MM_ASORG}e"` and `"%{MM_ASN}e"`, MaxMind
+  `mod_maxminddb`) -- name datacentre clients by their hosting organisation, and
+  recognise datacentres and ASN-listed crawlers by AS number. Much of
+  [Networks and hosting](#networks-and-hosting) leans on these; log **both** (the
+  number drives recognition, the org names it).
+- **Content-Type** (`"%{Content-Type}o"`) -- the response media type, which
+  sharpens feed-reader detection (an RSS/Atom type, not just a feed-shaped URL).
+- **X-Forwarded-For** (`"%{X-Forwarded-For}i"`) -- if you're behind a CDN or
+  proxy, for `--identity forwarded`.
 
 Response time (`%D` / `%T`) and the virtual host are parsed if present but not
 currently used by the analysis.

@@ -72,13 +72,17 @@ def combine(
     """
     by_label: dict[Kind, float] = {}
     for signal in signals:
-        by_label[signal.kind] = max(by_label.get(signal.kind, 0.0), signal.confidence)
+        # Round when aggregating: classifiers build confidence from 0.05-step
+        # increments, and float error (0.3 + 0.15 == 0.44999999996) would otherwise
+        # drop a sum that equals the threshold just below it -- misfiling a clear
+        # client as UNKNOWN while it still displays as the rounded percentage.
+        by_label[signal.kind] = max(by_label.get(signal.kind, 0.0), round(signal.confidence, 3))
 
     # A person rarely browses from hosting infrastructure, so nudge a datacenter
     # "browser" verdict down a little -- enough to tip a borderline one, not to
     # overrule a strongly-behaving real browser.
     if datacenter and Kind.BROWSER in by_label:
-        by_label[Kind.BROWSER] = max(0.0, by_label[Kind.BROWSER] - 0.1)
+        by_label[Kind.BROWSER] = round(max(0.0, by_label[Kind.BROWSER] - 0.1), 3)
 
     tags = derive_tags(features, compliance, verification, datacenter=datacenter)
     stored = tuple(signals) if keep_signals else ()

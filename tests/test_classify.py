@@ -100,6 +100,15 @@ def test_combiner_unknown_below_threshold() -> None:
     assert result.all_signals == tuple(signals)
 
 
+def test_threshold_boundary_survives_float_error() -> None:
+    # 0.3 + 0.15 == 0.44999999996 in float; a sum that equals the threshold must
+    # still meet it, not fall to UNKNOWN (the panscient.com scraper case).
+    signals = [Signal(Kind.SCRAPER, 0.3 + 0.15, ("harvests many pages",), "scraper")]
+    result = combine(signals, ClientFeatures(request_count=414), unknown_threshold=0.45)
+    assert result.primary is Kind.SCRAPER
+    assert result.confidence == 0.45
+
+
 def test_combiner_singleton_for_one_request_would_be_unknown() -> None:
     # A single-request client with no strong signal is bucketed as a singleton.
     signals = [Signal(Kind.BROWSER, 0.3, ("weak",), "browser")]

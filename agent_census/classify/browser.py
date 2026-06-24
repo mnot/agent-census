@@ -7,6 +7,7 @@ link navigation, a browser-shaped UA, and a low error rate corroborate it.
 
 from __future__ import annotations
 
+from .. import uas
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
 from .tags import identifies_as_known_agent
@@ -63,6 +64,26 @@ class BrowserClassifier(Classifier):
             # Conditional requests answered 304 mean a real cache -- a browser tell.
             confidence += 0.1
             evidence.append("revalidates from cache (304 Not Modified)")
+
+        # Chromium-based browsers and Firefox auto-update on a ~monthly cadence, so
+        # a real browser is rarely far behind. A UA claiming a version years old
+        # (measured against when the client was active) is almost always a frozen,
+        # spoofed string; a current one weakly corroborates. Bots can copy a recent
+        # UA, so the fresh bonus is small and the stale penalty is the load-bearing
+        # half. Old but real cases exist (locked fleets, embedded WebViews, ESR),
+        # so only a very old version caps the verdict.
+        band = uas.version_age_band(features.user_agent, features.last_seen)
+        if evidence and band == "current":
+            confidence += 0.1
+            evidence.append("up-to-date browser version")
+        elif evidence and band == "stale":
+            confidence -= 0.15
+            evidence.append("browser version well out of date")
+        elif evidence and band == "ancient":
+            # Years behind on a family that auto-updates: almost always a frozen,
+            # spoofed UA, so cap the browser hypothesis below the threshold.
+            confidence = min(confidence, 0.3)
+            evidence.append("browser version years out of date — modern browsers auto-update")
 
         # A browser never auto-fetches /robots.txt; checking it is a crawler's
         # habit. Slight on its own (a person could type the URL once), but it

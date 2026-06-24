@@ -82,6 +82,12 @@ _TAG_HELP: dict[str, str] = {
     "and holds a real cache, the mark of a browser or a polite poller.",
     "uses-HEAD": "Issues HEAD requests for more than an incidental share of its traffic "
     "— browsers fetch with GET, so this points to a monitor, link-checker, or other bot.",
+    "current-ua": "Claims a browser version current for when it was active — consistent "
+    "with a real, auto-updating browser.",
+    "stale-ua": "Claims a browser version well behind the release cadence for its active "
+    "period; unusual for an auto-updating browser.",
+    "ancient-ua": "Claims a browser version years out of date. Chromium and Firefox "
+    "auto-update, so this is almost always a frozen, spoofed User-Agent.",
     "checked-robots": "Requested /robots.txt at some point.",
     "no-user-agent": "Sent no User-Agent header.",
     "ua-rotating": "Many distinct User-Agents from one IP, paired with a hosting origin "

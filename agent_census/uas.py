@@ -9,10 +9,18 @@ request behavior.
 from __future__ import annotations
 
 import re
+from datetime import datetime, timedelta
 from functools import lru_cache
 from typing import TypeVar
 
-from .dataload import KNOWN_AGENT_CATEGORIES, CrawlerSpec, load_asn_agents, load_tokens
+from .dataload import (
+    KNOWN_AGENT_CATEGORIES,
+    BrowserRelease,
+    CrawlerSpec,
+    load_asn_agents,
+    load_browser_releases,
+    load_tokens,
+)
 
 _P = TypeVar("_P")
 
@@ -143,4 +151,88 @@ def product_token(ua: str | None) -> str | None:
     match = _TOKEN_RE.search(ua)
     if match and match.group(1).lower() != "mozilla":
         return match.group(1)
+    return None
+
+
+# Major-version tokens per family. Firefox and Chrome first; every Chromium
+# browser (Chrome, Edge, Opera, Brave, …) carries a "Chrome/<n>" token at the
+# Chromium major, so matching it covers them all. Safari's real version is the
+# "Version/<n>" token (the trailing "Safari/605.x" is a frozen WebKit build);
+# Chrome desktop UAs carry no "Version/" token, so the Chrome check wins first.
+_FIREFOX_VER_RE = re.compile(r"firefox/(\d+)", re.I)
+_CHROME_VER_RE = re.compile(r"chrome/(\d+)", re.I)
+_SAFARI_VER_RE = re.compile(r"version/(\d+)[\d._]*\s+(?:mobile/\S+\s+)?safari", re.I)
+
+
+def browser_version(ua: str | None) -> tuple[str, int] | None:
+    """``(family, major)`` for a recognised browser UA, else None.
+
+    Firefox and Chromium-based browsers report their auto-update major; Safari
+    reports its ``Version/`` major (aged leniently downstream). Other UAs yield
+    None.
+    """
+    if is_empty(ua) or ua is None:
+        return None
+    match = _FIREFOX_VER_RE.search(ua)
+    if match:
+        return "firefox", int(match.group(1))
+    match = _CHROME_VER_RE.search(ua)
+    if match:
+        return "chrome", int(match.group(1))
+    match = _SAFARI_VER_RE.search(ua)
+    if match:
+        return "safari", int(match.group(1))
+    return None
+
+
+@lru_cache(maxsize=None)
+def _release_index() -> dict[str, BrowserRelease]:
+    return {rel.name.lower(): rel for rel in load_browser_releases()}
+
+
+def version_age_months(ua: str | None, as_of: datetime | None) -> float | None:
+    """How many months out of date the UA's browser version was at ``as_of``.
+
+    Estimates the claimed major's release date from the family's linear cadence
+    and measures its age when the client was active. Negative means newer than
+    the model expects (fresh). None when the family/version can't be read, or no
+    ``as_of`` is known. Modern browsers auto-update, so a large positive age is
+    evidence the UA is a frozen, spoofed string rather than a real browser.
+    """
+    if as_of is None:
+        return None
+    parsed = browser_version(ua)
+    if parsed is None:
+        return None
+    family, major = parsed
+    release = _release_index().get(family)
+    if release is None:
+        return None
+    estimated = release.anchor_date + timedelta(
+        days=(major - release.anchor_major) * release.days_per_major
+    )
+    return (as_of.date() - estimated).days / 30.4
+
+
+def version_age_band(ua: str | None, as_of: datetime | None) -> str | None:
+    """Classify the UA's browser version age: ``current`` / ``stale`` / ``ancient``.
+
+    None when no browser version or active time is known. Auto-updating families
+    (Chrome/Firefox) are judged tightly -- years behind is ``ancient``. Safari is
+    OS-bundled and lingers on old Apple hardware, so it only ever reaches
+    ``stale`` and only when many years behind. The single source of truth for
+    both the browser classifier's confidence nudge and the ``*-ua`` tags.
+    """
+    parsed = browser_version(ua)
+    age = version_age_months(ua, as_of)
+    if parsed is None or age is None:
+        return None
+    if age <= 6:
+        return "current"
+    if parsed[0] == "safari":
+        return "stale" if age >= 48 else None
+    if age >= 36:
+        return "ancient"
+    if age >= 18:
+        return "stale"
     return None

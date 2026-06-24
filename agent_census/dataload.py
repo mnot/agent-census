@@ -11,6 +11,7 @@ from __future__ import annotations
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import date
 from functools import lru_cache
 from importlib.resources import files
 from typing import Any
@@ -30,6 +31,11 @@ def _type_ok(value: object, kind: str) -> bool:
         return isinstance(value, str)
     if kind == "bool":
         return isinstance(value, bool)
+    if kind == "int":
+        # bool is an int subclass in Python; exclude it so `true` isn't a valid int.
+        return isinstance(value, int) and not isinstance(value, bool)
+    if kind == "date":
+        return isinstance(value, date)
     if kind == "str[]":
         return isinstance(value, list) and all(isinstance(x, str) for x in value)
     if kind == "int[]":
@@ -107,6 +113,17 @@ _NETWORK_SCHEMA = {
     "ranges_url": "str",
     "format": "str",
 }
+_FAMILY_SCHEMA = {
+    "name": "str",
+    "anchor_major": "int",
+    "anchor_date": "date",
+    "days_per_major": "int",
+}
+
+
+def _require_family(entry: dict[str, Any]) -> str:
+    missing = [k for k in _FAMILY_SCHEMA if k not in entry]
+    return f"missing {', '.join(missing)}" if missing else ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,6 +160,16 @@ class EgressNetwork:
     ranges: tuple[str, ...] = ()
     ranges_url: str | None = None
     fmt: str = "prefixes"
+
+
+@dataclass(frozen=True, slots=True)
+class BrowserRelease:
+    """A browser family's release cadence: a known major + date, and days/major."""
+
+    name: str
+    anchor_major: int
+    anchor_date: date
+    days_per_major: int
 
 
 @lru_cache(maxsize=None)
@@ -285,3 +312,22 @@ def load_egress_networks() -> tuple[EgressNetwork, ...]:
             )
         )
     return tuple(networks)
+
+
+@lru_cache(maxsize=None)
+def load_browser_releases() -> tuple[BrowserRelease, ...]:
+    """Return the ``[[family]]`` release-cadence anchors from ``browser_releases.toml``."""
+    data = _load("browser_releases")
+    _check_top_level("browser_releases.toml", data, {"family"})
+    entries = _validate_records(
+        "browser_releases.toml", "family", data.get("family", []), _FAMILY_SCHEMA, _require_family
+    )
+    return tuple(
+        BrowserRelease(
+            name=entry["name"],
+            anchor_major=entry["anchor_major"],
+            anchor_date=entry["anchor_date"],
+            days_per_major=entry["days_per_major"],
+        )
+        for entry in entries
+    )

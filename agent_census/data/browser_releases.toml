@@ -1,0 +1,31 @@
+# Approximate release cadence per browser family, used to flag implausibly old
+# (yet auto-updating) browser versions as evidence of a spoofed UA. One anchor
+# (a known major + its release date) plus a linear days-per-major cadence; the
+# model extrapolates in both directions, so this needs only an occasional bump,
+# not per-release upkeep. Chromium-based browsers (Edge, Opera, Brave, …) carry
+# a "Chrome/<major>" token tracking the same Chromium major, so they resolve
+# against the Chrome anchor.
+#
+# Safari is included but treated leniently by the classifier: it ships bundled
+# with macOS/iOS on a ~yearly cadence (not silent auto-update), and old-but-real
+# Apple hardware keeps old versions around, so only a years-stale Safari is a
+# weak nudge -- never the cap the auto-updating families get. Its version is the
+# "Version/<n>" token, not the frozen "Safari/605.1.15" WebKit build.
+
+[[family]]
+name = "Chrome"
+anchor_major = 120
+anchor_date = 2023-12-06
+days_per_major = 30
+
+[[family]]
+name = "Firefox"
+anchor_major = 121
+anchor_date = 2023-12-19
+days_per_major = 30
+
+[[family]]
+name = "Safari"
+anchor_major = 17
+anchor_date = 2023-09-18
+days_per_major = 365

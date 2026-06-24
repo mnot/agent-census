@@ -31,6 +31,19 @@ def test_ranges_url_loaded() -> None:
     assert spec.ranges_url == "https://openai.com/searchbot.json"
 
 
+def test_browser_releases_load() -> None:
+    from datetime import date
+
+    from agent_census.dataload import load_browser_releases
+
+    families = {rel.name: rel for rel in load_browser_releases()}
+    assert "Chrome" in families and "Firefox" in families
+    chrome = families["Chrome"]
+    assert chrome.anchor_major == 120
+    assert chrome.anchor_date == date(2023, 12, 6)
+    assert chrome.days_per_major == 30
+
+
 def test_flat_lists_load() -> None:
     assert "/.env" in load_list("vuln_paths")
     assert "sqlmap" in load_list("scanner_ua")

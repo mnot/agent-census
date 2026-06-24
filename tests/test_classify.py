@@ -189,6 +189,88 @@ def test_claude_user_is_an_ai_crawler_not_a_spoofed_browser() -> None:
     assert "fake-browser" not in result.tags
 
 
+def test_stale_browser_version_is_not_a_browser() -> None:
+    # The reported case: Chrome 106 (shipped 2022) seen in mid-2026 -- ~3.7 years
+    # behind the auto-update cadence, with browser-shaped behaviour. The frozen
+    # version caps the browser verdict.
+    from datetime import datetime, timezone
+
+    feats = ClientFeatures(
+        request_count=18000,
+        distinct_paths=600,
+        asset_coload_ratio=0.7,
+        ua_looks_like_browser=True,
+        ratio_404=0.0,
+        last_seen=datetime(2026, 6, 1, tzinfo=timezone.utc),
+        status_counts={200: 17000, 304: 50},  # has some 304s, so only the age bites
+        user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36",
+    )
+    assert classify_client(feats).primary is not Kind.BROWSER
+
+
+def test_old_safari_is_only_mildly_dinged_not_capped() -> None:
+    # Safari is OS-bundled and common in old versions on old Apple hardware, so a
+    # well-behaved old Safari stays a browser (mild ding, never the cap Chrome
+    # and Firefox get).
+    from datetime import datetime, timezone
+
+    feats = ClientFeatures(
+        request_count=40,
+        distinct_paths=40,
+        asset_coload_ratio=0.7,
+        ua_looks_like_browser=True,
+        ratio_404=0.0,
+        last_seen=datetime(2026, 6, 1, tzinfo=timezone.utc),
+        user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
+        "(KHTML, like Gecko) Version/14.1 Safari/605.1.15",
+    )
+    result = classify_client(feats)
+    assert result.primary is Kind.BROWSER  # not capped
+    assert "stale-ua" in result.tags  # but flagged stale, never ancient
+
+
+def test_ua_age_tags() -> None:
+    from datetime import datetime, timezone
+
+    def tags_for(ua: str, when: datetime) -> frozenset[str]:
+        feats = ClientFeatures(
+            request_count=10,
+            ua_looks_like_browser=True,
+            asset_coload_ratio=0.6,
+            last_seen=when,
+            user_agent=ua,
+        )
+        return classify_client(feats).tags
+
+    y2026 = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    assert "ancient-ua" in tags_for("Chrome/106.0.0.0 Safari/537.36", y2026)
+    assert "current-ua" in tags_for(
+        "Chrome/120.0.0.0 Safari/537.36", datetime(2024, 1, 1, tzinfo=timezone.utc)
+    )
+    assert "stale-ua" in tags_for("Firefox/100.0", datetime(2024, 6, 1, tzinfo=timezone.utc))
+    # A UA with no browser version carries none of the *-ua tags.
+    no_ua_tags = tags_for("curl/8.0", y2026)
+    assert not any(t.endswith("-ua") for t in no_ua_tags)
+
+
+def test_current_browser_version_stays_a_browser() -> None:
+    # A version roughly current for the log's date is no mark against it.
+    from datetime import datetime, timezone
+
+    feats = ClientFeatures(
+        request_count=40,
+        distinct_paths=40,
+        asset_coload_ratio=0.7,
+        ua_looks_like_browser=True,
+        ratio_404=0.0,
+        last_seen=datetime(2024, 1, 15, tzinfo=timezone.utc),
+        user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36",
+    )
+    assert classify_client(feats).primary is Kind.BROWSER
+
+
 def test_combiner_unknown_below_threshold() -> None:
     signals = [Signal(Kind.BROWSER, 0.3, ("weak",), "browser")]
     result = combine(signals, ClientFeatures(request_count=5), unknown_threshold=0.45)
@@ -233,6 +315,30 @@ def test_combiner_spoofed_browser_from_datacenter() -> None:
     result = combine(signals, _FAKE_BROWSER, datacenter=True, unknown_threshold=0.45)
     assert result.primary is Kind.SPOOFED_BROWSER
     assert {"fake-browser", "datacenter"} <= result.tags
+
+
+def test_browser_version_parsing_and_age() -> None:
+    from datetime import datetime, timezone
+
+    from agent_census import uas
+
+    assert uas.browser_version("... Chrome/106.0.0.0 Safari/537.36") == ("chrome", 106)
+    assert uas.browser_version("... Firefox/121.0") == ("firefox", 121)
+    # Edge/Opera ride the Chromium major via their Chrome/ token.
+    assert uas.browser_version("... Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0") == ("chrome", 120)
+    # Safari reports its Version/ major (not the frozen Safari/605 WebKit build).
+    assert uas.browser_version(
+        "Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 (KHTML) Version/16.0 Safari/605.1.15"
+    ) == ("safari", 16)
+    # Non-browsers report nothing.
+    assert uas.browser_version("curl/8.0") is None
+
+    at = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    old = uas.version_age_months("Chrome/106.0.0.0", at)
+    assert old is not None and old > 36  # ~3.7 years
+    fresh = uas.version_age_months("Chrome/120.0.0.0", datetime(2024, 1, 1, tzinfo=timezone.utc))
+    assert fresh is not None and fresh <= 6
+    assert uas.version_age_months("Chrome/120.0.0.0", None) is None  # no anchor time
 
 
 def test_contact_marker_in_ua_reads_as_a_bot_not_a_browser() -> None:

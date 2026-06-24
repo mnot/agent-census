@@ -128,6 +128,12 @@ def derive_tags(
     if uas.match_asn_any(features.as_number):
         # Recognised by origin AS number (a configured crawler network), not its UA.
         tags.add("asn-attributed")
+    band = uas.version_age_band(features.user_agent, features.last_seen)
+    if band is not None:
+        # How current the claimed browser version is for when the client was
+        # active: current-ua / stale-ua / ancient-ua. Only set when the UA carries
+        # a browser version, so it marks browsers and browser-spoofing clients.
+        tags.add(f"{band}-ua")
     if features.ua_empty:
         tags.add("no-user-agent")
     if features.ua_count_for_ip >= _UA_ROTATION_THRESHOLD:

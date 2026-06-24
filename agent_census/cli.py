@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import __version__, identity, iprange, pipeline
+from . import __version__, identity, iprange, pipeline, userconfig
 from .classify import DEFAULT_UNKNOWN_THRESHOLD
 from .errors import AgentCensusError
 from .identity import ClientKeyStrategy
@@ -71,8 +71,9 @@ def _add_shared(parser: argparse.ArgumentParser) -> None:
         help="one or more access logs (plain or .gz); multiple files are pooled",
     )
 
+    # Sticky options (log format, identity, robots source) default to None so an
+    # unset one falls back to ~/.config; see _apply_persisted_settings.
     fmt_group = parser.add_argument_group("input format")
-    fmt_group.add_argument("--server", default="apache", help="log server format (default: apache)")
     fmt = fmt_group.add_mutually_exclusive_group()
     fmt.add_argument(
         "--log-format",
@@ -86,7 +87,7 @@ def _add_shared(parser: argparse.ArgumentParser) -> None:
     )
     fmt_group.add_argument(
         "--identity",
-        default="ip_ua",
+        default=None,
         choices=identity.available(),
         help="how to group requests into clients (default: ip_ua)",
     )
@@ -96,15 +97,12 @@ def _add_shared(parser: argparse.ArgumentParser) -> None:
         "--robots-file", type=Path, metavar="PATH", help="local robots.txt to check against"
     )
     robots_group.add_argument(
-        "--robots-url", metavar="URL", help="robots.txt URL to fetch (with --fetch-robots)"
+        "--robots-url", metavar="URL", help="robots.txt URL to fetch over the network"
     )
     robots_group.add_argument(
-        "--host", metavar="HOST", help="site host, used to derive the robots.txt URL"
-    )
-    robots_group.add_argument(
-        "--fetch-robots",
-        action="store_true",
-        help="opt in to fetching robots.txt over the network (may post-date the log)",
+        "--host",
+        metavar="HOST",
+        help="site host; its robots.txt is fetched over the network",
     )
     robots_group.add_argument(
         "--verify-bots",
@@ -252,13 +250,9 @@ def _resolve_format(args: argparse.Namespace) -> str:
 def _load_robots(args: argparse.Namespace) -> RobotsDoc | None:
     if args.robots_file:
         return from_file(args.robots_file)
-    if args.fetch_robots:
-        target = args.robots_url or args.host
-        if not target:
-            raise AgentCensusError("--fetch-robots requires --host or --robots-url")
+    target = args.robots_url or args.host  # naming a remote source opts into fetching it
+    if target:
         return from_network(url_for_host(target))
-    if args.robots_url or args.host:
-        raise AgentCensusError("to fetch robots.txt over the network, add --fetch-robots")
     return None
 
 
@@ -271,12 +265,54 @@ class _RunContext:
     elapsed: float
 
 
+def _apply_persisted_settings(args: argparse.Namespace) -> None:
+    """Fill sticky options from ``~/.config`` when unset; persist any passed now.
+
+    Sticky options: the log format (``--log-format`` / ``--log-format-preset``,
+    one supersedes the other), ``--identity``, and the robots source
+    (``--robots-file`` / ``--robots-url``). Naming any robots source this run
+    (including ``--host``) suppresses a restored one so it can't override.
+    """
+    cfg = userconfig.load()
+    updated = False
+
+    if args.log_format is not None:
+        cfg["log_format"], updated = args.log_format, True
+        cfg.pop("log_format_preset", None)
+    elif args.log_format_preset is not None:
+        cfg["log_format_preset"], updated = args.log_format_preset, True
+        cfg.pop("log_format", None)
+    elif "log_format" in cfg:
+        args.log_format = cfg["log_format"]
+    elif "log_format_preset" in cfg:
+        args.log_format_preset = cfg["log_format_preset"]
+
+    if args.identity is not None:
+        cfg["identity"], updated = args.identity, True
+    elif "identity" in cfg:
+        args.identity = cfg["identity"]
+
+    passed_source = args.robots_file or args.robots_url or args.host
+    if args.robots_file is not None:
+        cfg["robots_file"], updated = str(args.robots_file), True
+        cfg.pop("robots_url", None)
+    elif args.robots_url is not None:
+        cfg["robots_url"], updated = args.robots_url, True
+        cfg.pop("robots_file", None)
+    if not passed_source:
+        if "robots_file" in cfg:
+            args.robots_file = Path(cfg["robots_file"])
+        elif "robots_url" in cfg:
+            args.robots_url = cfg["robots_url"]
+
+    if updated:
+        userconfig.save(cfg)
+    if args.identity is None:
+        args.identity = "ip_ua"  # the built-in default when nothing is set or saved
+
+
 def _run_pipeline(args: argparse.Namespace) -> _RunContext:
-    if args.server != "apache":
-        log_format = args.log_format or ""
-    else:
-        log_format = _resolve_format(args)
-    parser = resolve(args.server, {"format": log_format})
+    parser = resolve("apache", {"format": _resolve_format(args)})
     strategy = identity.get_strategy(args.identity)
 
     robots_doc = _load_robots(args)
@@ -341,6 +377,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = subcommands[raw[0]].parse_intermixed_args(raw[1:])
     args.command = raw[0]
     try:
+        _apply_persisted_settings(args)
         ctx = _run_pipeline(args)
         if args.command == "analyze":
             result = ctx.result

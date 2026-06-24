@@ -17,18 +17,21 @@ def _reset_range_state(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Non
     ``--fetch-ranges`` is on by default, so running the CLI flips a module-global
     flag; reset it (and the memoised network sets) after every test so one test's
     network opt-in can't bleed into the next and trigger real fetches. Also point
-    the cache dir at a throwaway tmp dir so disk caches (range lists, DNS lookups)
-    never read or write the developer's real ``~/.cache``. Set the env directly
+    the cache and config dirs at throwaway tmp dirs so disk caches (range lists,
+    DNS lookups) and persisted CLI settings never touch the developer's real
+    ``~/.cache`` / ``~/.config`` and stay isolated per test. Set the env directly
     (not via ``monkeypatch``) so this fixture's teardown runs before any test-level
     ``monkeypatch`` undoes patched ``lru_cache`` objects below.
     """
-    saved = os.environ.get("XDG_CACHE_HOME")
+    saved = {k: os.environ.get(k) for k in ("XDG_CACHE_HOME", "XDG_CONFIG_HOME")}
     os.environ["XDG_CACHE_HOME"] = str(tmp_path_factory.mktemp("cache"))
+    os.environ["XDG_CONFIG_HOME"] = str(tmp_path_factory.mktemp("config"))
     yield
-    if saved is None:
-        os.environ.pop("XDG_CACHE_HOME", None)
-    else:
-        os.environ["XDG_CACHE_HOME"] = saved
+    for key, value in saved.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
     iprange._remote["enabled"] = False  # pylint: disable=protected-access
     hosting._provider_indexes.cache_clear()  # pylint: disable=protected-access
     hosting._asn_providers.cache_clear()  # pylint: disable=protected-access

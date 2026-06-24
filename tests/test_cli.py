@@ -6,7 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from agent_census.cli import main
+from agent_census import userconfig
+from agent_census.cli import _apply_persisted_settings, _build_parser, main
 
 DATA = Path(__file__).parent / "data"
 LOG = str(DATA / "sample_access.log")
@@ -81,9 +82,51 @@ def test_inspect_by_network_and_kind(tmp_path: Path) -> None:
 
 
 def test_config_error_returns_2(tmp_path: Path) -> None:
-    # --host without --fetch-robots is a usage error.
-    rc = main(["analyze", LOG, "--host", "example.com", "-o", str(tmp_path / "x.md")])
+    # An unreadable robots file is a config error -> exit 2 (network-free).
+    rc = main(
+        ["analyze", LOG, *OFFLINE, "--robots-file", str(tmp_path / "nope.txt"), "-o",
+         str(tmp_path / "x.md")]
+    )
     assert rc == 2
+
+
+def _analyze_args(argv: list[str]):
+    _, subcommands = _build_parser()
+    return subcommands["analyze"].parse_intermixed_args(argv)
+
+
+def test_settings_persist_then_restore() -> None:
+    first = _analyze_args([LOG, "--identity", "ip_ua_subnet", "--log-format-preset", "combined"])
+    _apply_persisted_settings(first)
+    assert userconfig.load() == {"identity": "ip_ua_subnet", "log_format_preset": "combined"}
+
+    # A later run that omits them inherits the saved values.
+    later = _analyze_args([LOG])
+    _apply_persisted_settings(later)
+    assert later.identity == "ip_ua_subnet"
+    assert later.log_format_preset == "combined"
+
+
+def test_passing_a_setting_overrides_and_updates() -> None:
+    _apply_persisted_settings(_analyze_args([LOG, "--identity", "ip_ua_subnet"]))
+    overridden = _analyze_args([LOG, "--identity", "ip"])
+    _apply_persisted_settings(overridden)
+    assert overridden.identity == "ip"
+    assert userconfig.load()["identity"] == "ip"
+
+
+def test_format_alternatives_supersede_each_other() -> None:
+    _apply_persisted_settings(_analyze_args([LOG, "--log-format-preset", "combined"]))
+    assert "log_format_preset" in userconfig.load()
+    _apply_persisted_settings(_analyze_args([LOG, "--log-format", "%h %t"]))
+    cfg = userconfig.load()
+    assert cfg.get("log_format") == "%h %t" and "log_format_preset" not in cfg
+
+
+def test_identity_defaults_to_ip_ua_when_unset() -> None:
+    args = _analyze_args([LOG])
+    _apply_persisted_settings(args)
+    assert args.identity == "ip_ua"  # built-in default, nothing saved
 
 
 def test_keyboard_interrupt_returns_130(

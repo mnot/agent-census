@@ -92,6 +92,14 @@ def _add_shared(parser: argparse.ArgumentParser) -> None:
         choices=identity.available(),
         help="how to group requests into clients (default: ip_ua)",
     )
+    fmt_group.add_argument(
+        "--vhost",
+        metavar="SUBSTRING",
+        action="append",
+        help="analyse only lines served for a virtual host matching SUBSTRING "
+        "(matched against the logged %%v, else the Host header); scopes a multi-site "
+        "log to one site. Repeatable: a line is kept if it matches any --vhost",
+    )
 
     robots_group = parser.add_argument_group("robots.txt (optional)")
     robots_group.add_argument(
@@ -345,6 +353,7 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
         keep_signals=args.command == "inspect",
         quiescent_seconds=quiescent,
         max_per_kind=args.max_per_kind,
+        vhosts=args.vhost,
     )
     elapsed = time.monotonic() - start
     return _RunContext(
@@ -355,7 +364,7 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
 def _inspect_text(ctx: _RunContext, args: argparse.Namespace) -> str:
     """Render inspect output, collecting raw entries only for the matched clients."""
     selected = select_profiles(ctx.result, client=args.client, kind=args.kind, network=args.network)
-    entries = collect_entries(args.logfiles, ctx.parser, ctx.strategy, selected)
+    entries = collect_entries(args.logfiles, ctx.parser, ctx.strategy, selected, vhosts=args.vhost)
     selected = [dataclasses.replace(p, entries=entries.get(p.client_id, ())) for p in selected]
     if args.html:
         return render_inspect_html(selected, limit=args.limit, full=args.full)

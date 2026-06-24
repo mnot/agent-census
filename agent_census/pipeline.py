@@ -97,6 +97,22 @@ def _logged_asn(entry: LogEntry) -> str | None:
     return None
 
 
+def _vhost_of(entry: LogEntry) -> str | None:
+    """The virtual host a line was served for: the logged ``%v``, else the Host header."""
+    return entry.extra.get("server_name") or entry.host_header
+
+
+def _excluded_by_vhost(entry: LogEntry, vhosts: Sequence[str] | None) -> bool:
+    """True if a ``--vhost`` filter is set and this line matches none of its terms."""
+    if not vhosts:
+        return False
+    served = _vhost_of(entry)
+    if served is None:
+        return True
+    low = served.lower()
+    return not any(term.lower() in low for term in vhosts)
+
+
 def _asn_of(entry: LogEntry, ip: str) -> str | None:
     """The AS number for a line: what the log carries, else recovered by IP feed."""
     logged = _logged_asn(entry)
@@ -132,12 +148,18 @@ class BotVerifier(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class SkipStats:
-    """How many lines parsed vs. were skipped, and why."""
+    """How many lines parsed vs. were skipped, and why.
+
+    ``excluded`` counts lines dropped on purpose by a ``--vhost`` filter -- kept
+    separate from ``skipped`` (parse failures), so a deliberate filter never
+    inflates the unparse rate, which is itself a diagnostic.
+    """
 
     total_lines: int
     parsed: int
     skipped: int
     reasons: dict[str, int] = field(default_factory=dict)
+    excluded: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,7 +325,7 @@ def _merge_verified(
     return member_ips
 
 
-def analyze(  # pylint: disable=too-many-locals,too-many-statements
+def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arguments
     logs: Path | Sequence[Path],
     parser: LogParser,
     strategy: ClientKeyStrategy,
@@ -315,6 +337,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements
     quiescent_seconds: float | None = None,
     retired_cap: int = DEFAULT_RETIRED_CAP,
     max_per_kind: int = DEFAULT_MAX_PER_KIND,
+    vhosts: Sequence[str] | None = None,
 ) -> AnalysisResult:
     """Stream one or more log files into per-client profiles.
 
@@ -328,6 +351,12 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements
     whole run. Declared crawlers are kept resident so their IPs can still be
     merged. ``keep_signals=False`` drops per-client classifier signals (only
     inspect reads them).
+
+    ``vhosts`` scopes the analysis to one or more virtual hosts: a line whose
+    served vhost (logged ``%v``, else the Host header) contains none of the given
+    substrings is excluded before grouping and tallied in ``SkipStats.excluded``
+    -- useful when one server's log mixes several sites (e.g. a slice proxied
+    through a CDN under another name).
     """
     paths = [logs] if isinstance(logs, Path) else list(logs)
     resident: dict[ClientId, FeatureAccumulator] = {}
@@ -367,7 +396,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements
     net_categories: dict[str, str] = {}
     kept: dict[Kind, list[tuple[int, int, ClientProfile]]] = defaultdict(list)
     seq = itertools.count()
-    total = parsed = skipped = 0
+    total = parsed = skipped = excluded = 0
     client_count = singleton_count = multi_ua_ips = 0
     latest_ts: float | None = None
     reasons: dict[str, int] = defaultdict(int)
@@ -557,6 +586,9 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements
             skipped += 1
             reasons[outcome.skip_reason or "unknown"] += 1
             continue
+        if _excluded_by_vhost(entry, vhosts):
+            excluded += 1
+            continue
         parsed += 1
         ip, ua = entry.remote_host, entry.user_agent
         network = egress.lookup(ip)
@@ -668,7 +700,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements
     profiles.sort(key=lambda p: p.features.request_count, reverse=True)
     return AnalysisResult(
         profiles=tuple(profiles),
-        skips=SkipStats(total, parsed, skipped, dict(reasons)),
+        skips=SkipStats(total, parsed, skipped, dict(reasons), excluded),
         identity_strategy=strategy.name,
         identity_stats=IdentityStats(client_count, singleton_count, multi_ua_ips),
         rollups={kind: acc.freeze() for kind, acc in rollups.items()},
@@ -685,12 +717,15 @@ def collect_entries(
     parser: LogParser,
     strategy: ClientKeyStrategy,
     profiles: Sequence[ClientProfile],
+    vhosts: Sequence[str] | None = None,
 ) -> dict[ClientId, tuple[LogEntry, ...]]:
     """Re-read the logs, keeping raw entries only for the given client profiles.
 
     Used by ``inspect`` after analysis has identified which clients to show, so
     only the selected clients' requests are held in memory. A merged verified-bot
-    profile is matched by its member IPs rather than by the identity key.
+    profile is matched by its member IPs rather than by the identity key. ``vhosts``
+    applies the same filter :func:`analyze` did, so a trace never picks up lines
+    the analysis excluded.
     """
     if not profiles:
         return {}
@@ -700,7 +735,7 @@ def collect_entries(
     buckets: dict[ClientId, list[LogEntry]] = {p.client_id: [] for p in profiles}
     for outcome in parser.parse_lines(read_many(paths)):
         entry = outcome.entry
-        if entry is None:
+        if entry is None or _excluded_by_vhost(entry, vhosts):
             continue
         profile = by_key.get(strategy.key(entry)) or by_ip.get(entry.remote_host)
         if profile is not None:

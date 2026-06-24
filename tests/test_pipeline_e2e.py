@@ -41,6 +41,69 @@ def test_skip_count() -> None:
     assert result.skips.parsed == 42
 
 
+def test_vhost_filter_scopes_to_one_site(tmp_path: Path) -> None:
+    # A multi-site log (vhost_combined carries %v): --vhost keeps only the matching
+    # site's lines, the rest are tallied as excluded, not skipped.
+    rows = [
+        ("www.mnot.net:443", "1.1.1.1"),
+        ("www.mnot.net:443", "1.1.1.2"),
+        ("www.mnot.net:443", "1.1.1.3"),
+        ("www.httplint.com:443", "9.9.9.9"),  # proxied slice -> excluded
+        ("www.httplint.com:443", "9.9.9.8"),
+    ]
+    lines = [
+        f'{vh} {ip} - - [10/Oct/2023:12:00:00 +0000] "GET / HTTP/1.1" 200 100 "-" "curl/8"'
+        for vh, ip in rows
+    ]
+    log = tmp_path / "multisite.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["vhost_combined"]})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"), vhosts=["mnot.net"])
+
+    assert result.skips.parsed == 3 and result.skips.excluded == 2
+    assert result.skips.total_lines == 5 and result.skips.skipped == 0
+    ips = {p.client_id.ip for p in result.profiles}
+    assert ips == {"1.1.1.1", "1.1.1.2", "1.1.1.3"}  # no httplint clients
+
+
+def test_vhost_filter_keeps_any_of_several(tmp_path: Path) -> None:
+    # Repeated --vhost is a union: a line is kept if it matches any term.
+    rows = [
+        ("a.example:443", "1.1.1.1"),
+        ("b.example:443", "2.2.2.2"),
+        ("c.example:443", "3.3.3.3"),  # matches neither -> excluded
+    ]
+    lines = [
+        f'{vh} {ip} - - [10/Oct/2023:12:00:00 +0000] "GET / HTTP/1.1" 200 100 "-" "curl/8"'
+        for vh, ip in rows
+    ]
+    log = tmp_path / "multi.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["vhost_combined"]})
+    result = pipeline.analyze(
+        log, parser, identity.get_strategy("ip_ua"), vhosts=["a.example", "b.example"]
+    )
+
+    assert result.skips.parsed == 2 and result.skips.excluded == 1
+    assert {p.client_id.ip for p in result.profiles} == {"1.1.1.1", "2.2.2.2"}
+
+
+def test_vhost_filter_falls_back_to_host_header(tmp_path: Path) -> None:
+    # No %v in the format, but a Host header is logged: the filter matches on it.
+    fmt = '%h %l %u %t "%r" %>s %b "%{Referer}i" "%{User-Agent}i" "%{Host}i"'
+    lines = [
+        '1.1.1.1 - - [10/Oct/2023:12:00:00 +0000] "GET / HTTP/1.1" 200 100 "-" "curl/8" "www.mnot.net"',
+        '9.9.9.9 - - [10/Oct/2023:12:00:00 +0000] "GET / HTTP/1.1" 200 100 "-" "curl/8" "other.example"',
+    ]
+    log = tmp_path / "host.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": fmt})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"), vhosts=["mnot.net"])
+
+    assert result.skips.parsed == 1 and result.skips.excluded == 1
+    assert {p.client_id.ip for p in result.profiles} == {"1.1.1.1"}
+
+
 def test_multiple_logfiles_are_pooled() -> None:
     parser = resolve("apache", {"format": PRESETS["combined"]})
     strategy = identity.get_strategy("ip_ua")

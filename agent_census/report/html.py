@@ -241,7 +241,8 @@ def _meta_list(
     items = [
         f"<strong>Source:</strong> <code>{_esc(source)}</code>",
         f"<strong>Lines:</strong> {skips.total_lines:,} total · {skips.parsed:,} parsed · "
-        f"{skips.skipped:,} skipped",
+        f"{skips.skipped:,} skipped"
+        + (f" · {skips.excluded:,} excluded (--vhost)" if skips.excluded else ""),
         f"<strong>Time range:</strong> {_esc(fmt_ts(start))} → {_esc(fmt_ts(end))}",
         f"<strong>Identity:</strong> <code>{_esc(result.identity_strategy)}</code> "
         f"({stats.client_count:,} clients; {stats.singletons:,} singletons; "

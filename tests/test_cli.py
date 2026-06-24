@@ -66,6 +66,32 @@ def test_analyze_cloudflare_preset(tmp_path: Path) -> None:
     assert "1 parsed" in out.read_text(encoding="utf-8")
 
 
+def test_vhost_flag_filters_and_reports(tmp_path: Path) -> None:
+    log = tmp_path / "multisite.log"
+    log.write_text(
+        'a.example:443 1.1.1.1 - - [10/Oct/2023:12:00:00 +0000] "GET / HTTP/1.1" 200 9 "-" "curl/8"\n'
+        'b.example:443 9.9.9.9 - - [10/Oct/2023:12:00:00 +0000] "GET / HTTP/1.1" 200 9 "-" "curl/8"\n',
+        encoding="utf-8",
+    )
+    out = tmp_path / "r.md"
+    rc = main(
+        ["analyze", str(log), "--log-format-preset", "vhost_combined", "--vhost", "a.example",
+         *OFFLINE, "-o", str(out)]
+    )
+    assert rc == 0
+    text = out.read_text(encoding="utf-8")
+    assert "1 parsed" in text and "1 excluded (--vhost)" in text
+
+    # Repeated --vhost is a union: both sites kept, nothing excluded.
+    both = tmp_path / "both.md"
+    rc = main(
+        ["analyze", str(log), "--log-format-preset", "vhost_combined",
+         "--vhost", "a.example", "--vhost", "b.example", *OFFLINE, "-o", str(both)]
+    )
+    assert rc == 0
+    assert "2 parsed" in both.read_text(encoding="utf-8")
+
+
 def test_inspect_by_kind(tmp_path: Path) -> None:
     out = tmp_path / "i.md"
     rc = main(

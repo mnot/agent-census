@@ -192,6 +192,24 @@ merged the data, so you can judge whether it fit.
 agent-census analyze access.log --identity forwarded
 ```
 
+### Scoping to one site
+
+If one server's log mixes several virtual hosts, `--vhost SUBSTRING` analyses
+only the lines served for a matching host (matched against the logged `%v`, or
+the `Host` header if you don't log `%v`). The filtered lines are reported as
+excluded, separately from parse skips. `--vhost` is repeatable — a line is kept
+if it matches any of the given hosts.
+
+```
+agent-census analyze access.log --log-format-preset vhost_combined \
+    --vhost mnot.net --vhost www.mnot.net
+```
+
+This also sidesteps a CDN artefact: if a slice of your traffic was proxied to
+this origin under another hostname, those requests arrive from the CDN's IPs
+(so they can't be attributed or crawler-verified). Scoping to your own host
+drops that slice cleanly.
+
 ### Remembered settings
 
 Some options are sticky, so you needn't retype them. `--log-format` /

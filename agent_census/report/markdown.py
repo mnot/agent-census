@@ -39,7 +39,8 @@ def _header(
         "",
         f"- **Source:** `{source}`",
         f"- **Lines:** {skips.total_lines:,} total · {skips.parsed:,} parsed · "
-        f"{skips.skipped:,} skipped",
+        f"{skips.skipped:,} skipped"
+        + (f" · {skips.excluded:,} excluded (--vhost)" if skips.excluded else ""),
     ]
     if skips.reasons:
         detail = "; ".join(f"{count:,} {reason}" for reason, count in sorted(skips.reasons.items()))

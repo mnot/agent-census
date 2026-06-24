@@ -136,6 +136,24 @@ def test_crawler_recognised_by_origin_asn() -> None:
     assert "asn-attributed" in result.tags
 
 
+def test_asn_crawler_with_browser_behaviour_is_not_a_browser() -> None:
+    # The reported Sberbank case: a spoofed browser UA that even co-loads sub-
+    # resources like a real browser (87%). The origin AS still gives it away, so
+    # the strong browser signal must bow to the ai_crawler classification.
+    feats = ClientFeatures(
+        request_count=22509,
+        asset_coload_ratio=0.87,
+        ua_looks_like_browser=True,
+        ratio_404=0.0,
+        user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML) "
+        "Chrome/91.0.4472.124 Safari/537.36",
+        as_number="35237",
+    )
+    result = classify_client(feats)
+    assert result.primary is Kind.AI_CRAWLER
+    assert "asn-attributed" in result.tags
+
+
 def test_combiner_unknown_below_threshold() -> None:
     signals = [Signal(Kind.BROWSER, 0.3, ("weak",), "browser")]
     result = combine(signals, ClientFeatures(request_count=5), unknown_threshold=0.45)

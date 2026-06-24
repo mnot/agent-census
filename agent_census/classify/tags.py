@@ -62,17 +62,21 @@ def impersonation(verification: BotVerification | None) -> tuple[bool, tuple[str
 
 
 def identifies_as_known_agent(features: ClientFeatures) -> bool:
-    """True if the UA positively names a non-browser agent: a feed reader, a known
-    crawler/archiver, or a self-declared bot.
+    """True if the client is a non-browser agent: a feed reader, a known
+    crawler/archiver, a self-declared bot, or a crawler recognised by origin AS.
 
     Such a client is not a browser however it behaves (it can render and co-load
     sub-resources like one), and the browser-specific signals -- fake-browser,
-    forged-referer -- don't apply to it; its declared identity decides the kind.
+    forged-referer -- don't apply to it; its identity decides the kind. The AS
+    case matters for operators that crawl behind spoofed browser User-Agents: the
+    UA looks like Chrome and even co-loads assets, but the origin network gives it
+    away, so the browser hypothesis must still bow to the crawler classification.
     """
     return (
         features.ua_declares_bot
         or _ua_names_crawler(features.user_agent)
         or _ua_names_feed_reader(features.user_agent)
+        or uas.match_asn_any(features.as_number) is not None
     )
 
 

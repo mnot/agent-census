@@ -34,14 +34,20 @@ class VulnScannerClassifier(Classifier):
             confidence += 0.5
             evidence.append(f"User-Agent names a scanning tool ({scanner_token})")
 
-        if features.vuln_path_hits >= 3:
-            confidence += 0.45
+        hits = features.vuln_path_hits
+        if hits >= 1:
             sample = ", ".join(features.sample_vuln_paths[:3])
-            evidence.append(f"{features.vuln_path_hits} requests to known probe paths ({sample})")
-        elif features.vuln_path_hits >= 1:
-            confidence += 0.2
-            sample = ", ".join(features.sample_vuln_paths[:3])
-            evidence.append(f"{features.vuln_path_hits} request(s) to known probe paths ({sample})")
+            # A burst of probes, or a client whose traffic is *mostly* probes --
+            # even a single request that is itself a probe -- is a scanner; one
+            # probe amid otherwise normal traffic is incidental. Keying the strong
+            # tier on the ratio (not raw count) rescues a lone pure probe from the
+            # singleton bucket: one GET /.env is as hostile as a hundred.
+            if hits >= 3 or hits >= features.request_count * 0.5:
+                confidence += 0.45
+                evidence.append(f"{hits} request(s) to known probe paths ({sample})")
+            else:
+                confidence += 0.2
+                evidence.append(f"{hits} request(s) to known probe paths ({sample}); incidental")
 
         if features.ratio_404 > 0.6 and features.distinct_404_paths >= 15:
             confidence += 0.3

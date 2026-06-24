@@ -34,6 +34,24 @@ def test_vuln_scanner_fires_on_probes() -> None:
     assert signals[0].confidence >= 0.45
 
 
+def test_lone_probe_is_a_scanner_not_a_singleton() -> None:
+    # A single request, and it's a probe: its whole footprint is hostile, so it
+    # clears as a vuln_scanner rather than falling into the singleton bucket.
+    feats = ClientFeatures(
+        request_count=1, vuln_path_hits=1, sample_vuln_paths=("/.env",), ratio_404=1.0
+    )
+    assert classify_client(feats).primary is Kind.VULN_SCANNER
+
+
+def test_one_probe_amid_normal_traffic_stays_incidental() -> None:
+    # A single probe buried in otherwise normal traffic is not enough on its own.
+    feats = ClientFeatures(
+        request_count=50, vuln_path_hits=1, sample_vuln_paths=("/.env",), ratio_2xx=0.95
+    )
+    signals = VulnScannerClassifier().evaluate(feats)
+    assert signals and signals[0].confidence < 0.45  # incidental tier, below threshold
+
+
 def test_vuln_scanner_silent_on_clean_client() -> None:
     feats = ClientFeatures(request_count=10, ratio_2xx=1.0)
     assert VulnScannerClassifier().evaluate(feats) == []

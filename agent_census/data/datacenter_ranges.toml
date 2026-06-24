@@ -23,26 +23,17 @@
 # The AS numbers below are a curated starter set (the provider's primary ASNs);
 # big clouds announce from several, so extend as needed.
 
-# Hosting providers by ASN, via RIPEstat's announced-prefixes feed (auto-updating).
 [[source]]
-name = "Hetzner"  # https://ipinfo.io/AS24940
-ranges_url = "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS24940"
-format = "ripestat"
+name = "Hetzner"
 asns = [24940, 212317]
 
 [[source]]
-name = "OVH"  # https://ipinfo.io/AS16276
-ranges_url = "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS16276"
-format = "ripestat"
-asns = [16276]
+name = "OVH"
+asns = [16276, 35540]
 
 [[source]]
-name = "Cloud.ru / SberCloud"  # Sberbank, https://ipinfo.io/AS35237
-ranges_url = "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS35237"
-format = "ripestat"
-asns = [35237]
-
-# Authoritative published lists, fetched only with --fetch-ranges (cached weekly).
+name = "Cloud.ru / SberCloud"
+asns = [35237, 208677]
 
 [[source]]
 name = "Amazon AWS"
@@ -73,6 +64,10 @@ name = "DigitalOcean"
 ranges_url = "https://www.digitalocean.com/geo/google.csv"
 format = "csv"
 asns = [14061]
+
+[[source]]
+name = "Rackspace"
+asns = [44009, 15395, 39921]
 
 [[source]]
 name = "Linode"
@@ -120,8 +115,12 @@ name = "OneHostPlanet"
 asns = [209155]
 
 [[source]]
+name = "Scaleway"
+asns = [202023, 12876]
+
+[[source]]
 name = "Huawei Cloud"
-asns = [136907]
+asns = [136907, 55990, 151610]
 
 [[source]]
 name = "Alibaba"
@@ -133,4 +132,8 @@ asns = [26347]
 
 [[source]]
 name = "HostGlobal"
-asns = "202306"
+asns = [202306]
+
+[[source]]
+name = "Tencent Cloud"
+asns = [139341, 132203, 137876]

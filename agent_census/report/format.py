@@ -63,18 +63,25 @@ def as_label(org: str, number: str | None = None) -> str:
     return f"{org} (AS{num})"
 
 
-def client_label(profile: ClientProfile) -> str:
-    """The ``identity | user-agent`` label, with bot UA boilerplate elided.
+def client_id_parts(profile: ClientProfile) -> tuple[str, str | None, str | None]:
+    """Split a client's identity into ``(prefix, as_org, user_agent)`` for display.
 
-    For datacenter clients the logged AS org (``%{MM_ASORG}e``) is appended when
-    present, so the listing names the hosting org behind a bare IP/subnet.
+    ``prefix`` is the IP / subnet / network name; ``as_org`` is the logged AS org
+    (only for datacenter clients, else None); ``user_agent`` is the elided UA.
+    Shared by the one-line :func:`client_label` and the HTML stacked cell.
     """
     cid = profile.client_id
     prefix = cid.subnet if cid.subnet is not None else cid.ip
     ua = elide_ua(cid.user_agent, is_browser=profile.classification.primary is Kind.BROWSER)
+    org = profile.features.as_org if "datacenter" in profile.classification.tags else None
+    return prefix, org, ua
+
+
+def client_label(profile: ClientProfile) -> str:
+    """The one-line ``identity | user-agent [· AS org]`` label (Markdown, headers)."""
+    prefix, org, ua = client_id_parts(profile)
     label = f"{prefix} | {ua if ua is not None else '-'}"
-    org = profile.features.as_org
-    if org and "datacenter" in profile.classification.tags:
+    if org:
         label += f" · {org}"
     return label
 

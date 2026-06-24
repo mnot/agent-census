@@ -44,6 +44,9 @@ def test_report_html_client_cells_are_copyable() -> None:
     assert 'data-copy="203.0.113.66"' in html
     assert "navigator.clipboard" in html  # copy script present
     assert "inspect --client" in html  # the tip
+    # The cell is stacked: identity line + UA line (clamped) under one copy target.
+    assert "<div class=\"mono cid-id\">203.0.113.66</div>" in html
+    assert 'class="mono cid-ua"' in html
 
 
 def test_kind_section_disclosure_and_filter(tmp_path: Path) -> None:

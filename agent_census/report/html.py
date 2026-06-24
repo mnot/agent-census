@@ -15,6 +15,7 @@ from ..model import ClientProfile, Kind
 from ..pipeline import OTHER_HOSTING, AnalysisResult, KindRollup
 from .aggregate import KIND_BLURB, KIND_ORDER, by_kind, network_matrix, time_range
 from .format import (
+    client_id_parts,
     client_label,
     elide_ua,
     feature_rows,
@@ -133,6 +134,12 @@ tr:hover td { background: #8881; }
 .card { border: 1px solid #8884; border-radius: 10px; padding: 1rem 1.1rem; margin: 1rem 0; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem;
   word-break: break-all; }
+td.cid { max-width: 26rem; }
+.cid-id { font-weight: 600; }
+.cid-as { color: #6b7280; font-size: .8rem; word-break: break-word; margin: 1px 0; }
+.cid-ua { color: #6b7280; font-size: .82rem; margin-top: 1px;
+  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden; }
 .muted { color: #6b7280; }
 .evlist { margin: .25rem 0 .25rem 1rem; padding: 0; }
 .evlist li { margin: .1rem 0; }
@@ -398,6 +405,19 @@ _SECTION_HEAD = (
 _EXPAND_LIMIT = 100
 
 
+def _client_cell(profile: ClientProfile) -> str:
+    """Stacked identity cell: IP/network on top, AS org, then the UA (2-line clamp)."""
+    prefix, org, ua = client_id_parts(profile)
+    org_line = f'<div class="cid-as">{_esc(org)}</div>' if org else ""
+    return (
+        f'<td class="cid copy" data-copy="{_esc(profile.client_id.ip)}" '
+        f'title="Click to copy this id for: inspect --client">'
+        f'<div class="mono cid-id">{_esc(prefix)}</div>'
+        f"{org_line}"
+        f'<div class="mono cid-ua">{_esc(ua or "–")}</div></td>'
+    )
+
+
 def _client_row(profile: ClientProfile, *, filterable: bool = False) -> str:
     cls = profile.classification
     evidence = _esc(truncate(top_evidence(profile)))
@@ -406,10 +426,7 @@ def _client_row(profile: ClientProfile, *, filterable: bool = False) -> str:
         haystack = f"{profile.client_id.ip} {profile.client_id.user_agent or ''}".lower()
         attrs = f' class="frow" data-filter="{_esc(haystack)}"'
     return (
-        f"<tr{attrs}>"
-        f'<td class="mono copy" data-copy="{_esc(profile.client_id.ip)}" '
-        f'title="Click to copy this id for: inspect --client">'
-        f"{_esc(client_label(profile)[:90])}</td>"
+        f"<tr{attrs}>{_client_cell(profile)}"
         f"<td class='num'>{profile.features.request_count:,}</td>"
         f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
         f"<td class='num'>{cls.confidence:.0%}</td>"

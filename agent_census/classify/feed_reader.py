@@ -74,6 +74,13 @@ class FeedReaderClassifier(Classifier):
             confidence += 0.1
             evidence.append("conditional polling (304 Not Modified)")
 
+        if features.head_ratio > 0.2:
+            # Some readers HEAD a feed to check for a change before fetching it --
+            # weak corroboration of a machine poller, unlike a browser, which never
+            # issues HEAD.
+            confidence += 0.1
+            evidence.append(f"{features.head_ratio:.0%} HEAD requests (freshness checks)")
+
         if not evidence:
             return []
         return [self._signal(confidence, evidence)]

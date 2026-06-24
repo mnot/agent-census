@@ -114,6 +114,11 @@ def derive_tags(
         # A 304 means the client made a conditional request and held a cached copy
         # -- a real cache, which corroborates a browser or a polite feed reader.
         tags.add("has-cache")
+    if features.head_ratio > 0.1:
+        # More than incidental HEAD. Browsers fetch with GET, so this points away
+        # from a human at a browser and toward a machine -- a monitor, link-
+        # checker, feed reader checking freshness, or other bot.
+        tags.add("uses-HEAD")
     if features.fetched_robots_txt:
         tags.add("checked-robots")
     if uas.match_asn_any(features.as_number):

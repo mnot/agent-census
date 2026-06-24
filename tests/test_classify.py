@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from agent_census.classify import classify_client
 from agent_census.classify.browser import BrowserClassifier
 from agent_census.classify.combiner import combine
@@ -307,6 +309,15 @@ def test_has_cache_tag_on_304() -> None:
     assert "has-cache" not in combine(signals, plain).tags
 
 
+def test_uses_head_tag() -> None:
+    signals = [Signal(Kind.MONITOR, 0.6, ("monitors",), "monitor")]
+    heading = ClientFeatures(request_count=10, head_ratio=0.5)
+    assert "uses-HEAD" in combine(signals, heading).tags
+    # Incidental HEAD (at or below the bar) is not tagged.
+    incidental = ClientFeatures(request_count=10, head_ratio=0.1)
+    assert "uses-HEAD" not in combine(signals, incidental).tags
+
+
 def test_304_lifts_browser_and_feed_reader_confidence() -> None:
     base = dict(request_count=10, asset_coload_ratio=0.6, ua_looks_like_browser=True, ratio_404=0.0)
     without = BrowserClassifier().evaluate(ClientFeatures(**base, status_counts={200: 10}))
@@ -447,6 +458,52 @@ def test_metronomic_timing_penalises_browser() -> None:
         rate_regularity=0.05,
     )
     assert classify_client(feats).primary is not Kind.BROWSER
+
+
+def test_head_heavy_browser_is_not_a_browser() -> None:
+    # Browser-shaped (browser UA, co-loads assets) but mostly HEAD: a real
+    # browser fetches with GET and never issues HEAD, so this is automation
+    # behind a browser UA and must not pass as a browser.
+    feats = ClientFeatures(
+        request_count=20,
+        ua_looks_like_browser=True,
+        asset_coload_ratio=0.6,
+        ratio_404=0.0,
+        head_ratio=0.8,
+    )
+    signals = BrowserClassifier().evaluate(feats)
+    assert signals and signals[0].confidence <= 0.3  # capped below the threshold
+    assert classify_client(feats).primary is not Kind.BROWSER
+
+
+def test_incidental_head_does_not_sink_a_browser() -> None:
+    # A stray HEAD (below the threshold) leaves a real browser alone.
+    feats = ClientFeatures(
+        request_count=20,
+        ua_looks_like_browser=True,
+        asset_coload_ratio=0.8,
+        static_ratio=0.5,
+        ratio_404=0.0,
+        head_ratio=0.05,
+    )
+    assert classify_client(feats).primary is Kind.BROWSER
+
+
+def test_head_corroborates_a_feed_reader() -> None:
+    # A declared reader that HEADs feeds to check freshness gets a small lift,
+    # and stays a feed reader (HEAD is not penalised the way it is for browsers).
+    base = ClientFeatures(
+        request_count=8,
+        feed_requests=8,
+        feed_ratio=1.0,
+        distinct_paths=5,  # above the "polls few URLs" bonus, so we're off the ceiling
+        user_agent="NetNewsWire (RSS reader)",
+    )
+    heading = replace(base, head_ratio=0.5)
+    with_head = FeedReaderClassifier().evaluate(heading)[0].confidence
+    without = FeedReaderClassifier().evaluate(base)[0].confidence
+    assert with_head > without
+    assert classify_client(heading).primary is Kind.FEED_READER
 
 
 def test_pure_feed_reader_not_tagged() -> None:

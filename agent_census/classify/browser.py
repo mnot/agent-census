@@ -81,6 +81,16 @@ class BrowserClassifier(Classifier):
             confidence = min(confidence, 0.3)
             evidence.append("but referers are fabricated (Referer = the requested URL)")
 
+        # A browser fetches pages and their sub-resources with GET; it does not
+        # issue HEAD. Meaningful HEAD traffic from something otherwise browser-
+        # shaped is a machine (a monitor, link-checker, or other bot) behind a
+        # browser UA -- cap the hypothesis below the confident threshold. Gated on
+        # an existing browser signal so monitors/feed readers that legitimately
+        # HEAD don't each pick up a spurious browser signal.
+        if evidence and features.head_ratio > 0.1:
+            confidence = min(confidence, 0.3)
+            evidence.append(f"but {features.head_ratio:.0%} HEAD requests — browsers issue GET")
+
         if not evidence:
             return []
         return [self._signal(confidence, evidence)]

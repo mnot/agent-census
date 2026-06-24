@@ -97,9 +97,12 @@ agent-census analyze access.log --no-verify-bots
 
 A confirmed crawler's many IPs collapse into one entry keyed by its domain.
 A client claiming a crawler whose IP is out of the published ranges (or whose
-reverse DNS doesn't check out) is classed `impersonator`. Even with verification
-off, a "Googlebot" that probes for `/.env` is still flagged `impersonator` from
-its behaviour alone.
+reverse DNS doesn't check out) is classed `impersonator`. `impersonator` means a
+*forged identity* -- only verification proves that. Misbehaviour is separate: a
+"Googlebot" that probes for `/.env` keeps its declared kind and picks up a
+`probing` tag (and `ignores-robots` if it earns one), because a real crawler can
+still behave badly. With verification off, there's nothing to disprove the claim,
+so it stays a declared crawler with those tags rather than `impersonator`.
 
 ### Networks and hosting
 

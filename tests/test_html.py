@@ -65,6 +65,7 @@ def test_kind_section_disclosure_and_filter(tmp_path: Path) -> None:
 
     assert '<details name="kind-extra">' in html  # shared name -> exclusive accordion
     assert "Show more" in html
+    assert "scrollBy" in html  # opening one pins the clicked summary (no page jump)
     assert 'class="filter"' in html  # filter input revealed in the disclosure
     assert html.count('class="frow"') == 3  # the 3 extra rows are filterable
 

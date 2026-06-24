@@ -224,6 +224,21 @@ document.addEventListener('click', function (event) {
   if (body && body.classList.contains('actor')) body.classList.toggle('open');
 }, false);
 
+document.addEventListener('click', function (event) {
+  // Opening an exclusive accordion (shared name=) closes whichever one was open,
+  // possibly above the click -- the page collapses and the reader loses their
+  // place. Pin the clicked summary: note its viewport offset, then correct the
+  // scroll once the DOM has settled so it stays put.
+  var summary = event.target.closest('summary');
+  if (!summary) return;
+  var details = summary.parentElement;
+  if (!details || !details.hasAttribute('name') || details.open) return;
+  var before = summary.getBoundingClientRect().top;
+  requestAnimationFrame(function () {
+    window.scrollBy(0, summary.getBoundingClientRect().top - before);
+  });
+}, false);
+
 document.addEventListener('input', function (event) {
   var input = event.target;
   if (!input.classList || !input.classList.contains('filter')) return;

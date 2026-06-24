@@ -449,7 +449,8 @@ def _kind_section(kind: Kind, group: list[ClientProfile], rollup: KindRollup, to
     if extra:
         extra_rows = "".join(_client_row(p, filterable=True) for p in extra)
         parts.append(
-            "<details><summary>"
+            # Shared name -> native exclusive accordion: opening one closes the rest.
+            '<details name="kind-extra"><summary>'
             f"Show {len(extra):,} more</summary>"
             '<input class="filter" type="search" '
             'placeholder="filter these by IP, User-Agent, or AS name…" '

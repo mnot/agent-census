@@ -159,3 +159,8 @@ format = "ripestat"
 # https://colossio.org
 name = "Colossio"
 ua_substring = "colossio"
+
+[[agent]]
+# https://duckduckgo.com/duckduckgo-help-pages/results/duckassistbot
+ua_substring = "DuckAssistBot"
+ranges_url = "https://duckduckgo.com/duckassistbot.json"

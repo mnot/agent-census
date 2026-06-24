@@ -25,19 +25,16 @@ rdns_fallback = true
 [[agent]]
 # https://support.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler
 ua_substring = "ClaudeBot"
-domains = ["anthropic.com", "claude.ai"]
-ranges_url = "https://claude.com/crawling/bots.json"
-rdns_fallback = true
-
-[[agent]]
-ua_substring = "Claude-Web"
-domains = ["anthropic.com"]
 ranges_url = "https://claude.com/crawling/bots.json"
 rdns_fallback = true
 
 [[agent]]
 ua_substring = "Claude-SearchBot"
-domains = ["anthropic.com"]
+ranges_url = "https://claude.com/crawling/bots.json"
+rdns_fallback = true
+
+[[agent]]
+ua_substring = "Claude-User"
 ranges_url = "https://claude.com/crawling/bots.json"
 rdns_fallback = true
 

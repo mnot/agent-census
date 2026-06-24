@@ -21,9 +21,9 @@ from agent_census.errors import ConfigError
 
 
 def test_crawler_spec_fields() -> None:
-    spec = dict(load_tokens("ai_crawler"))["ClaudeBot"]
-    assert spec.domains == ("anthropic.com", "claude.ai")
-    assert spec.ranges_url == "https://claude.com/crawling/bots.json"
+    spec = dict(load_tokens("ai_crawler"))["GPTBot"]
+    assert spec.domains == ("openai.com",)
+    assert spec.ranges_url == "https://openai.com/gptbot.json"
 
 
 def test_ranges_url_loaded() -> None:

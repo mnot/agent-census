@@ -172,6 +172,23 @@ def test_asn_crawler_with_browser_behaviour_is_not_a_browser() -> None:
     assert "asn-attributed" in result.tags
 
 
+def test_claude_user_is_an_ai_crawler_not_a_spoofed_browser() -> None:
+    # Claude-User wears a KHTML/compatible browser shell; from a datacenter with
+    # no browser behaviour it would read as spoofed_browser, but it is a declared
+    # agent and must classify as ai_crawler.
+    feats = ClientFeatures(
+        request_count=40,
+        ua_looks_like_browser=True,  # the KHTML shell trips the browser-UA regex
+        asset_coload_ratio=0.0,
+        referer_following_ratio=0.0,
+        user_agent="Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; "
+        "Claude-User/1.0; +claude-user@anthropic.com)",
+    )
+    result = classify_client(feats, datacenter=True)
+    assert result.primary is Kind.AI_CRAWLER
+    assert "fake-browser" not in result.tags
+
+
 def test_combiner_unknown_below_threshold() -> None:
     signals = [Signal(Kind.BROWSER, 0.3, ("weak",), "browser")]
     result = combine(signals, ClientFeatures(request_count=5), unknown_threshold=0.45)

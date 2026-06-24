@@ -291,7 +291,7 @@ def _summary_table(result: AnalysisResult) -> str:
 
 
 # Client-side: recompute the network cross-tab when the toggle changes. Each body
-# cell carries data-v (its raw count); the script reformats text, shades a teal
+# cell carries data-v (its raw count); the script reformats text, shades a pale-blue
 # heat by share of the row (counts / % of kind) or column (% of network) max, and
 # bolds that group's leader. The Total column and All-kinds row stay raw counts.
 _NET_SCRIPT = """
@@ -316,7 +316,7 @@ _NET_SCRIPT = """
         var v=c._v;
         c.textContent = (mode==='count') ? (v?v.toLocaleString():'\\u2013')
                                          : ((v&&tot)?Math.round(v/tot*100)+'%':'\\u2013');
-        if(v>0&&mx>0) c.style.background='rgba(29,158,117,'+(v/mx*0.8).toFixed(3)+')';
+        if(v>0&&mx>0) c.style.background='rgba(96,165,250,'+(v/mx*0.8).toFixed(3)+')';
         if(v>0&&v===mx) c.style.fontWeight='500';
       });
     });

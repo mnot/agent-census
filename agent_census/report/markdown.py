@@ -4,8 +4,18 @@ from __future__ import annotations
 
 from ..model import ClientProfile, Kind
 from ..pipeline import OTHER_HOSTING, AnalysisResult, KindRollup
-from .aggregate import KIND_BLURB, KIND_ORDER, by_kind, network_matrix, time_range
+from .aggregate import (
+    KIND_BLURB,
+    KIND_ORDER,
+    ActorGroup,
+    by_kind,
+    group_actors,
+    network_matrix,
+    time_range,
+)
 from .format import (
+    actor_spread,
+    client_id_parts,
     client_label,
     fmt_ts,
     human_bytes,
@@ -137,10 +147,19 @@ def _client_label(profile: ClientProfile) -> str:
     return md_escape(client_label(profile)[:80])
 
 
+def _actor_label(actor: ActorGroup) -> str:
+    """One-line label: the per-IP client, or a collapsed group's footprint + UA."""
+    if not actor.collapsed:
+        return _client_label(actor.lead)
+    _, _, ua = client_id_parts(actor.lead)
+    spread = actor_spread(actor.distinct_ips, actor.distinct_asns)
+    return md_escape(f"{spread} | {ua if ua is not None else '-'}"[:80])
+
+
 def _kind_section(
     kind: Kind, group: list[ClientProfile], rollup: KindRollup, top: int
 ) -> list[str]:
-    group = sorted(group, key=lambda p: p.features.request_count, reverse=True)
+    actors = group_actors(group)
     lines = [
         f"## {kind_label(kind)} ({rollup.clients:,} clients, {rollup.requests:,} requests)",
         "",
@@ -149,19 +168,25 @@ def _kind_section(
         "| Client | Requests | Bandwidth | Conf. | Tags | Evidence |",
         "| --- | --: | --: | --: | --- | --- |",
     ]
-    shown = group[:top]
-    for profile in shown:
-        cls = profile.classification
+    shown = actors[:top]
+    for actor in shown:
+        cls = actor.lead.classification
         tags = ", ".join(sorted(cls.tags)) or "–"
-        evidence = md_escape(truncate(top_evidence(profile)))
+        evidence = md_escape(truncate(top_evidence(actor.lead)))
         lines.append(
-            f"| {_client_label(profile)} | {profile.features.request_count:,} | "
-            f"{human_bytes(profile.features.total_bytes)} | {cls.confidence:.0%} | "
+            f"| {_actor_label(actor)} | {actor.requests:,} | "
+            f"{human_bytes(actor.total_bytes)} | {cls.confidence:.0%} | "
             f"{tags} | {evidence} |"
         )
-    if rollup.clients > len(shown):
-        lines.append(f"| …and {rollup.clients - len(shown):,} more | | | | | |")
+    represented = sum(len(a.members) for a in shown)
+    if rollup.clients > represented:
+        lines.append(f"| …and {rollup.clients - represented:,} more | | | | | |")
     lines.append("")
+    if any(a.collapsed for a in shown):
+        lines.append(
+            f"_Rows like “12 IPs” collapse clients sharing a User-Agent and tags; "
+            f"run `agent-census inspect --kind {kind.value}` for the per-IP/ASN list._"
+        )
     lines.append(f"_Total bandwidth: {human_bytes(rollup.total_bytes)}_")
     lines.append("")
     return lines

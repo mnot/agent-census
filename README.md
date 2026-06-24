@@ -105,7 +105,10 @@ agent-census analyze access.log --html -o census.html
 
 The report opens with a summary of each kind, then a cross-tab of where each
 kind's traffic came from (see [Networks and hosting](#networks-and-hosting)),
-then the notable clients in each kind.
+then the notable clients in each kind. Within a kind, clients that differ only
+by IP address and origin AS — same User-Agent, same tags — are collapsed into
+one row showing their combined traffic; in the HTML report a disclosure expands
+to the per-IP/ASN breakdown, and `inspect` always lists them individually.
 
 ### robots.txt compliance
 

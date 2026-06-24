@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -55,6 +56,62 @@ def by_kind(profiles: tuple[ClientProfile, ...]) -> dict[Kind, list[ClientProfil
     groups: dict[Kind, list[ClientProfile]] = defaultdict(list)
     for profile in profiles:
         groups[profile.classification.primary].append(profile)
+    return groups
+
+
+@dataclass(frozen=True)
+class ActorGroup:
+    """Profiles that differ only by IP/ASN -- i.e. share a User-Agent and tags.
+
+    A single-member group renders like an ordinary client row; a multi-member
+    group (:attr:`collapsed`) is shown as one summary row whose members are
+    listed on demand, with each member's own traffic preserved.
+    """
+
+    members: tuple[ClientProfile, ...]  # request-volume desc; members[0] is the lead
+
+    @property
+    def lead(self) -> ClientProfile:
+        return self.members[0]
+
+    @property
+    def collapsed(self) -> bool:
+        return len(self.members) > 1
+
+    @property
+    def requests(self) -> int:
+        return sum(m.features.request_count for m in self.members)
+
+    @property
+    def total_bytes(self) -> int:
+        return sum(m.features.total_bytes for m in self.members)
+
+    @property
+    def distinct_ips(self) -> int:
+        return len({m.client_id.subnet or m.client_id.ip for m in self.members})
+
+    @property
+    def distinct_asns(self) -> int:
+        return len({m.features.as_number for m in self.members if m.features.as_number})
+
+
+def group_actors(profiles: Sequence[ClientProfile]) -> list[ActorGroup]:
+    """Collapse profiles differing only by IP/ASN into actor groups, biggest-first.
+
+    The signature is ``(User-Agent, tags)``: clients are folded together only when
+    they are indistinguishable apart from their address and origin AS. Within a
+    group members are ordered by request volume; groups are ordered the same way
+    by their combined requests.
+    """
+    buckets: dict[tuple[str | None, frozenset[str]], list[ClientProfile]] = {}
+    for profile in profiles:
+        key = (profile.client_id.user_agent, frozenset(profile.classification.tags))
+        buckets.setdefault(key, []).append(profile)
+    groups = [
+        ActorGroup(tuple(sorted(members, key=lambda p: p.features.request_count, reverse=True)))
+        for members in buckets.values()
+    ]
+    groups.sort(key=lambda g: g.requests, reverse=True)
     return groups
 
 

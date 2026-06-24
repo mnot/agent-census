@@ -63,6 +63,24 @@ def as_label(org: str, number: str | None = None) -> str:
     return f"{org} (AS{num})"
 
 
+def as_display(org: str | None, number: str | None) -> str:
+    """An AS for display: org + number, just the number, just the org, or ``–``."""
+    if org and number:
+        return as_label(org, number)
+    if number:
+        num = number[2:] if number[:2].upper() == "AS" else number
+        return f"AS{num}"
+    return org or "–"
+
+
+def actor_spread(distinct_ips: int, distinct_asns: int) -> str:
+    """Summarise a collapsed group's footprint, e.g. ``12 IPs · 3 ASNs``."""
+    label = f"{distinct_ips:,} IPs"
+    if distinct_asns:
+        label += f" · {distinct_asns:,} ASNs"
+    return label
+
+
 def client_id_parts(profile: ClientProfile) -> tuple[str, str | None, str | None]:
     """Split a client's identity into ``(prefix, as_org, user_agent)`` for display.
 

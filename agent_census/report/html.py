@@ -13,8 +13,18 @@ from functools import lru_cache
 from ..dataload import load_egress_networks
 from ..model import ClientProfile, Kind
 from ..pipeline import OTHER_HOSTING, AnalysisResult, KindRollup
-from .aggregate import KIND_BLURB, KIND_ORDER, by_kind, network_matrix, time_range
+from .aggregate import (
+    KIND_BLURB,
+    KIND_ORDER,
+    ActorGroup,
+    by_kind,
+    group_actors,
+    network_matrix,
+    time_range,
+)
 from .format import (
+    actor_spread,
+    as_display,
     client_id_parts,
     client_label,
     elide_ua,
@@ -153,6 +163,11 @@ td.copy:hover { background: #8882; }
 td.copy.copied { background: #16a34a55; }
 details { margin: .25rem 0 1rem; }
 summary { cursor: pointer; color: #6b7280; font-size: .9rem; padding: .25rem 0; }
+details.actor { margin: 0; }
+details.actor > summary { color: inherit; padding: 0; }
+details.actor > summary .cid-ua { color: #6b7280; }
+table.members { width: auto; margin: .35rem 0 .25rem 1.25rem; font-size: .85rem; }
+table.members th, table.members td { padding: .15rem .5rem; }
 input.filter { display: block; width: 100%; max-width: 30rem; margin: .5rem 0;
   padding: .4rem .55rem; border: 1px solid #8886; border-radius: 6px;
   background: Canvas; color: CanvasText; font: inherit; }
@@ -448,17 +463,67 @@ def _client_row(profile: ClientProfile, *, filterable: bool = False) -> str:
     )
 
 
+_MEMBER_HEAD = (
+    "<tr><th>IP / subnet</th><th>AS</th><th class='num'>Requests</th>"
+    "<th class='num'>Bandwidth</th></tr>"
+)
+
+
+def _member_row(profile: ClientProfile) -> str:
+    prefix, _, _ = client_id_parts(profile)
+    asn = as_display(profile.features.as_org, profile.features.as_number)
+    return (
+        f"<tr><td class='mono'>{_esc(prefix)}</td><td>{_esc(asn)}</td>"
+        f"<td class='num'>{profile.features.request_count:,}</td>"
+        f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td></tr>"
+    )
+
+
+def _actor_cell(actor: ActorGroup) -> str:
+    """The collapsed group's Client cell: a disclosure listing its members."""
+    _, _, ua = client_id_parts(actor.lead)
+    spread = actor_spread(actor.distinct_ips, actor.distinct_asns)
+    members = "".join(_member_row(m) for m in actor.members)
+    return (
+        "<td class='cid'><details class='actor'>"
+        f'<summary><span class="mono cid-ua">{_esc(ua or "–")}</span>'
+        f' <span class="muted">— {_esc(spread)}</span></summary>'
+        f"<table class='members'>{_MEMBER_HEAD}{members}</table></details></td>"
+    )
+
+
+def _actor_row(actor: ActorGroup, *, filterable: bool = False) -> str:
+    if not actor.collapsed:
+        return _client_row(actor.lead, filterable=filterable)
+    cls = actor.lead.classification
+    evidence = _esc(truncate(top_evidence(actor.lead)))
+    attrs = ""
+    if filterable:
+        haystack = " ".join(
+            f"{m.client_id.ip} {m.client_id.user_agent or ''} {m.features.as_org or ''}"
+            for m in actor.members
+        ).lower()
+        attrs = f' class="frow" data-filter="{_esc(haystack)}"'
+    return (
+        f"<tr{attrs}>{_actor_cell(actor)}"
+        f"<td class='num'>{actor.requests:,}</td>"
+        f"<td class='num'>{human_bytes(actor.total_bytes)}</td>"
+        f"<td class='num'>{cls.confidence:.0%}</td>"
+        f"<td>{_tags_html(cls.tags)}</td><td>{evidence}</td></tr>"
+    )
+
+
 def _kind_section(kind: Kind, group: list[ClientProfile], rollup: KindRollup, top: int) -> str:
-    group = sorted(group, key=lambda p: p.features.request_count, reverse=True)
+    actors = group_actors(group)
     title = f"{_kind_badge(kind)} {rollup.clients:,} clients · {rollup.requests:,} requests"
     parts = [
         f'<h2 id="{kind.value}">{title}</h2>',
         f'<p class="blurb">{_esc(KIND_BLURB.get(kind, ""))}</p>',
-        f"<table>{_SECTION_HEAD}{''.join(_client_row(p) for p in group[:top])}</table>",
+        f"<table>{_SECTION_HEAD}{''.join(_actor_row(a) for a in actors[:top])}</table>",
     ]
-    extra = group[top:_EXPAND_LIMIT]
+    extra = actors[top:_EXPAND_LIMIT]
     if extra:
-        extra_rows = "".join(_client_row(p, filterable=True) for p in extra)
+        extra_rows = "".join(_actor_row(a, filterable=True) for a in extra)
         parts.append(
             # Shared name -> native exclusive accordion: opening one closes the rest.
             '<details name="kind-extra"><summary>'
@@ -470,7 +535,8 @@ def _kind_section(kind: Kind, group: list[ClientProfile], rollup: KindRollup, to
             "</details>"
         )
     # rollup.clients is the exact total; only the highest-volume ones are detailed.
-    remaining = rollup.clients - min(len(group), _EXPAND_LIMIT)
+    represented = sum(len(a.members) for a in actors[:_EXPAND_LIMIT])
+    remaining = rollup.clients - represented
     if remaining > 0:
         parts.append(
             f'<p class="muted">…and {remaining:,} more — '

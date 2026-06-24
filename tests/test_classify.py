@@ -507,6 +507,47 @@ def test_incidental_head_does_not_sink_a_browser() -> None:
     assert classify_client(feats).primary is Kind.BROWSER
 
 
+def test_fetching_robots_dings_a_browser() -> None:
+    # All-distinct URLs (no 304 ding), so this isolates the robots.txt nudge.
+    base = ClientFeatures(
+        request_count=20, distinct_paths=20, asset_coload_ratio=0.8, ua_looks_like_browser=True
+    )
+    with_robots = replace(base, fetched_robots_txt=True)
+    assert (
+        BrowserClassifier().evaluate(with_robots)[0].confidence
+        < BrowserClassifier().evaluate(base)[0].confidence
+    )
+
+
+def test_cold_refetching_is_not_a_browser() -> None:
+    # The reported case: heavy volume, browser-shaped, but re-fetches a small set
+    # of URLs cold (no 304s) and checked robots.txt -> not a browser.
+    feats = ClientFeatures(
+        request_count=3470,
+        distinct_paths=200,  # ~3270 revisits, all cold
+        asset_coload_ratio=0.67,
+        ua_looks_like_browser=True,
+        ratio_404=0.0,
+        fetched_robots_txt=True,
+        status_counts={200: 3470},
+    )
+    assert classify_client(feats).primary is not Kind.BROWSER
+
+
+def test_high_volume_all_distinct_stays_a_browser() -> None:
+    # No 304s, but every URL fetched once: nothing to revalidate, so the absence
+    # of 304s says nothing and a genuine browser is left alone.
+    feats = ClientFeatures(
+        request_count=300,
+        distinct_paths=300,
+        asset_coload_ratio=0.8,
+        ua_looks_like_browser=True,
+        ratio_404=0.0,
+        status_counts={200: 300},
+    )
+    assert classify_client(feats).primary is Kind.BROWSER
+
+
 def test_head_corroborates_a_feed_reader() -> None:
     # A declared reader that HEADs feeds to check freshness gets a small lift,
     # and stays a feed reader (HEAD is not penalised the way it is for browsers).

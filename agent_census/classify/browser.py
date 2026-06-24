@@ -64,6 +64,30 @@ class BrowserClassifier(Classifier):
             confidence += 0.1
             evidence.append("revalidates from cache (304 Not Modified)")
 
+        # A browser never auto-fetches /robots.txt; checking it is a crawler's
+        # habit. Slight on its own (a person could type the URL once), but it
+        # nudges an otherwise browser-shaped client the right way.
+        if evidence and features.fetched_robots_txt:
+            confidence -= 0.15
+            evidence.append("fetched /robots.txt — a crawler's habit, not a browser's")
+
+        # A browser holding a cache revalidates what it re-requests and gets 304s.
+        # A client that re-fetches URLs it already pulled yet never receives a 304
+        # is fetching cold, cacheless -- not how a browser behaves. Fetching
+        # distinct URLs once each yields no 304s legitimately, so this looks only
+        # at revisits: requests beyond the first touch of each path.
+        revisits = features.request_count - features.distinct_paths
+        no_304 = features.status_counts.get(304, 0) == 0
+        if evidence and features.distinct_paths > 0 and revisits >= 20 and no_304:
+            if revisits >= features.request_count * 0.5:
+                # Mostly re-fetching the same URLs cold: the dominant behaviour, so
+                # cap the browser hypothesis below the confident threshold.
+                confidence = min(confidence, 0.3)
+                evidence.append("re-fetches the same URLs cold, never a 304 — no browser cache")
+            else:
+                confidence -= 0.2
+                evidence.append("re-fetches URLs without ever revalidating (no 304s)")
+
         # A person at a browser never fetches attack paths. Vuln probing or
         # directory traversal means this is automation wearing a browser engine
         # (e.g. headless Chrome), so cap the browser hypothesis below the unknown

@@ -5,6 +5,7 @@
 # https://developers.facebook.com/docs/sharing/webmasters/web-crawlers/
 ua_substring = "facebookexternalhit"
 domains = ["facebook.com", "fbsv.net"]
+asns = [32934]
 
 [[agent]]
 ua_substring = "Twitterbot"

@@ -10,5 +10,5 @@ feed_readers = [
     "ReadYou", "Elfeed", "rawdog", "Instapaper", "Protopage", "Yarr", "Arsse",
     "newsraft", "wp.com feedbot", "Windows-RSS-Platform", "NextCloud-News",
     "davefeedread", "gofeed", "rss-parser", "Tapestry", "Micro.blog", "Vienna",
-    "hypertexting", "FreshRSS"
+    "hypertexting", "FreshRSS", "Foragd"
 ]

@@ -60,3 +60,8 @@ ua_substring = "BLEXBot"
 
 [[agent]]
 ua_substring = "Barkrowler"
+
+[[agent]]
+# https://serpstatbot.com
+ua_substring = "serpstatbot"
+ranges_url = "https://serpstatbot.com/serpstatbot-ip.txt"

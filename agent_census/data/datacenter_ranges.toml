@@ -131,3 +131,6 @@ asns = [45102, 55990]
 name = "Dreamhost"
 asns = [26347]
 
+[[source]]
+name = "HostGlobal"
+asns = "202306"

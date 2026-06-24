@@ -89,6 +89,7 @@ _AGENT_SCHEMA = {
     "domains": "str[]",
     "ranges": "str[]",
     "ranges_url": "str",
+    "format": "str",
     "asns": "int[]",
     "rdns_fallback": "bool",
 }
@@ -223,6 +224,23 @@ def load_asn_agents(category: str) -> tuple[tuple[int, str], ...]:
         for asn in entry.get("asns", []):
             out.append((int(asn), label))
     return tuple(out)
+
+
+@lru_cache(maxsize=None)
+def load_asn_range_feeds() -> tuple[tuple[int, str, str], ...]:
+    """``(asn, ranges_url, format)`` for ASN agents that publish a prefix feed.
+
+    Lets an ASN-recognised crawler be matched by IP when the log doesn't carry the
+    client's AS number: its AS's announced prefixes are fetched and the IP checked
+    against them. Keyed by the agent's first ``asns`` entry (all map to one label).
+    """
+    feeds: list[tuple[int, str, str]] = []
+    for category in KNOWN_AGENT_CATEGORIES:
+        for entry in _agents(category):
+            url, asns = entry.get("ranges_url"), entry.get("asns")
+            if url and asns:
+                feeds.append((int(asns[0]), url, entry.get("format", "prefixes")))
+    return tuple(feeds)
 
 
 @lru_cache(maxsize=None)

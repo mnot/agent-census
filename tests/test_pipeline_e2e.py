@@ -414,6 +414,37 @@ def test_crawler_recognised_by_logged_asn(tmp_path: Path) -> None:
     assert "asn-attributed" in tags and "datacenter" not in tags
 
 
+def test_crawler_recognised_by_asn_range_without_logged_asn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # No MM_ASN in the log: recognise the Sberbank crawler by matching the IP
+    # against AS35237's published prefixes (stubbed here).
+    from agent_census import egress, hosting, iprange
+    from agent_census.iprange import network_intervals
+
+    monkeypatch.setattr(
+        hosting,
+        "fetch_range_intervals",
+        lambda url, fmt: network_intervals(("203.0.113.0/24",)) if "AS35237" in url else ([], []),
+    )
+    monkeypatch.setattr(egress, "lookup", lambda ip: None)  # don't fetch real egress lists
+    iprange.enable_remote()
+    ua = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML) Chrome/91.0.4472.124 Safari/537.36"
+    lines = [
+        f'203.0.113.{i} - - [10/Oct/2023:12:00:0{i} +0000] "GET /p{i} HTTP/1.1" 200 100 "-" "{ua}"'
+        for i in range(4)
+    ]
+    log = tmp_path / "sber.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})  # combined has no MM_ASN
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
+
+    assert "Sberbank" in result.network_rollups
+    crawlers = [p for p in result.profiles if p.classification.primary is Kind.AI_CRAWLER]
+    assert crawlers and all(p.network == "Sberbank" for p in crawlers)
+    assert "asn-attributed" in crawlers[0].classification.tags
+
+
 def test_returning_client_coalesces_after_eviction(tmp_path: Path) -> None:
     # One client (one ip+ua) requests on day 1, then again on day 3. A filler
     # client on day 2 advances the clock past the 12h quiescent window, so the

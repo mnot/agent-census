@@ -24,6 +24,7 @@ from . import egress, uas
 from .classify import DEFAULT_UNKNOWN_THRESHOLD, classify_client
 from .features import DisallowedCheck, FeatureAccumulator
 from .hosting import (
+    asn_for_ip,
     datacenter_provider,
     datacenter_provider_for_asn,
     datacenter_subnet,
@@ -344,6 +345,13 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements
         nonlocal singleton_count
         ua_count = len(uas_by_ip.get(key.ip) or (None,))
         features = acc.finalize(ua_count_for_ip=ua_count)
+        if not features.as_number:
+            # The log didn't carry the AS number; recover it from the IP via a
+            # crawler ASN's published prefixes (so ASN recognition, attribution,
+            # and the tag work without %{MM_ASN}e). Folded keys aren't real IPs.
+            asn = asn_for_ip(key.ip)
+            if asn is not None:
+                features = replace(features, as_number=str(asn))
         if features.request_count == 1:
             singleton_count += 1
         compliance = None

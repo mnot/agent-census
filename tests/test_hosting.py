@@ -61,6 +61,23 @@ def test_datacenter_provider_for_asn_maps_known_numbers() -> None:
     assert hosting.datacenter_provider_for_asn(35237) is None  # moved to ai_crawler (Sberbank)
 
 
+def test_asn_for_ip_from_published_feed(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Recover the AS number from the IP via a crawler ASN's published prefixes.
+    from agent_census.iprange import network_intervals
+
+    monkeypatch.setattr(
+        hosting,
+        "fetch_range_intervals",
+        lambda url, fmt: network_intervals(("203.0.113.0/24",)) if "AS35237" in url else ([], []),
+    )
+    assert hosting.asn_for_ip("203.0.113.7") is None  # offline by default
+    iprange.enable_remote()
+    hosting._asn_feed_indexes.cache_clear()  # pylint: disable=protected-access
+    hosting.asn_for_ip.cache_clear()
+    assert hosting.asn_for_ip("203.0.113.7") == 35237
+    assert hosting.asn_for_ip("8.8.8.8") is None
+
+
 def test_datacenter_provider_names_the_owner(monkeypatch: pytest.MonkeyPatch) -> None:
     # A hit is attributed to a named provider; a miss is None. (conftest resets the
     # remote flag and caches in teardown.)

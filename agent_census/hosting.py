@@ -14,7 +14,7 @@ from __future__ import annotations
 import ipaddress
 from functools import lru_cache
 
-from .dataload import load_range_sources
+from .dataload import load_asn_range_feeds, load_range_sources
 from .iprange import Interval, RangeIndex, fetch_range_intervals, network_intervals, remote_enabled
 
 _DATA = "datacenter_ranges"
@@ -73,6 +73,35 @@ def datacenter_provider_for_asn(asn: int | None) -> str | None:
     if asn is None:
         return None
     return _asn_providers().get(asn)
+
+
+@lru_cache(maxsize=None)
+def _asn_feed_indexes() -> tuple[tuple[int, RangeIndex], ...]:
+    """One ``(asn, RangeIndex)`` per ASN agent that publishes a prefix feed.
+
+    Only built when range fetching is on (``--fetch-ranges``); empty otherwise.
+    """
+    if not remote_enabled():
+        return ()
+    built: list[tuple[int, RangeIndex]] = []
+    for asn, url, fmt in load_asn_range_feeds():
+        v4, v6 = fetch_range_intervals(url, fmt)
+        if v4 or v6:
+            built.append((asn, RangeIndex(v4, v6)))
+    return tuple(built)
+
+
+@lru_cache(maxsize=None)
+def asn_for_ip(ip: str) -> int | None:
+    """AS number of a configured crawler feed whose announced ranges contain ``ip``.
+
+    Recovers the origin AS when the log doesn't carry it. Needs ``--fetch-ranges``;
+    returns None offline or when no feed matches.
+    """
+    for asn, index in _asn_feed_indexes():
+        if index.contains(ip):
+            return asn
+    return None
 
 
 @lru_cache(maxsize=None)

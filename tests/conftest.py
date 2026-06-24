@@ -35,7 +35,9 @@ def _reset_range_state(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Non
     iprange._remote["enabled"] = False  # pylint: disable=protected-access
     hosting._provider_indexes.cache_clear()  # pylint: disable=protected-access
     hosting._asn_providers.cache_clear()  # pylint: disable=protected-access
+    hosting._asn_feed_indexes.cache_clear()  # pylint: disable=protected-access
     hosting.datacenter_provider.cache_clear()
+    hosting.asn_for_ip.cache_clear()
     hosting.is_datacenter_ip.cache_clear()
     hosting.datacenter_subnet.cache_clear()
     egress._networks.cache_clear()  # pylint: disable=protected-access

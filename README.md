@@ -46,6 +46,44 @@ agent-census analyze access.log \
 The presets `common`, `combined`, and `vhost_combined` are available via
 `--log-format-preset`. Options may appear before, after, or between the log files.
 
+### What to log
+
+The Apache `combined` format already carries everything the core analysis needs.
+The `common` preset drops the User-Agent and the Referer, so prefer `combined`,
+or a custom format that includes them.
+
+Required (all present in `combined`):
+
+- **Client address** (`%h`) -- the identity everything else groups on, and the
+  basis for the network, datacentre, and crawler-verification checks.
+- **Timestamp** (`%t`) -- timing regularity, peak request rate, the reported time
+  range, and (with `--quiescent-hours`) freeing memory mid-run.
+- **Request line** (`"%r"`) -- the method and path; the most load-bearing field,
+  behind vulnerability probing, feed detection, path coverage, and crawl shape.
+- **Status code** (`%>s`) -- the status mix, 404 storms, `304 Not Modified` (the
+  `has-cache` tag), and robots.txt compliance.
+- **User-Agent** (`"%{User-Agent}i"`) -- browser, bot, and declared-crawler
+  recognition.
+
+Recommended (also in `combined`):
+
+- **Referer** (`"%{Referer}i"`) -- referer-following, which separates crawlers
+  from scrapers and flags fabricated referers.
+- **Bytes sent** (`%b`, or `%B`) -- the bandwidth figures in the report.
+
+Optional, each unlocking a feature -- add them to your `LogFormat`, quoted:
+
+- **`"%{MM_ASORG}e"` and `"%{MM_ASN}e"`** (MaxMind `mod_maxminddb`) -- name
+  datacentre clients by their hosting organisation, and recognise datacentres and
+  ASN-listed crawlers by AS number. See [Networks and hosting](#networks-and-hosting).
+- **`"%{Content-Type}o"`** -- the response media type, which sharpens feed-reader
+  detection (an RSS/Atom type, not just a feed-shaped URL).
+- **`"%{X-Forwarded-For}i"`** -- only if you're behind a CDN or proxy, for
+  `--identity forwarded`.
+
+Response time (`%D` / `%T`) and the virtual host are parsed if present but not
+currently used by the analysis.
+
 Output is Markdown by default. Pass `--html` for a self-contained, styled page
 (one file, no external assets) you can open in a browser. Both formats work for
 `analyze` and `inspect`:

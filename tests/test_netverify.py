@@ -29,6 +29,14 @@ def test_needs_only_declared_crawlers() -> None:
     assert not verifier.needs(None)
 
 
+def test_needs_covers_every_known_category() -> None:
+    # AhrefsBot is an seo_marketing agent with domains + ranges_url. The verifier
+    # must consider every known category, not a hand-picked subset -- otherwise a
+    # verifiable crawler can never be verified or flagged as an impersonator.
+    verifier = BotVerifier()
+    assert verifier.needs("Mozilla/5.0 (compatible; AhrefsBot/7.0; +http://ahrefs.com/robot/)")
+
+
 # --- DNS path (domains, no ranges_url) ---
 
 

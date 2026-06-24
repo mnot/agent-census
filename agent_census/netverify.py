@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import NamedTuple, TypeVar
 
 from . import uas
-from .dataload import CrawlerSpec, load_tokens
+from .dataload import KNOWN_AGENT_CATEGORIES, CrawlerSpec, load_tokens
 from .iprange import Network as _Network
 from .iprange import cache_dir
 from .iprange import fetch_ranges_text as _fetch_ranges_text
@@ -91,13 +91,10 @@ def _bounded(func: Callable[[], _T]) -> _T | None:
 def _known_crawler(ua: str | None) -> tuple[str, CrawlerSpec] | None:
     # Not a hot path (runs per deduped candidate under --verify-bots), so this
     # builds the combined token list rather than using the cached per-category
-    # match -- and lets tests inject synthetic specs via load_tokens.
-    pairs = (
-        load_tokens("search_engine")
-        + load_tokens("social_preview")
-        + load_tokens("archiver")
-        + load_tokens("ai_crawler")
-    )
+    # match -- and lets tests inject synthetic specs via load_tokens. Drawn from
+    # the canonical category list so a new category (e.g. seo_marketing, whose
+    # AhrefsBot publishes ranges and rDNS) is verifiable without editing here.
+    pairs = tuple(pair for category in KNOWN_AGENT_CATEGORIES for pair in load_tokens(category))
     return uas.match_known(ua, pairs)
 
 

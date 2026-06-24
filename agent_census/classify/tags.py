@@ -128,11 +128,10 @@ def derive_tags(
         else:
             tags.add("shared-ip")
 
-    if compliance is not None:
-        if compliance.verdict is RobotsVerdict.RESPECTS:
-            tags.add("respects-robots")
-        elif compliance.verdict is RobotsVerdict.IGNORES:
-            tags.add("ignores-robots")
+    # Only the actionable case is tagged: ignoring robots.txt. Respecting it is the
+    # quiet norm -- no per-client tag (its aggregate is the summary robots column).
+    if compliance is not None and compliance.verdict is RobotsVerdict.IGNORES:
+        tags.add("ignores-robots")
 
     if verification is not None and verification.status is VerificationStatus.VERIFIED:
         tags.add("verified")

@@ -37,6 +37,7 @@ from .model import (
     ClientProfile,
     Kind,
     LogEntry,
+    RobotsVerdict,
     VerificationStatus,
 )
 from .parsing.base import LogParser
@@ -144,13 +145,15 @@ class _RollupAcc:
         self.first_seen: datetime | None = None
         self.last_seen: datetime | None = None
 
-    def add(self, features: ClientFeatures, tags: frozenset[str]) -> None:
+    def add(self, features: ClientFeatures, *, respects: bool, ignores: bool) -> None:
         self.clients += 1
         self.requests += features.request_count
         self.total_bytes += features.total_bytes
-        if "respects-robots" in tags:
+        # Robots compliance is counted from the verdict, not a tag: respecting is
+        # the quiet norm, so it carries no per-client tag, only this aggregate.
+        if respects:
             self.respects += 1
-        elif "ignores-robots" in tags:
+        elif ignores:
             self.ignores += 1
         first, last = features.first_seen, features.last_seen
         if first is not None and (self.first_seen is None or first < self.first_seen):
@@ -386,8 +389,11 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements
             network=network,
         )
         kind = classification.primary
-        rollups[kind].add(features, classification.tags)  # every client counts here
-        net_rollups[network][kind].add(features, classification.tags)
+        verdict = compliance.verdict if compliance is not None else None
+        respects = verdict is RobotsVerdict.RESPECTS
+        ignores = verdict is RobotsVerdict.IGNORES
+        rollups[kind].add(features, respects=respects, ignores=ignores)  # every client counts
+        net_rollups[network][kind].add(features, respects=respects, ignores=ignores)
         net_categories.setdefault(network, network_category or _NET_RESIDENTIAL)
         # Keep only the highest-volume profiles per kind in detail; the rest are
         # already fully reflected in the rollup above.

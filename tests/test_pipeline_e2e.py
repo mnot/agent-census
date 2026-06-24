@@ -361,6 +361,25 @@ def test_verified_crawler_buckets_under_its_operator_not_residential(tmp_path: P
     assert profile.network == "mybot.example"
 
 
+def test_respect_counted_in_summary_without_per_client_tag(tmp_path: Path) -> None:
+    # Dropping the respects-robots tag must not lose the summary's respect count:
+    # it now comes from the compliance verdict, not the tag.
+    from agent_census.robots.parser import RobotsRules
+
+    rules = RobotsRules("User-agent: *\nDisallow: /private/\n")
+    lines = [
+        f'8.8.8.8 - - [10/Oct/2023:12:00:0{i} +0000] "GET /ok{i} HTTP/1.1" 200 100 "-" "curl/8.0"'
+        for i in range(6)  # >= 5 requests, all allowed -> verdict RESPECTS
+    ]
+    log = tmp_path / "respect.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"), robots=rules)
+
+    assert sum(r.respects_robots for r in result.rollups.values()) >= 1  # still counted
+    assert all("respects-robots" not in p.classification.tags for p in result.profiles)
+
+
 def test_returning_client_coalesces_after_eviction(tmp_path: Path) -> None:
     # One client (one ip+ua) requests on day 1, then again on day 3. A filler
     # client on day 2 advances the clock past the 12h quiescent window, so the

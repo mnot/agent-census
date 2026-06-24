@@ -49,7 +49,6 @@ _KIND_COLORS: dict[Kind, str] = {
 # Tags that deserve a non-neutral colour.
 _TAG_COLORS: dict[str, str] = {
     "verified": "#16a34a",  # confirmed identity -> strong green
-    "respects-robots": "#14b8a6",  # well-behaved, but softer/less definitive -> teal
     "impersonator": "#dc2626",
     "ignores-robots": "#d97706",
     "fake-browser": "#ea580c",  # browser costume, no browser behaviour -> orange
@@ -77,7 +76,6 @@ _TAG_HELP: dict[str, str] = {
     "or non-browser behaviour — likely UA rotation to evade limits.",
     "shared-ip": "Many distinct User-Agents from one IP but behaving normally — a shared "
     "egress such as NAT, VPN, proxy, or carrier gateway.",
-    "respects-robots": "Requested no paths disallowed by the applicable robots.txt group.",
     "ignores-robots": "Requested paths disallowed by the applicable robots.txt group.",
     "verified": "Reverse/forward DNS or a published IP range confirmed the declared "
     "crawler identity.",

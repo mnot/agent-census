@@ -269,6 +269,23 @@ def test_304_lifts_browser_and_feed_reader_confidence() -> None:
     assert f_with[0].confidence > f_without[0].confidence
 
 
+def test_respecting_robots_is_not_tagged() -> None:
+    # Respecting robots is the quiet norm -- it carries no per-client tag anymore.
+    feats = ClientFeatures(request_count=10)
+    compliance = ComplianceReport(
+        verdict=RobotsVerdict.RESPECTS,
+        matched_group="*",
+        disallowed_hits=0,
+        sample_disallowed=(),
+        fetched_robots_first=True,
+        crawl_delay=None,
+        crawl_delay_respected=None,
+    )
+    signals = [Signal(Kind.BROWSER, 0.6, ("browses",), "browser")]
+    tags = combine(signals, feats, compliance=compliance).tags
+    assert "respects-robots" not in tags and "ignores-robots" not in tags
+
+
 def test_compliance_tags_applied() -> None:
     feats = ClientFeatures(request_count=10)
     compliance = ComplianceReport(

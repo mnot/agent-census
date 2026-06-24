@@ -129,6 +129,22 @@ def test_identity_defaults_to_ip_ua_when_unset() -> None:
     assert args.identity == "ip_ua"  # built-in default, nothing saved
 
 
+def test_report_shows_filenames_not_full_paths(tmp_path: Path) -> None:
+    sub = tmp_path / "private-dir"
+    sub.mkdir()
+    log = sub / "access.log"
+    log.write_text(Path(LOG).read_text(encoding="utf-8"), encoding="utf-8")
+    robots = sub / "robots.txt"
+    robots.write_text("User-agent: *\nDisallow: /x/\n", encoding="utf-8")
+    out = tmp_path / "r.md"
+    main(["analyze", str(log), *OFFLINE, "--robots-file", str(robots), "-o", str(out)])
+    text = out.read_text(encoding="utf-8")
+
+    assert "private-dir" not in text  # no directory path leaks into the report
+    assert "access.log" in text  # the file name is still shown as the source
+    assert "loaded from robots.txt" in text  # robots provenance is the name only
+
+
 def test_keyboard_interrupt_returns_130(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

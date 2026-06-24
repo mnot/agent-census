@@ -353,7 +353,8 @@ def _inspect_text(ctx: _RunContext, args: argparse.Namespace) -> str:
 
 
 def _source_label(args: argparse.Namespace) -> str:
-    return ", ".join(str(p) for p in args.logfiles)
+    # File names only -- the report shouldn't disclose where the logs live on disk.
+    return ", ".join(Path(p).name for p in args.logfiles)
 
 
 def _emit(text: str, output: Path | None) -> None:

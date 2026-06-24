@@ -44,7 +44,8 @@ def from_file(path: Path) -> RobotsDoc:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
         raise ConfigError(f"could not read robots file {path}: {exc}") from exc
-    return RobotsDoc(text=text, provenance=str(path))
+    # File name only -- the report's provenance note shouldn't leak the full path.
+    return RobotsDoc(text=text, provenance=path.name)
 
 
 def from_network(url: str) -> RobotsDoc:

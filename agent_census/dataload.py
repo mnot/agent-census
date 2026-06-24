@@ -27,6 +27,11 @@ class CrawlerSpec:
     domains: tuple[str, ...] = ()
     ranges: tuple[str, ...] = ()
     ranges_url: str | None = None
+    # When an agent declares both ranges and domains, both must verify by default
+    # (either failing is impersonation). Set this for operators whose reverse DNS
+    # isn't reliable: ranges become primary and the domains are only a fallback
+    # used when the ranges can't be obtained.
+    rdns_fallback: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +77,7 @@ def load_tokens(category: str) -> tuple[tuple[str, CrawlerSpec], ...]:
             domains=tuple(entry.get("domains", [])),
             ranges=tuple(entry.get("ranges", [])),
             ranges_url=entry.get("ranges_url"),
+            rdns_fallback=bool(entry.get("rdns_fallback", False)),
         )
         pairs.append((entry["ua_substring"], spec))
     return tuple(pairs)

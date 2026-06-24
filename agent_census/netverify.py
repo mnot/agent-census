@@ -1,13 +1,18 @@
 """Opt-in reverse/forward DNS verification of declared crawlers.
 
-A client can trivially claim to be Googlebot in its User-Agent. Two ways to check:
+A client can trivially claim to be Googlebot in its User-Agent. Two checks:
 
-* A ``ranges_url`` (or inline ``ranges``) is **authoritative** when present: the
-  IP is verified iff it falls in the published CIDRs, and an out-of-range IP
-  claiming the crawler is an impersonator -- no DNS involved.
-* Otherwise, DNS: reverse-resolve the IP, confirm the hostname ends in an
-  expected domain, and forward-resolve it back. A client claiming a DNS-verified
-  crawler but having no PTR record at all is treated as an impersonator.
+* IP ranges: a ``ranges_url`` (or inline ``ranges``) lists the crawler's CIDRs;
+  the IP is verified iff it falls in them, and a definitely out-of-range IP is an
+  impersonator.
+* DNS: reverse-resolve the IP, confirm the hostname ends in an expected domain,
+  and forward-resolve it back; a definite wrong or absent PTR is an impersonator.
+
+An agent that declares **both** must pass both by default -- either definitive
+failure is impersonation -- unless its spec sets ``rdns_fallback``, which makes
+the ranges primary and falls back to DNS only when they can't be obtained.
+Inconclusive checks (unfetchable ranges, a DNS timeout) leave the verdict
+unverified, never impersonator.
 
 DNS is the slow part, so verification is done as a deduped, concurrent batch:
 each distinct IP is resolved once, and the lookups run across a thread pool (they
@@ -28,7 +33,7 @@ import time
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import TypeVar
+from typing import NamedTuple, TypeVar
 
 from . import uas
 from .dataload import CrawlerSpec, load_tokens
@@ -39,6 +44,18 @@ from .iprange import ip_in as _ip_in
 from .iprange import parse_networks as _parse_networks
 from .iprange import parse_prefixes as _parse_prefixes
 from .model import BotVerification, ClientId, VerificationStatus
+
+# Outcome of one verification check (range or reverse DNS): a definitive pass or
+# fail, or an inconclusive result (unfetchable ranges, a DNS timeout) that must
+# never be read as impersonation.
+_PASS, _FAIL, _UNKNOWN = "pass", "fail", "unknown"
+
+
+class _Check(NamedTuple):
+    state: str  # _PASS | _FAIL | _UNKNOWN
+    host: str | None  # resolved host or matched range, for the report
+    why: str  # human-readable evidence line
+
 
 _MAX_WORKERS = 64
 _DNS_TIMEOUT = 3.0  # seconds per individual lookup
@@ -224,86 +241,103 @@ class BotVerifier:
             self._forward_ts[host] = time.time()
         return ips
 
-    def verify(  # pylint: disable=too-many-return-statements
-        self, ip: str, ua: str | None
-    ) -> BotVerification:
-        """Verify whether ``ip`` genuinely belongs to the crawler ``ua`` declares."""
+    def _check_range(self, ip: str, spec: CrawlerSpec, substring: str) -> _Check:
+        """Tri-state IP-range check. Unobtainable ranges are inconclusive, not a fail."""
+        networks = self._networks_for(spec)
+        if not networks:
+            return _Check(_UNKNOWN, None, f"could not obtain the published {substring} IP ranges")
+        match = _ip_in(ip, networks)
+        if match is not None:
+            return _Check(
+                _PASS, str(match), f"{ip} is within {match}, a published {substring} range"
+            )
+        return _Check(_FAIL, None, f"{ip} is not in any published {substring} range")
+
+    def _check_rdns(self, ip: str, spec: CrawlerSpec, substring: str) -> _Check:
+        """Tri-state reverse/forward DNS check. Transient lookup failures are inconclusive."""
+        host, no_ptr = self._cached_reverse(ip)
+        if host is None:
+            if no_ptr:
+                return _Check(
+                    _FAIL, None, f"{ip} has no reverse-DNS record but its UA claims {substring}"
+                )
+            return _Check(_UNKNOWN, None, f"reverse DNS lookup of {ip} failed (transient)")
+        if not _domain_matches(host, spec.domains):
+            return _Check(
+                _FAIL,
+                host,
+                f"{ip} resolves to {host}, not a {substring} domain ({', '.join(spec.domains)})",
+            )
+        if ip in self._cached_forward(host):
+            return _Check(_PASS, host, f"{ip} ↔ {host} confirmed for {substring}")
+        if self._cached_forward(host):
+            return _Check(_FAIL, host, f"{host} does not resolve back to {ip}")
+        return _Check(_UNKNOWN, host, f"forward DNS of {host} failed")
+
+    def verify(self, ip: str, ua: str | None) -> BotVerification:
+        """Verify whether ``ip`` genuinely belongs to the crawler ``ua`` declares.
+
+        An agent declaring both IP ranges and reverse-DNS domains must pass *both*
+        by default -- either failing is impersonation. Set ``rdns_fallback`` on a
+        spec to make ranges primary, with the domains used only as a fallback when
+        the ranges can't be obtained. Definitive failures (out-of-range, wrong/no
+        PTR) impersonate; merely inconclusive checks (unfetchable ranges, a DNS
+        timeout) leave it unverified.
+        """
         known = _known_crawler(ua)
         if known is None:
             return BotVerification(VerificationStatus.NOT_APPLICABLE)
         substring, spec = known
-        if not (spec.domains or spec.ranges or spec.ranges_url):
+        has_ranges = bool(spec.ranges or spec.ranges_url)
+        has_domains = bool(spec.domains)
+        if not (has_ranges or has_domains):
             return BotVerification(
                 VerificationStatus.UNVERIFIED,
                 evidence=(f"no verifying domain or IP range known for {substring}",),
             )
 
-        networks = self._networks_for(spec)
+        if has_ranges and has_domains and not spec.rdns_fallback:
+            return self._verify_strict(ip, spec, substring)
+        if has_ranges and has_domains:  # rdns_fallback: ranges first, DNS only if unobtainable
+            check = self._check_range(ip, spec, substring)
+            if check.state is _UNKNOWN:
+                check = self._check_rdns(ip, spec, substring)
+        elif has_ranges:
+            check = self._check_range(ip, spec, substring)
+        else:
+            check = self._check_rdns(ip, spec, substring)
+        return self._verdict(check, spec)
 
-        # Published ranges -- inline and/or fetched -- are authoritative: the IP
-        # is verified iff it falls in them, and an out-of-range IP under this UA
-        # is an impersonator (no DNS fallback). If a ranges_url could not be
-        # fetched and there are no inline ranges, we cannot judge -- unverified.
-        if spec.ranges or spec.ranges_url:
-            if not networks:
-                return BotVerification(
-                    VerificationStatus.UNVERIFIED,
-                    expected_domains=spec.domains,
-                    evidence=(f"could not obtain the published {substring} IP ranges",),
-                )
-            match = _ip_in(ip, networks)
-            if match is not None:
-                return BotVerification(
-                    VerificationStatus.VERIFIED,
-                    resolved_host=str(match),
-                    expected_domains=spec.domains,
-                    evidence=(f"{ip} is within {match}, a published {substring} range",),
-                )
-            return BotVerification(
-                VerificationStatus.IMPERSONATOR,
-                expected_domains=spec.domains,
-                evidence=(f"{ip} is not in any published {substring} range (authoritative)",),
-            )
-
-        # Reverse/forward DNS. A crawler verified this way is expected to have a
-        # PTR record, so its absence under this UA is treated as impersonation.
-        host, no_ptr = self._cached_reverse(ip)
-        if host is None:
-            if no_ptr:
-                return BotVerification(
-                    VerificationStatus.IMPERSONATOR,
-                    expected_domains=spec.domains,
-                    evidence=(f"{ip} has no reverse-DNS record but its UA claims {substring}",),
-                )
-            return BotVerification(
-                VerificationStatus.UNVERIFIED,
-                expected_domains=spec.domains,
-                evidence=(f"reverse DNS lookup of {ip} failed (transient)",),
-            )
-        if not _domain_matches(host, spec.domains):
-            return BotVerification(
-                VerificationStatus.IMPERSONATOR,
-                resolved_host=host,
-                expected_domains=spec.domains,
-                evidence=(
-                    f"{ip} resolves to {host}, not a {substring} domain "
-                    f"({', '.join(spec.domains)})",
-                ),
-            )
-        forward = self._cached_forward(host)
-        if ip in forward:
+    def _verify_strict(self, ip: str, spec: CrawlerSpec, substring: str) -> BotVerification:
+        """Both range and reverse DNS must pass; either definitive failure impersonates."""
+        rng = self._check_range(ip, spec, substring)
+        if rng.state is _FAIL:
+            return self._verdict(rng, spec)
+        dns = self._check_rdns(ip, spec, substring)
+        if dns.state is _FAIL:
+            return self._verdict(dns, spec)
+        if rng.state is _PASS and dns.state is _PASS:
             return BotVerification(
                 VerificationStatus.VERIFIED,
-                resolved_host=host,
+                resolved_host=dns.host or rng.host,
                 expected_domains=spec.domains,
-                evidence=(f"{ip} ↔ {host} confirmed for {substring}",),
+                evidence=(rng.why, dns.why),
             )
-        if forward:
-            status, why = VerificationStatus.IMPERSONATOR, f"{host} does not resolve back to {ip}"
-        else:
-            status, why = VerificationStatus.UNVERIFIED, f"forward DNS of {host} failed"
+        return BotVerification(  # nothing failed, but a check was inconclusive
+            VerificationStatus.UNVERIFIED,
+            resolved_host=dns.host,
+            expected_domains=spec.domains,
+            evidence=(rng.why, dns.why),
+        )
+
+    def _verdict(self, check: _Check, spec: CrawlerSpec) -> BotVerification:
+        status = {
+            _PASS: VerificationStatus.VERIFIED,
+            _FAIL: VerificationStatus.IMPERSONATOR,
+            _UNKNOWN: VerificationStatus.UNVERIFIED,
+        }[check.state]
         return BotVerification(
-            status, resolved_host=host, expected_domains=spec.domains, evidence=(why,)
+            status, resolved_host=check.host, expected_domains=spec.domains, evidence=(check.why,)
         )
 
     def verify_all(

@@ -152,3 +152,11 @@ ua_substring ="AIWebIndex"
 [[agent]]
 name = "Sberbank"
 asns = [35237]
+# Fallback when the log lacks the AS number
+ranges_url = "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS35237"
+format = "ripestat"
+
+[[agent]]
+# https://colossio.org
+name = "Colossio"
+ua_substring = "colossio"

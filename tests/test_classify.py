@@ -733,6 +733,17 @@ def test_feed_ua_terms_are_word_anchored() -> None:
     assert ua_is_feed_reader("SomeClient (atom)")  # 'atom' as a whole word
 
 
+def test_named_feed_readers_without_generic_terms_are_recognised() -> None:
+    # Readers whose UA carries no rss/atom/feed word -- recognised by product name.
+    from agent_census.classify.feed_reader import ua_is_feed_reader
+
+    assert ua_is_feed_reader("Selfoss/2.19 (+https://selfoss.aditu.de)")
+    assert ua_is_feed_reader("feedspool/1.0; +https://github.com/lmorchard/feedspool-go")
+    assert ua_is_feed_reader("SurfaceFeedPoller/1.0 (+https://thesurface.ai)")
+    assert ua_is_feed_reader("Lumen/0.1 (+https://github.com/yuichielectric/Lumen)")
+    assert not ua_is_feed_reader("Lumen Technologies router")  # bare 'Lumen' must not match
+
+
 def test_feed_reader_ua_is_not_tagged_bot_ua() -> None:
     # A feed reader that also self-declares a bot names itself a feed tool, not a
     # generic unrecognised bot, so it must not pick up the bot-ua tag.

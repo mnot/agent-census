@@ -20,6 +20,7 @@ from .parsing.apache import PRESETS
 from .parsing.base import LogParser
 from .pipeline import AnalysisResult, collect_entries
 from .report import (
+    render_calibration,
     render_inspect,
     render_inspect_html,
     render_report,
@@ -50,6 +51,18 @@ examples:
   agent-census analyze access.log --no-verify-bots
 
 Options may appear before, after, or between the log files.
+"""
+
+_CALIBRATE_EXAMPLES = """\
+examples:
+  # digest of the traffic worth reviewing to improve accuracy
+  agent-census calibrate access.log* -o calibration.md
+
+  # widen each section to 50 rows before truncating
+  agent-census calibrate access.log --top 50
+
+The output is meant to be read (or pasted to an assistant) to spot ASNs, crawlers,
+and UA/heuristic gaps that need tuning -- not as an end-user report.
 """
 
 _INSPECT_EXAMPLES = """\
@@ -185,8 +198,9 @@ quick start:
   agent-census analyze access.log* --html -o census.html
   agent-census analyze access.log --robots-file ./robots.txt
   agent-census inspect access.log --kind vuln_scanner
+  agent-census calibrate access.log -o calibration.md
 
-Run 'agent-census analyze -h' or 'agent-census inspect -h' for every option,
+Run 'agent-census analyze -h', 'inspect -h', or 'calibrate -h' for every option,
 the supported log-format directives, and more examples.
 """
 
@@ -221,6 +235,26 @@ def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argumen
         help="ignore clients below N requests (default: 1)",
     )
 
+    calibrate = sub.add_parser(
+        "calibrate",
+        help="emit a Markdown digest of uncertain / unrecognised traffic for tuning",
+        description="Emit a calibration digest: the marginal, uncertain, and "
+        "unrecognised traffic to review when improving classification accuracy "
+        "(unrecognised ASNs, unverified crawlers, spoof flags, browser-ID quality, "
+        "singletons, unknowns, conflicting signals). Markdown only; keeps every "
+        "client in memory, so it is heavier than analyze.",
+        epilog=_CALIBRATE_EXAMPLES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    _add_shared(calibrate)
+    calibrate.add_argument(
+        "--top",
+        type=int,
+        default=30,
+        metavar="N",
+        help="rows shown per section before truncating (default: 30)",
+    )
+
     inspect = sub.add_parser(
         "inspect",
         help="dump the trace and classification rationale for client(s)",
@@ -229,6 +263,7 @@ def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argumen
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_shared(inspect)
+    sub_parsers = {"analyze": analyze, "calibrate": calibrate, "inspect": inspect}
     inspect_sel = inspect.add_argument_group("selection")
     inspect_sel.add_argument(
         "--client", metavar="ID", help="match clients by IP or display substring"
@@ -244,7 +279,7 @@ def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argumen
         "--limit", type=int, default=20, metavar="N", help="trace rows per client (default: 20)"
     )
     inspect_sel.add_argument("--full", action="store_true", help="show every request in the trace")
-    return parser, {"analyze": analyze, "inspect": inspect}
+    return parser, sub_parsers
 
 
 def _resolve_format(args: argparse.Namespace) -> str:
@@ -350,7 +385,7 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
         robots=rules,
         verifier=verifier,
         unknown_threshold=args.unknown_threshold,
-        keep_signals=args.command == "inspect",
+        keep_signals=args.command in ("inspect", "calibrate"),
         quiescent_seconds=quiescent,
         max_per_kind=args.max_per_kind,
         vhosts=args.vhost,
@@ -398,6 +433,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args.command = raw[0]
     try:
         _apply_persisted_settings(args)
+        if args.command == "calibrate":
+            args.max_per_kind = 0  # the digest needs every client, not the top-N tail
         ctx = _run_pipeline(args)
         if args.command == "analyze":
             result = ctx.result
@@ -423,6 +460,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                     robots_note=ctx.robots_note,
                     elapsed=ctx.elapsed,
                 )
+        elif args.command == "calibrate":
+            text = render_calibration(ctx.result, source=_source_label(args), top=args.top)
         else:
             text = _inspect_text(ctx, args)
         _emit(text, args.output)

@@ -180,9 +180,10 @@ def test_feed_token_must_be_a_whole_filename_part() -> None:
         entry("/anatomy.html", offset=0),  # 'atom' inside 'anatomy'
         entry("/feedback/", offset=1),  # 'feed' inside 'feedback'
         entry("/rss.xml", offset=2),  # a real feed -- 'rss' is a whole part
+        entry("/index.xml", offset=3),  # token-less feed recognised as a stopgap
     ]
     feats = extract_features(entries)
-    assert feats.feed_requests == 1
+    assert feats.feed_requests == 2
 
 
 def test_feed_requests_by_content_type() -> None:

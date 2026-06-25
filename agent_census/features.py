@@ -83,6 +83,9 @@ def _top_segment(path: str) -> str:
 # UA-side detection in classify/feed_reader.py).
 _FEED_TOKENS = frozenset({"feed", "rss", "atom"})
 _FILENAME_PARTS = re.compile(r"[.\-_]")
+# Common token-less feed filenames -- a stopgap until response media types are
+# relied on more widely (many sites publish their feed at /index.xml).
+_FEED_FILENAMES = frozenset({"index.xml"})
 
 
 def _response_content_type(entry: LogEntry) -> str:
@@ -115,6 +118,8 @@ def _is_feed_request(entry: LogEntry, path: str) -> bool:
     """True if the request looks like a feed poll: feed-ish URL or RSS/Atom type."""
     segments = [p for p in path.split("/") if p]
     filename = segments[-1].lower() if segments else ""
+    if filename in _FEED_FILENAMES:
+        return True
     if _FEED_TOKENS.intersection(_FILENAME_PARTS.split(filename)):
         return True
     content_type = _response_content_type(entry)

@@ -676,6 +676,16 @@ def test_feed_reader_fetching_non_feeds_is_tagged() -> None:
     assert "fetches-non-feeds" in result.tags
 
 
+def test_feed_ua_terms_are_word_anchored() -> None:
+    # The short generic terms ("atom", "rss") must not match inside unrelated words.
+    from agent_census.classify.feed_reader import _ua_is_feed_reader
+
+    assert not _ua_is_feed_reader("Mozilla/5.0 Anatomy/1.0")  # 'atom' inside 'Anatomy'
+    assert not _ua_is_feed_reader("atomic-loader/2")  # 'atom' inside 'atomic'
+    assert _ua_is_feed_reader("My RSS Poller/1.0")  # 'rss' as a whole word
+    assert _ua_is_feed_reader("SomeClient (atom)")  # 'atom' as a whole word
+
+
 def test_declared_bot_is_not_a_browser_even_when_co_loading() -> None:
     # amazon-Quick declares itself a bot; co-loading sub-resources (it renders
     # pages) must not make it a browser -- its declared identity wins.

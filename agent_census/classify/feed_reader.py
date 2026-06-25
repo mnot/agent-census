@@ -19,9 +19,18 @@ from .base import Classifier
 # folded into one compiled alternation. A single C-level search beats scanning the
 # product list per call -- which matters on high-cardinality logs where the cache
 # below thrashes and most calls miss (this was the hottest spot in profiling).
+# The generic terms are short, so they're anchored to word boundaries to avoid
+# matching inside unrelated words ("atom" in "Anatomy"/"atomic", "rss" in a
+# random token); the product names stay plain substrings.
 _FEED_TERMS = ("feed", "rss", "atom", "podcast", "subscriber")
 _FEED_UA = re.compile(
-    "|".join(re.escape(term) for term in (*_FEED_TERMS, *load_list("feed_readers"))), re.I
+    "|".join(
+        [
+            r"\b(?:" + "|".join(re.escape(term) for term in _FEED_TERMS) + r")\b",
+            *(re.escape(name) for name in load_list("feed_readers")),
+        ]
+    ),
+    re.I,
 )
 
 

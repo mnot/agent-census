@@ -199,7 +199,7 @@ asns = [51852]
 
 [[source]]
 name = "HostRoyale"
-asns = [203020, 207990]
+asns = [203020, 207990, 39486]
 
 [[source]]
 name = "PonyNet"  # FranTech / BuyVM
@@ -214,8 +214,8 @@ name = "Stark Industries Solutions"  # bulletproof host, heavily used for scanni
 asns = [44477]
 
 [[source]]
-name = "Packethub"
-asns = [141039]
+name = "Packethub"  # sells plain hosting and VPN-exit infra; treat as datacenter
+asns = [141039, 147049, 207137]
 
 [[source]]
 name = "GSL Networks"

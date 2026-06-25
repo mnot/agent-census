@@ -47,7 +47,19 @@ group = "Corporate proxies"
 asns = [55256]
 
 [[network]]
+name = "Cato Networks"
+tag = "corporate-proxy"
+group = "Corporate proxies"
+asns = [13150]  # SASE vendor, same category as Zscaler/Netskope
+
+[[network]]
 name = "Netprotect"
 tag = "vpn"
 group = "VPNs"
-asns = [54203]  # operates consumer VPN brands
+asns = [54203, 62651]  # operates consumer VPN brands
+
+[[network]]
+name = "Proton"
+tag = "vpn"
+group = "VPNs"
+asns = [209103]  # ProtonVPN exit infrastructure

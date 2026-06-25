@@ -8,21 +8,14 @@
 [[agent]]
 ua_substring = "archive.org_bot"
 domains = ["archive.org"]
-ranges_url = "https://sourcecidr.com/feeds/internet-archive.json"
-rdns_fallback = true
-asns = [7941]  # AS7941 is Internet Archive's own network -- recognise it by AS too
 
 [[agent]]
 ua_substring = "ia_archiver"
 domains = ["archive.org"]
-ranges_url = "https://sourcecidr.com/feeds/internet-archive.json"
-rdns_fallback = true
 
 [[agent]]
 ua_substring = "special_archiver"
 domains = ["archive.org"]
-ranges_url = "https://sourcecidr.com/feeds/internet-archive.json"
-rdns_fallback = true
 
 # Common Crawl -- a nonprofit that publishes an open WARC archive of the web.
 # https://commoncrawl.org/ccbot

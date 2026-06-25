@@ -14,9 +14,6 @@ domains = ["twitter.com", "twttr.com"]
 [[agent]]
 ua_substring = "LinkedInBot"
 domains = ["linkedin.com"]
-# https://sourcecidr.com/linkedin/
-ranges_url = "https://sourcecidr.com/feeds/linkedin.json"
-rdns_fallback = true
 
 [[agent]]
 # https://api.slack.com/robots

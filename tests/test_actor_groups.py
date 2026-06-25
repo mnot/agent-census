@@ -100,6 +100,36 @@ def test_html_collapsed_group_lists_members_in_a_disclosure() -> None:
     assert "<table class='members'>" not in html  # no separate sub-table
 
 
+def test_folded_single_entry_shows_ips_and_sample_ua() -> None:
+    # An ASN-folded entry: one profile, UA-less id but a sample UA in features,
+    # and its clustered IPs in member_ips. Both must surface in the report.
+    prof = ClientProfile(
+        client_id=ClientId(ip="Sberbank", user_agent=None),
+        entries=(),
+        features=ClientFeatures(
+            request_count=120,
+            total_bytes=5000,
+            user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/91.0 Safari/537.36",
+        ),
+        classification=Classification(
+            primary=Kind.AI_CRAWLER, confidence=0.6, evidence=("ASN",), tags=frozenset({"asn-attributed"})
+        ),
+        member_ips=("5.188.0.1", "5.188.7.2", "93.158.0.3"),
+        network="Sberbank",
+    )
+    html = html_section(Kind.AI_CRAWLER, [prof], _rollup(clients=1, requests=120), top=5)
+    assert "tbody class='actor'" in html  # collapsible, not a bare row
+    assert "· 3 IPs" in html  # the cluster size
+    assert "5.188.0.1" in html and "93.158.0.3" in html  # the clustered IPs listed
+    assert "Chrome/91.0" in html  # a sample UA, despite the UA-less id
+
+    # Markdown surfaces the count and points at inspect for the list.
+    md = md_section(Kind.AI_CRAWLER, [prof], _rollup(clients=1, requests=120), top=5)
+    text = "\n".join(md)
+    assert "Sberbank (3 IPs)" in text and "inspect --kind ai_crawler" in text
+
+
 def test_html_single_client_is_not_collapsed() -> None:
     html = html_section(Kind.SCRAPER, [_profile("9.9.9.1", "solo/1")], _rollup(1, 10), top=5)
     assert "tbody class='actor'" not in html

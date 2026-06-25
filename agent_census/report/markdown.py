@@ -150,7 +150,14 @@ def _client_label(profile: ClientProfile) -> str:
 def _actor_label(actor: ActorGroup) -> str:
     """One-line label: the per-IP client, or a collapsed group's footprint + UA."""
     if not actor.collapsed:
-        return _client_label(actor.lead)
+        lead = actor.lead
+        if len(lead.member_ips) >= 2:
+            # A single entry that folded many IPs (an ASN operator, a verified bot,
+            # an egress/subnet cluster): note the cluster size beside its identity.
+            prefix, _, ua = client_id_parts(lead)
+            label = f"{prefix} ({len(lead.member_ips):,} IPs) | {ua if ua is not None else '-'}"
+            return md_escape(label[:140])
+        return _client_label(lead)
     _, _, ua = client_id_parts(actor.lead)
     spread = actor_spread(actor.distinct_ips, actor.distinct_asns)
     return md_escape(f"{spread} | {ua if ua is not None else '-'}"[:140])
@@ -182,9 +189,9 @@ def _kind_section(
     if rollup.clients > represented:
         lines.append(f"| …and {rollup.clients - represented:,} more | | | | | |")
     lines.append("")
-    if any(a.collapsed for a in shown):
+    if any(a.collapsed or len(a.lead.member_ips) >= 2 for a in shown):
         lines.append(
-            f"_Rows like “12 IPs” collapse clients sharing a User-Agent and tags; "
+            f"_Rows showing “N IPs” fold many addresses into one actor; "
             f"run `agent-census inspect --kind {kind.value}` for the per-IP/ASN list._"
         )
     lines.append(f"_Total bandwidth: {human_bytes(rollup.total_bytes)}_")

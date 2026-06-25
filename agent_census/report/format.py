@@ -96,10 +96,15 @@ def client_id_parts(profile: ClientProfile) -> tuple[str, str | None, str | None
     ``prefix`` is the IP / subnet / network name; ``as_org`` is the logged AS org
     (only for datacenter clients, else None); ``user_agent`` is the elided UA.
     Shared by the one-line :func:`client_label` and the HTML stacked cell.
+
+    When the identity carries no UA -- an entry folded across many UAs, e.g. an
+    ASN-recognised operator -- fall back to a sample UA from the features so the
+    row isn't blank.
     """
     cid = profile.client_id
     prefix = cid.subnet if cid.subnet is not None else cid.ip
-    ua = elide_ua(cid.user_agent, is_browser=profile.classification.primary is Kind.BROWSER)
+    raw_ua = cid.user_agent if cid.user_agent is not None else profile.features.user_agent
+    ua = elide_ua(raw_ua, is_browser=profile.classification.primary is Kind.BROWSER)
     org = profile.features.as_org if "datacenter" in profile.classification.tags else None
     return prefix, org, ua
 

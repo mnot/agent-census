@@ -517,6 +517,42 @@ def _member_tr(profile: ClientProfile) -> str:
     )
 
 
+def _ip_member_tr(ip: str) -> str:
+    """A clustered member IP as a row (address only; folded entries keep no per-IP stats)."""
+    return (
+        f"<tr class='amem'><td class='cid copy' data-copy='{_esc(ip)}' "
+        "title='Click to copy this id for: inspect --client'>"
+        f"<span class='mono'>{_esc(ip)}</span></td>"
+        "<td></td><td></td><td></td><td></td><td></td></tr>"
+    )
+
+
+def _folded_tbody(profile: ClientProfile, *, filterable: bool = False) -> str:
+    """A single entry that folded many IPs into one (an ASN operator, a verified
+    bot, an egress/subnet cluster): a collapsible summary over its clustered IPs."""
+    cls = profile.classification
+    prefix, org, ua = client_id_parts(profile)
+    members = profile.member_ips
+    org_html = f" <span class='cid-as'>{_esc(org)}</span>" if org else ""
+    row_attrs = "class='asum'"
+    if filterable:
+        haystack = " ".join((prefix, ua or "", org or "", *members)).lower()
+        row_attrs = f"class='asum frow' data-filter=\"{_esc(haystack)}\""
+    summary = (
+        f"<tr {row_attrs}><td class='cid'><span class='tri'>▶</span>"
+        f"<span class='mono'>{_esc(prefix)}</span>{org_html}"
+        f"<span class='muted'> · {len(members):,} IPs</span>"
+        f'<span class="actor-ua mono">{_esc(ua or "–")}</span></td>'
+        f"<td class='num'>{profile.features.request_count:,}</td>"
+        f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
+        f"<td class='num'>{cls.confidence:.0%}</td>"
+        f"<td>{_tags_html(cls.tags)}</td>"
+        f"<td>{_esc(truncate(top_evidence(profile)))}</td></tr>"
+    )
+    rows = "".join(_ip_member_tr(ip) for ip in members)
+    return f"<tbody class='actor'>{summary}{rows}</tbody>"
+
+
 def _actor_tbody(actor: ActorGroup, *, filterable: bool = False) -> str:
     """One actor as a ``<tbody>``: a lone client, or a collapsible summary + members.
 
@@ -524,6 +560,8 @@ def _actor_tbody(actor: ActorGroup, *, filterable: bool = False) -> str:
     hidden until the summary row is clicked (toggled by the page script).
     """
     if not actor.collapsed:
+        if len(actor.lead.member_ips) >= 2:
+            return _folded_tbody(actor.lead, filterable=filterable)
         return f"<tbody>{_client_row(actor.lead, filterable=filterable)}</tbody>"
     cls = actor.lead.classification
     _, _, ua = client_id_parts(actor.lead)

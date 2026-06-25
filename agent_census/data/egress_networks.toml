@@ -47,6 +47,12 @@ group = "Corporate proxies"
 asns = [13150]  # SASE vendor, same category as Zscaler/Netskope
 
 [[network]]
+name = "Menlo Security"
+tag = "corporate-proxy"
+group = "Corporate proxies"
+asns = [62654]  # SASE / secure web gateway vendor
+
+[[network]]
 name = "Strong Technology"
 tag = "vpn"
 group = "VPNs"

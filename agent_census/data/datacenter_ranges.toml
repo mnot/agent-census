@@ -97,7 +97,7 @@ ranges_url = "https://tech.cdn.yandex.net/prefixes/yc.json"
 name = "Contabo"
 ranges_url = "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS51167"
 format = "ripestat"
-asns = [51167]
+asns = [51167, 141995]  # 141995 is Contabo Asia
 
 [[source]]
 name = "Microsoft"
@@ -179,7 +179,7 @@ asns = [46606]
 
 [[source]]
 name = "M247"
-asns = [9009]
+asns = [9009, 16247]
 
 [[source]]
 name = "IONOS"
@@ -236,3 +236,7 @@ asns = [62874]
 [[source]]
 name = "IPXO"
 asns = [206092]
+
+[[source]]
+name = "code200"  # Oxylabs-affiliated proxy / scraping infrastructure
+asns = [205659, 209709]

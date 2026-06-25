@@ -232,6 +232,17 @@ def test_ranges_url_fetch_failure_is_unverified(monkeypatch: pytest.MonkeyPatch)
     assert BotVerifier().verify("192.0.2.7", "FetchBot/1.0").status is VerificationStatus.UNVERIFIED
 
 
+def test_forward_dns_matches_noncanonical_ipv6(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The log may carry a non-canonical IPv6 spelling while getaddrinfo returns the
+    # canonical one; the forward-confirm must compare them as addresses, not strings,
+    # so a legitimate IPv6 crawler isn't flagged IMPERSONATOR.
+    _patch_spec(monkeypatch, "DnsBot", CrawlerSpec(domains=("example.com",)))
+    monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: ("crawl.example.com", False))
+    monkeypatch.setattr(netverify, "_forward_ips", lambda host: {"2001:db8::1"})
+    status = BotVerifier().verify("2001:0db8:0000:0000:0000:0000:0000:0001", "DnsBot/1.0").status
+    assert status is VerificationStatus.VERIFIED
+
+
 # --- combined ranges + rDNS: both required by default; rdns_fallback relaxes ---
 
 _BOTH = {"domains": ("example.com",), "ranges": ("160.79.104.0/21",)}

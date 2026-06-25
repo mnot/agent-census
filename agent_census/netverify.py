@@ -26,6 +26,7 @@ keeps a dead resolver from stalling the run or delaying exit. Enabled only with
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import socket
 import threading
@@ -120,8 +121,20 @@ def _reverse_dns(ip: str) -> tuple[str | None, bool]:
     return result if result is not None else (None, False)
 
 
+def _norm_ip(ip: str) -> str:
+    """Canonical text form of an IP, so non-canonical IPv6 spellings (e.g.
+    ``2001:0db8:0:0:0:0:0:1`` vs ``2001:db8::1``) compare equal. Returns the
+    input unchanged if it isn't a parseable address."""
+    try:
+        return ipaddress.ip_address(ip).compressed
+    except ValueError:
+        return ip
+
+
 def _forward_ips(host: str) -> set[str]:
-    result = _bounded(lambda: {str(info[4][0]) for info in socket.getaddrinfo(host, None)})
+    result = _bounded(
+        lambda: {_norm_ip(str(info[4][0])) for info in socket.getaddrinfo(host, None)}
+    )
     return result if result is not None else set()
 
 
@@ -265,7 +278,7 @@ class BotVerifier:
                 host,
                 f"{ip} resolves to {host}, not a {substring} domain ({', '.join(spec.domains)})",
             )
-        if ip in self._cached_forward(host):
+        if _norm_ip(ip) in self._cached_forward(host):
             return _Check(_PASS, host, f"{ip} ↔ {host} confirmed for {substring}")
         if self._cached_forward(host):
             return _Check(_FAIL, host, f"{host} does not resolve back to {ip}")

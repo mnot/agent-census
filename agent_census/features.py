@@ -272,8 +272,15 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         self.total_bytes += entry.bytes_sent or 0
         if self.user_agent is None and entry.user_agent:
             self.user_agent = entry.user_agent
-        if self.as_org is None and entry.extra:
-            self.as_org, self.as_number = _as_identity(entry)
+        if (self.as_org is None or self.as_number is None) and entry.extra:
+            # Capture each field independently and only once: a log may carry the
+            # AS number but not the org (or vice versa), and a later line missing
+            # the field must never overwrite a value already captured.
+            org, number = _as_identity(entry)
+            if self.as_org is None:
+                self.as_org = org
+            if self.as_number is None:
+                self.as_number = number
 
         if entry.status is not None:
             if self.status_counts is None:
@@ -450,7 +457,9 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         if self.user_agent is None:
             self.user_agent = other.user_agent
         if self.as_org is None:
-            self.as_org, self.as_number = other.as_org, other.as_number
+            self.as_org = other.as_org
+        if self.as_number is None:
+            self.as_number = other.as_number
         if other.first_seen is not None and (
             self.first_seen is None or other.first_seen < self.first_seen
         ):

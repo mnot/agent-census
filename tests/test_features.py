@@ -32,6 +32,31 @@ def test_as_identity_absent_without_env_fields() -> None:
     assert feats.as_number is None
 
 
+def test_as_number_kept_when_later_line_lacks_asn() -> None:
+    # ASN-only log (no ASORG). A later line whose extra is non-empty but carries
+    # no ASN field must not clobber the number already captured.
+    feats = extract_features(
+        [
+            entry("/a", extra={"env:MM_ASN": "16509", "port:p": "443"}),
+            entry("/b", offset=1, extra={"port:p": "443"}),
+        ]
+    )
+    assert feats.as_org is None
+    assert feats.as_number == "16509"
+
+
+def test_as_number_filled_from_later_line() -> None:
+    # Number absent on the first line but present later: capture it when it appears.
+    feats = extract_features(
+        [
+            entry("/a", extra={"env:MM_ASORG": "Amazon.com, Inc."}),
+            entry("/b", offset=1, extra={"env:MM_ASN": "16509"}),
+        ]
+    )
+    assert feats.as_org == "Amazon.com, Inc."
+    assert feats.as_number == "16509"
+
+
 def test_volume_and_bandwidth() -> None:
     feats = extract_features(
         [entry("/a", bytes_sent=100), entry("/b", bytes_sent=300, offset=1)]

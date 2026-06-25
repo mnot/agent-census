@@ -16,6 +16,8 @@ as a claim to weigh against behaviour and origin, not a fact to take on trust.
 
 ## Install
 
+[pipx](https://pipx.pypa.io/stable/) is recommended:
+
 ```
 pipx install agent-census
 ```

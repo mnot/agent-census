@@ -112,6 +112,7 @@ _NETWORK_SCHEMA = {
     "ranges": "str[]",
     "ranges_url": "str",
     "format": "str",
+    "asns": "int[]",
 }
 _FAMILY_SCHEMA = {
     "name": "str",
@@ -160,6 +161,7 @@ class EgressNetwork:
     ranges: tuple[str, ...] = ()
     ranges_url: str | None = None
     fmt: str = "prefixes"
+    asns: tuple[int, ...] = ()  # match by AS number too (for VPNs/proxies with no range list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -310,6 +312,7 @@ def load_egress_networks() -> tuple[EgressNetwork, ...]:
                 ranges=tuple(entry.get("ranges", [])),
                 ranges_url=entry.get("ranges_url"),
                 fmt=entry.get("format", "prefixes"),
+                asns=tuple(entry.get("asns", [])),
             )
         )
     return tuple(networks)

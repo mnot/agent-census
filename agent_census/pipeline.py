@@ -610,8 +610,9 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             continue
         parsed += 1
         ip, ua = entry.remote_host, entry.user_agent
-        network = egress.lookup(ip)
         asn = _asn_of(entry, ip)
+        # Egress by IP range, else by AS number (VPNs/proxies that publish no list).
+        network = egress.lookup(ip) or egress.lookup_asn(_parse_asn(asn))
         entity = uas.match_asn_any(asn)
         crawler = _declared_spec(ua)
         if network is not None:

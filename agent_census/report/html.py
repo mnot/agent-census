@@ -72,6 +72,8 @@ _TAG_COLORS: dict[str, str] = {
     "forged-referer": "#dc2626",  # Referer faked to mimic navigation -> red
     "icloud-private-relay": "#0284c7",  # privacy relay; a positive browser signal -> blue
     "tor-exit": "#6d28d9",  # Tor exit node; anonymised egress -> violet
+    "vpn": "#0d9488",  # consumer VPN egress -> teal
+    "corporate-proxy": "#0369a1",  # SASE / corporate egress -> blue
     # 'shared-ip' is left neutral (grey): many UAs but a benign shared egress.
 }
 

@@ -20,3 +20,21 @@ name = "Tor"
 tag = "tor-exit"
 ranges_url = "https://ip1.info/tor-ips/tor-ips.txt"
 format = "text"  # one exit-node IP per line
+
+# VPNs and corporate security proxies (SASE) front many real users behind one
+# network. They publish no clean range list, so they're matched by AS number --
+# which needs the log to carry the client ASN (e.g. %{MM_ASN}e).
+[[network]]
+name = "NordVPN"
+tag = "vpn"
+asns = [136787]  # TEFINCOM S.A.
+
+[[network]]
+name = "Zscaler"
+tag = "corporate-proxy"
+asns = [22616, 62044]  # Zscaler announces from several ASes; add more as you see them
+
+[[network]]
+name = "Netskope"
+tag = "corporate-proxy"
+asns = [55256]

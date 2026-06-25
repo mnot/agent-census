@@ -41,3 +41,19 @@ def lookup(ip: str) -> EgressNetwork | None:
         if index.contains(ip):
             return network
     return None
+
+
+@lru_cache(maxsize=None)
+def _asn_networks() -> dict[int, EgressNetwork]:
+    """Map each configured egress AS number to its network (for VPNs/proxies that
+    publish no range list -- the AS is the only stable handle on them)."""
+    mapping: dict[int, EgressNetwork] = {}
+    for network in load_egress_networks():
+        for asn in network.asns:
+            mapping.setdefault(asn, network)
+    return mapping
+
+
+def lookup_asn(asn: int | None) -> EgressNetwork | None:
+    """Return the egress network configured for AS number ``asn``, or None."""
+    return _asn_networks().get(asn) if asn is not None else None

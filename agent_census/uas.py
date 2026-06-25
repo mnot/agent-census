@@ -242,14 +242,19 @@ def version_age_band(ua: str | None, as_of: datetime | None) -> str | None:
     age = version_age_months(ua, as_of)
     if parsed is None or age is None:
         return None
-    if age < -12:
+    # Safari is OS-bundled on a roughly yearly cadence, and Apple's numbering jumped
+    # (18 in 2024 -> 26 in 2025, aligned with the OS year), so the linear cadence
+    # model can't judge it tightly: never flag Safari impossible or ancient, only
+    # weakly stale when many years behind.
+    is_safari = parsed[0] == "safari"
+    if not is_safari and age < -12:
         # Claims a version more than a year ahead of the family's release cadence:
         # impossible for a real auto-updating browser, so it's a forged UA (e.g.
         # Chrome/999 to look maximally fresh), not a "current" one.
         return "impossible"
     if age <= 6:
         return "current"
-    if parsed[0] == "safari":
+    if is_safari:
         return "stale" if age >= 48 else None
     if age >= 36:
         return "ancient"

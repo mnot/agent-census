@@ -225,6 +225,23 @@ def test_impossible_future_version_is_not_current() -> None:
     assert uas.version_age_band(ua, as_of) == "impossible"
 
 
+def test_current_safari_year_numbering_is_not_impossible() -> None:
+    # Apple renumbered Safari to track the OS year (18 in 2024 -> 26 in 2025), so a
+    # current iPhone UA reads as far "ahead" of the linear cadence. Safari must not
+    # be flagged impossible for that -- it's the real, current string.
+    from datetime import datetime, timezone
+
+    from agent_census import uas
+
+    as_of = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    ua = (
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 "
+        "(KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1"
+    )
+    assert uas.browser_version(ua) == ("safari", 26)
+    assert uas.version_age_band(ua, as_of) == "current"
+
+
 def test_impossible_version_browser_is_capped() -> None:
     from datetime import datetime, timezone
 

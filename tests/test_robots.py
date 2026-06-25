@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from agent_census.features import extract_features
+from agent_census.features import FeatureAccumulator, extract_features
 from agent_census.model import RobotsVerdict
 from agent_census.robots.compliance import evaluate
 from agent_census.robots.parser import RobotsRules
@@ -53,6 +53,25 @@ def test_compliance_respects_when_clean() -> None:
     report = evaluate(entries, feats, rules, "Mozilla")
     assert report.verdict is RobotsVerdict.RESPECTS
     assert report.fetched_robots_first is True
+
+
+def test_compliance_robots_txt_not_a_disallowed_hit() -> None:
+    # Under Disallow: /, the stdlib reports /robots.txt itself as denied. A crawler
+    # that politely fetched only /robots.txt must not be scored as ignoring robots.
+    rules = RobotsRules("User-agent: *\nDisallow: /\n")
+    entries = [entry("/robots.txt", offset=0)]
+    feats = extract_features(entries)
+    report = evaluate(entries, feats, rules, "Mozilla")
+    assert report.disallowed_hits == 0
+    assert report.verdict is RobotsVerdict.RESPECTS
+
+
+def test_compliance_streaming_robots_txt_not_disallowed() -> None:
+    # The streaming accumulator must agree with evaluate(): /robots.txt is exempt.
+    rules = RobotsRules("User-agent: *\nDisallow: /\n")
+    acc = FeatureAccumulator(disallowed_check=lambda p: not rules.can_fetch("Mozilla", p))
+    acc.add(entry("/robots.txt", offset=0))
+    assert acc.disallowed_hits == 0
 
 
 def test_compliance_unknown_without_rules() -> None:

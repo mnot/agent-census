@@ -80,7 +80,14 @@ def evaluate(
     ua_token: str | None,
 ) -> ComplianceReport:
     """Build the compliance report for one client from its entries."""
-    disallowed = [e.path for e in entries if e.path and not rules.can_fetch(ua_token, e.path)]
+    # robots.txt itself is always fetchable -- a Disallow: / rule makes the
+    # stdlib report it as denied, so excluding it keeps a polite crawler that
+    # only fetched robots.txt from being scored as ignoring robots.
+    disallowed = [
+        e.path
+        for e in entries
+        if e.path and e.path != "/robots.txt" and not rules.can_fetch(ua_token, e.path)
+    ]
     sample = tuple(dict.fromkeys(disallowed))[:5]
     return report_from_signals(
         rules,

@@ -319,8 +319,8 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
             self.fetched_robots = True
             if not self._content_seen:
                 self.robots_fetched_first = True
-        else:
-            self._content_seen = True
+            return  # robots.txt is always fetchable; never a disallowed hit
+        self._content_seen = True
         if self._disallowed_check is not None and path and self._disallowed_check(path):
             self.disallowed_hits += 1
             if self.disallowed_sample is None:

@@ -119,7 +119,6 @@ def test_network_table_renders_with_providers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(pipeline, "datacenter_subnet", lambda ip: None)
-    monkeypatch.setattr(pipeline, "is_datacenter_ip", lambda ip: ip.startswith("52."))
     monkeypatch.setattr(
         pipeline, "datacenter_provider", lambda ip: "Amazon AWS" if ip.startswith("52.") else None
     )

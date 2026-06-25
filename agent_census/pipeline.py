@@ -29,7 +29,6 @@ from .hosting import (
     datacenter_provider,
     datacenter_provider_for_asn,
     datacenter_subnet,
-    is_datacenter_ip,
     subnet_of,
 )
 from .identity import ClientKeyStrategy
@@ -455,7 +454,6 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             provider = datacenter_provider(key.ip)
             if provider is None:
                 provider = datacenter_provider_for_asn(_parse_asn(features.as_number))
-            in_datacenter = provider is not None if datacenter is None else datacenter
             asn_agent = uas.match_asn_any(features.as_number)
             if provider is not None:
                 network, network_category = provider, _NET_DATACENTER
@@ -473,8 +471,12 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
                 network, network_category = _matched_domain(verification), _NET_DATACENTER
             else:
                 network, network_category = RESIDENTIAL_NETWORK, _NET_RESIDENTIAL
-        else:
-            in_datacenter = is_datacenter_ip(key.ip) if datacenter is None else datacenter
+        # The datacenter tag follows the hosting attribution: a provider (by IP
+        # range or AS), a recognised crawler ASN, or a verified crawler's own
+        # infrastructure all count as hosted. An explicit datacenter= wins.
+        in_datacenter = (
+            datacenter if datacenter is not None else network_category == _NET_DATACENTER
+        )
         classification = classify_client(
             features,
             compliance=compliance,

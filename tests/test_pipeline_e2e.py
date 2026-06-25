@@ -269,7 +269,6 @@ def test_datacenter_fleet_merges_by_subnet_and_ua(
     # Treat 198.18.x.x (a benchmarking TEST-NET) as datacenter and fold by /24,
     # so the test does not depend on the hand-curated range data. Two IPs in the
     # same /24 with one UA collapse; a third /24 and a different UA stay separate.
-    monkeypatch.setattr(pipeline, "is_datacenter_ip", lambda ip: ip.startswith("198.18."))
     monkeypatch.setattr(
         pipeline,
         "datacenter_subnet",
@@ -311,7 +310,6 @@ def test_network_rollups_attribute_providers_and_render(
     # Attribute 52.x to a provider and leave folding off, so each client lands in
     # its network bucket; a residential client stays in the catch-all.
     monkeypatch.setattr(pipeline, "datacenter_subnet", lambda ip: None)
-    monkeypatch.setattr(pipeline, "is_datacenter_ip", lambda ip: ip.startswith("52."))
     monkeypatch.setattr(
         pipeline, "datacenter_provider", lambda ip: "Amazon AWS" if ip.startswith("52.") else None
     )
@@ -424,6 +422,7 @@ def test_verified_crawler_buckets_under_its_operator_not_residential(tmp_path: P
     assert RESIDENTIAL_NETWORK not in result.network_rollups
     profile = next(p for p in result.profiles if p.client_id.ip == "mybot.example")
     assert profile.network == "mybot.example"
+    assert {"verified", "datacenter"} <= profile.classification.tags  # verified -> hosted
 
 
 def test_respect_counted_in_summary_without_per_client_tag(tmp_path: Path) -> None:
@@ -456,7 +455,7 @@ def test_respect_counted_in_summary_without_per_client_tag(tmp_path: Path) -> No
 def test_crawler_recognised_by_logged_asn(tmp_path: Path) -> None:
     # A client from AS35237 (Sberbank) with a spoofed browser UA, recognised by
     # its logged AS number: ai_crawler, attributed to "Sberbank", tagged
-    # asn-attributed, and not flagged datacenter (it's no longer in that list).
+    # asn-attributed -- and datacenter, since a recognised crawler ASN is hosting.
     fmt = '%h %l %u %t "%r" %>s %b "%{Referer}i" "%{User-Agent}i" "%{MM_ASN}e"'
     ua = (
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -476,7 +475,7 @@ def test_crawler_recognised_by_logged_asn(tmp_path: Path) -> None:
     crawlers = [p for p in result.profiles if p.classification.primary is Kind.AI_CRAWLER]
     assert crawlers and all(p.network == "Sberbank" for p in crawlers)
     tags = crawlers[0].classification.tags
-    assert "asn-attributed" in tags and "datacenter" not in tags
+    assert {"asn-attributed", "datacenter"} <= tags
 
 
 def test_asn_operator_collapses_across_ips_and_uas(tmp_path: Path) -> None:

@@ -558,6 +558,28 @@ def test_crawler_recognised_by_asn_range_without_logged_asn(
     assert "asn-attributed" in crawlers[0].classification.tags
 
 
+def test_folded_crawler_from_as_only_datacenter_is_hosting(tmp_path: Path) -> None:
+    # An unverifiable declared crawler (cr-fold) from Hetzner (AS24940): its IP
+    # ranges aren't bundled, but the AS is a known datacenter, so it must be
+    # attributed to Hetzner and tagged datacenter -- not left residential.
+    fmt = '%h %l %u %t "%r" %>s %b "%{Referer}i" "%{User-Agent}i" "%{MM_ASN}e"'
+    ua = "Mozilla/5.0 (compatible; MJ12bot/v1.4.8; http://mj12bot.com/)"
+    lines = [
+        f'136.243.228.{i} - - [10/Oct/2023:12:00:0{i} +0000] "GET /p{i} HTTP/1.1" 200 100 '
+        f'"-" "{ua}" "24940"'
+        for i in range(4)
+    ]
+    log = tmp_path / "het.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": fmt})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
+
+    prof = next(p for p in result.profiles if p.client_id.ip == "136.243.228.0/24")
+    assert prof.network == "Hetzner"
+    assert "datacenter" in prof.classification.tags
+    assert pipeline.RESIDENTIAL_NETWORK not in result.network_rollups
+
+
 def test_returning_client_coalesces_after_eviction(tmp_path: Path) -> None:
     # One client (one ip+ua) requests on day 1, then again on day 3. A filler
     # client on day 2 advances the clock past the 12h quiescent window, so the

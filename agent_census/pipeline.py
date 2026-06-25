@@ -88,6 +88,16 @@ def _parse_asn(value: str | None) -> int | None:
         return None
 
 
+def _hosting_provider(rep_ip: str, as_number: str | None) -> str | None:
+    """The hosting provider for a client -- by IP range, else by its AS number.
+
+    Folded entries key on a subnet/label rather than a real IP, and a provider
+    may be known only by ASN (e.g. Hetzner, whose ranges aren't bundled), so the
+    AS fallback is what keeps such a client on the hosting side.
+    """
+    return datacenter_provider(rep_ip) or datacenter_provider_for_asn(_parse_asn(as_number))
+
+
 def _logged_asn(entry: LogEntry) -> str | None:
     """The AS number a log line carries (MM_ASN / ClientASN / ...), or None."""
     for key, value in entry.extra.items():
@@ -685,12 +695,15 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         tokens[cid] = cr_token[(subnet, token)]
         members = cr_members[(subnet, token)]
         rep_ip = next(iter(members), "")  # any member resolves to the same provider
-        provider = datacenter_provider(rep_ip)
+        # By IP range, else by AS number -- so an AS-only datacenter (Hetzner) is
+        # recognised as hosting, not left residential, and gets the datacenter tag.
+        provider = _hosting_provider(rep_ip, acc.as_number)
         emit(
             cid,
             acc,
             None,
             tuple(sorted(members)),
+            datacenter=provider is not None,
             network=provider or RESIDENTIAL_NETWORK,
             network_category=_NET_DATACENTER if provider else _NET_RESIDENTIAL,
         )

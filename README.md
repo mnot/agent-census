@@ -1,18 +1,18 @@
 # agent-census
 
-agent-census reads a Web server access log and works out who's been hitting your
-site. It groups the requests into distinct clients, classifies each one by how it
-behaves, checks whether it respects `robots.txt`, and reports how much of your
-traffic each kind accounts for. Output is Markdown, or a self-contained HTML page.
+*What's hitting your site, classified by how it behaves -- not just what it claims to be.*
 
-The kinds it knows include browsers, crawlers, search engines, social-preview
-fetchers, AI crawlers (GPTBot, ClaudeBot), archivers (Internet Archive, Common
-Crawl), SEO and marketing crawlers, data harvesters (crawlers building a private
-corpus, e.g. Turnitin), scrapers, vulnerability scanners, spam bots, feed readers,
-and uptime monitors. Two kinds cover clients pretending to be
-something else: `spoofed_browser` (a datacentre IP presenting a desktop browser
-User-Agent) and `impersonator` (one that fails crawler verification). Anything it
-can't classify with confidence is `unknown`.
+Most of the traffic to a typical site isn't people; it's software, and a fair bit
+of it lies about what it is. agent-census reads your access log and sorts the
+clients by what they actually do -- whether they pull a page's sub-resources like
+a browser, walk the site like a crawler, poll a feed on a schedule, or go looking
+for known-vulnerable paths. Anything claiming to be a known crawler is checked
+against DNS and published address ranges, so a Googlebot arriving from some random
+datacentre gets called what it is. What you end up with is your traffic broken
+down by what each client is for. The User-Agent still counts -- it's just treated
+as a claim to weigh against behaviour and origin, not a fact to take on trust.
+
+[Here's a sample report](https://projects.mnot.net/agent-census/) generated from a real access log.
 
 ## Install
 

@@ -204,14 +204,14 @@ class BotVerifier:
         spec = known[1]
         return bool(spec.domains or spec.ranges or spec.ranges_url)
 
-    def _networks_for(self, spec: CrawlerSpec) -> tuple[_Network, ...]:
+    def _networks_for(self, spec: CrawlerSpec, name: str | None = None) -> tuple[_Network, ...]:
         """Inline CIDR ranges plus any fetched (and cached) from ``ranges_url``."""
         networks = list(_parse_networks(spec.ranges))
         if spec.ranges_url:
             with self._lock:
                 cached = self._ranges.get(spec.ranges_url)
             if cached is None:
-                text = _fetch_ranges_text(spec.ranges_url)
+                text = _fetch_ranges_text(spec.ranges_url, name)
                 cached = _parse_networks(_parse_prefixes(text)) if text else ()
                 with self._lock:
                     self._ranges[spec.ranges_url] = cached
@@ -240,7 +240,7 @@ class BotVerifier:
 
     def _check_range(self, ip: str, spec: CrawlerSpec, substring: str) -> _Check:
         """Tri-state IP-range check. Unobtainable ranges are inconclusive, not a fail."""
-        networks = self._networks_for(spec)
+        networks = self._networks_for(spec, substring)
         if not networks:
             return _Check(_UNKNOWN, None, f"could not obtain the published {substring} IP ranges")
         match = _ip_in(ip, networks)

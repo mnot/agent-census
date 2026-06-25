@@ -36,7 +36,7 @@ def test_remote_ranges_are_used_only_when_enabled(monkeypatch: pytest.MonkeyPatc
     from agent_census.iprange import network_intervals
 
     monkeypatch.setattr(
-        hosting, "fetch_range_intervals", lambda url, fmt: network_intervals(("203.0.113.0/24",))
+        hosting, "fetch_range_intervals", lambda url, fmt, name=None: network_intervals(("203.0.113.0/24",))
     )
     try:
         assert not is_datacenter_ip("203.0.113.7")  # default run is offline
@@ -68,7 +68,7 @@ def test_asn_for_ip_from_published_feed(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(
         hosting,
         "fetch_range_intervals",
-        lambda url, fmt: network_intervals(("203.0.113.0/24",)) if "AS35237" in url else ([], []),
+        lambda url, fmt, name=None: network_intervals(("203.0.113.0/24",)) if "AS35237" in url else ([], []),
     )
     assert hosting.asn_for_ip("203.0.113.7") is None  # offline by default
     iprange.enable_remote()
@@ -85,7 +85,7 @@ def test_datacenter_provider_names_the_owner(monkeypatch: pytest.MonkeyPatch) ->
     from agent_census.iprange import network_intervals
 
     monkeypatch.setattr(
-        hosting, "fetch_range_intervals", lambda url, fmt: network_intervals(("203.0.113.0/24",))
+        hosting, "fetch_range_intervals", lambda url, fmt, name=None: network_intervals(("203.0.113.0/24",))
     )
     iprange.enable_remote()
     sources = [s for s in load_range_sources("datacenter_ranges") if s.ranges_url]

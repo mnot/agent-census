@@ -189,7 +189,7 @@ def test_internet_archive_verified_by_published_range(monkeypatch: pytest.Monkey
     # domain, so by default both must check out. In-feed + matching rDNS verifies;
     # the same UA elsewhere fails the range check and impersonates.
     monkeypatch.setattr(
-        netverify, "_fetch_ranges_text", lambda url: '{"prefixes": [{"ipv4Prefix": "207.241.224.0/20"}]}'
+        netverify, "_fetch_ranges_text", lambda url, name=None: '{"prefixes": [{"ipv4Prefix": "207.241.224.0/20"}]}'
     )
     monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: ("crawl.archive.org", False))
     monkeypatch.setattr(netverify, "_forward_ips", lambda host: {"207.241.224.5"})
@@ -203,7 +203,7 @@ def test_internet_archive_verified_by_published_range(monkeypatch: pytest.Monkey
 def test_ranges_url_fetched_and_used(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_spec(monkeypatch, "FetchBot", CrawlerSpec(ranges_url="https://example.test/r.json"))
     monkeypatch.setattr(
-        netverify, "_fetch_ranges_text", lambda url: '{"prefixes": [{"ipv4Prefix": "192.0.2.0/24"}]}'
+        netverify, "_fetch_ranges_text", lambda url, name=None: '{"prefixes": [{"ipv4Prefix": "192.0.2.0/24"}]}'
     )
     verifier = BotVerifier()
     assert verifier.verify("192.0.2.7", "FetchBot/1.0").status is VerificationStatus.VERIFIED
@@ -217,7 +217,7 @@ def test_out_of_fetched_range_is_impostor_before_dns(monkeypatch: pytest.MonkeyP
         "BothBot",
         CrawlerSpec(domains=("example.com",), ranges_url="https://example.test/r.json"),
     )
-    monkeypatch.setattr(netverify, "_fetch_ranges_text", lambda url: '{"prefixes": [{"ipv4Prefix": "192.0.2.0/24"}]}')
+    monkeypatch.setattr(netverify, "_fetch_ranges_text", lambda url, name=None: '{"prefixes": [{"ipv4Prefix": "192.0.2.0/24"}]}')
 
     def fail(_arg: str) -> None:
         raise AssertionError("DNS must not run once the range check fails")
@@ -228,7 +228,7 @@ def test_out_of_fetched_range_is_impostor_before_dns(monkeypatch: pytest.MonkeyP
 
 def test_ranges_url_fetch_failure_is_unverified(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_spec(monkeypatch, "FetchBot", CrawlerSpec(ranges_url="https://example.test/r.json"))
-    monkeypatch.setattr(netverify, "_fetch_ranges_text", lambda url: None)
+    monkeypatch.setattr(netverify, "_fetch_ranges_text", lambda url, name=None: None)
     assert BotVerifier().verify("192.0.2.7", "FetchBot/1.0").status is VerificationStatus.UNVERIFIED
 
 
@@ -272,7 +272,7 @@ def test_rdns_fallback_uses_dns_when_ranges_unobtainable(monkeypatch: pytest.Mon
         "BothBot",
         CrawlerSpec(domains=("example.com",), ranges_url="https://x/r.json", rdns_fallback=True),
     )
-    monkeypatch.setattr(netverify, "_fetch_ranges_text", lambda url: "")  # ranges unavailable
+    monkeypatch.setattr(netverify, "_fetch_ranges_text", lambda url, name=None: "")  # ranges unavailable
     monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: ("c.example.com", False))
     monkeypatch.setattr(netverify, "_forward_ips", lambda host: {"203.0.113.5"})
     assert BotVerifier().verify("203.0.113.5", "BothBot/1.0").status is VerificationStatus.VERIFIED
@@ -284,7 +284,7 @@ def test_rdns_fallback_impostor_when_dns_also_fails(monkeypatch: pytest.MonkeyPa
         "BothBot",
         CrawlerSpec(domains=("example.com",), ranges_url="https://x/r.json", rdns_fallback=True),
     )
-    monkeypatch.setattr(netverify, "_fetch_ranges_text", lambda url: "")
+    monkeypatch.setattr(netverify, "_fetch_ranges_text", lambda url, name=None: "")
     monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: (None, True))  # definitive no PTR
     assert BotVerifier().verify("203.0.113.5", "BothBot/1.0").status is VerificationStatus.IMPERSONATOR
 
@@ -292,7 +292,7 @@ def test_rdns_fallback_impostor_when_dns_also_fails(monkeypatch: pytest.MonkeyPa
 def test_verified_bot_ips_merge_into_one_entry(monkeypatch: pytest.MonkeyPatch) -> None:
     # Real Googlebot entry verifies by published range; its IPs collapse to one.
     monkeypatch.setattr(
-        netverify, "_fetch_ranges_text", lambda url: '{"prefixes": [{"ipv4Prefix": "66.249.66.0/24"}]}'
+        netverify, "_fetch_ranges_text", lambda url, name=None: '{"prefixes": [{"ipv4Prefix": "66.249.66.0/24"}]}'
     )
     lines = [
         f'66.249.66.{i} - - [10/Oct/2023:13:0{i}:00 -0700] "GET /p{i} HTTP/1.1" 200 100 "-" '

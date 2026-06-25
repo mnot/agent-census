@@ -24,7 +24,9 @@ def _networks() -> tuple[tuple[EgressNetwork, RangeIndex], ...]:
         v4: list[Interval] = list(inline4)
         v6: list[Interval] = list(inline6)
         if remote_enabled() and network.ranges_url:
-            fetched4, fetched6 = fetch_range_intervals(network.ranges_url, network.fmt)
+            fetched4, fetched6 = fetch_range_intervals(
+                network.ranges_url, network.fmt, network.name or "egress"
+            )
             v4 += fetched4
             v6 += fetched6
         if v4 or v6:

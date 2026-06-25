@@ -2,7 +2,21 @@
 
 from __future__ import annotations
 
-from agent_census.iprange import RangeIndex, extract_cidrs, ip_in, parse_networks
+import pytest
+
+from agent_census import iprange
+from agent_census.iprange import RangeIndex, extract_cidrs, fetch_ranges_text, ip_in, parse_networks
+
+
+def test_failed_fetch_warns_with_name_and_url(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path
+) -> None:
+    monkeypatch.setattr(iprange, "cache_dir", lambda: tmp_path)  # no cached copy to fall back on
+    monkeypatch.setattr(iprange, "_http_get", lambda url: None)  # the fetch fails
+    url = "https://example.com/ranges.json"
+    assert fetch_ranges_text(url, "AhrefsBot") is None
+    err = capsys.readouterr().err
+    assert "warning" in err and "AhrefsBot" in err and url in err
 
 
 def test_parse_prefixes_gcp_schema() -> None:

@@ -21,7 +21,7 @@ def test_known_egress_networks_are_registered() -> None:
 
 def test_lookup_uses_remote_ranges_only_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        egress, "fetch_range_intervals", lambda url, fmt: iprange.network_intervals(("203.0.113.0/24",))
+        egress, "fetch_range_intervals", lambda url, fmt, name=None: iprange.network_intervals(("203.0.113.0/24",))
     )
     try:
         assert egress.lookup("203.0.113.9") is None  # offline by default

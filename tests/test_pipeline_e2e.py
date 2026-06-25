@@ -537,7 +537,7 @@ def test_crawler_recognised_by_asn_range_without_logged_asn(
     monkeypatch.setattr(
         hosting,
         "fetch_range_intervals",
-        lambda url, fmt: network_intervals(("203.0.113.0/24",)) if "AS35237" in url else ([], []),
+        lambda url, fmt, name=None: network_intervals(("203.0.113.0/24",)) if "AS35237" in url else ([], []),
     )
     monkeypatch.setattr(egress, "lookup", lambda ip: None)  # don't fetch real egress lists
     iprange.enable_remote()

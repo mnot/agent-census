@@ -34,7 +34,9 @@ def _provider_indexes() -> tuple[tuple[str, RangeIndex], ...]:
         v4: list[Interval] = list(inline4)
         v6: list[Interval] = list(inline6)
         if remote_enabled() and source.ranges_url:
-            fetched4, fetched6 = fetch_range_intervals(source.ranges_url, source.fmt)
+            fetched4, fetched6 = fetch_range_intervals(
+                source.ranges_url, source.fmt, source.name or "hosting"
+            )
             v4 += fetched4
             v6 += fetched6
         if v4 or v6:
@@ -85,7 +87,7 @@ def _asn_feed_indexes() -> tuple[tuple[int, RangeIndex], ...]:
         return ()
     built: list[tuple[int, RangeIndex]] = []
     for asn, url, fmt in load_asn_range_feeds():
-        v4, v6 = fetch_range_intervals(url, fmt)
+        v4, v6 = fetch_range_intervals(url, fmt, f"AS{asn}")
         if v4 or v6:
             built.append((asn, RangeIndex(v4, v6)))
     return tuple(built)

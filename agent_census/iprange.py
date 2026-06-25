@@ -14,6 +14,7 @@ import hashlib
 import ipaddress
 import json
 import os
+import sys
 import time
 import urllib.request
 from collections.abc import Iterable
@@ -147,6 +148,17 @@ def _ranges_cache_path(url: str) -> Path:
     return directory / (hashlib.sha1(url.encode("utf-8")).hexdigest() + ".json")
 
 
+_warned: set[str] = set()
+
+
+def _warn(message: str) -> None:
+    """Print a one-off warning to stderr (deduped, so a failure isn't repeated)."""
+    if message in _warned:
+        return
+    _warned.add(message)
+    print(f"agent-census: warning: {message}", file=sys.stderr)
+
+
 def _http_get(url: str) -> str | None:
     request = urllib.request.Request(url, headers={"User-Agent": "agent-census"})
     try:
@@ -156,8 +168,13 @@ def _http_get(url: str) -> str | None:
         return None
 
 
-def fetch_ranges_text(url: str) -> str | None:
-    """Return the range list for ``url``, backed by a weekly on-disk cache."""
+def fetch_ranges_text(url: str, name: str | None = None) -> str | None:
+    """Return the range list for ``url``, backed by a weekly on-disk cache.
+
+    On a failed fetch, warn on stderr naming ``name`` (the provider/agent) and the
+    URL -- noting whether a stale cached copy is being used instead, or whether
+    there's nothing to fall back on.
+    """
     path = _ranges_cache_path(url)
     try:
         fresh = path.exists() and (time.time() - path.stat().st_mtime) < _RANGES_TTL
@@ -175,9 +192,13 @@ def fetch_ranges_text(url: str) -> str | None:
         except OSError:
             pass
         return text
+    label = name or "external"
     try:  # fetch failed -- fall back to a stale cached copy if we have one
-        return path.read_text(encoding="utf-8")
+        stale = path.read_text(encoding="utf-8")
+        _warn(f"could not refresh {label} ranges from {url}; using a cached copy")
+        return stale
     except OSError:
+        _warn(f"could not fetch {label} ranges from {url}")
         return None
 
 
@@ -340,7 +361,7 @@ def _read_intervals(path: Path) -> Intervals | None:
         return None
 
 
-def fetch_range_intervals(url: str, fmt: str) -> Intervals:
+def fetch_range_intervals(url: str, fmt: str, name: str | None = None) -> Intervals:
     """(v4, v6) intervals for ``url``'s published list, caching the *parsed* result.
 
     The parsed integer intervals are cached weekly so repeat runs skip refetching
@@ -357,7 +378,7 @@ def fetch_range_intervals(url: str, fmt: str) -> Intervals:
         cached = _read_intervals(path)
         if cached is not None:
             return cached
-    text = fetch_ranges_text(url)
+    text = fetch_ranges_text(url, name)
     if text is not None:
         v4, v6 = network_intervals(extract_cidrs(text, fmt))
         try:

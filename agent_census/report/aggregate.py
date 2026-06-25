@@ -9,6 +9,7 @@ from datetime import datetime
 
 from ..model import ClientProfile, Kind
 from ..pipeline import OTHER_HOSTING, RESIDENTIAL_NETWORK, KindRollup
+from .format import CONDUCT_TAGS
 
 # Order kinds appear in reports: a rough good -> bad gradient, with the
 # can't-say buckets (singleton, unknown) at the very end.
@@ -93,6 +94,25 @@ class ActorGroup:
     @property
     def distinct_asns(self) -> int:
         return len({m.features.as_number for m in self.members if m.features.as_number})
+
+
+def typical_conduct(
+    profiles: Sequence[ClientProfile], *, min_clients: int = 3, threshold: float = 0.8
+) -> frozenset[str]:
+    """Conduct tags shared by ~all of a kind's clients -- its baseline conduct.
+
+    Hoisted into the section header ("typically: …") and dropped from the rows so
+    per-row conduct shows only the exceptions. Empty for a kind too small to
+    generalise from.
+    """
+    total = len(profiles)
+    if total < min_clients:
+        return frozenset()
+    counts: dict[str, int] = defaultdict(int)
+    for profile in profiles:
+        for tag in profile.classification.tags & CONDUCT_TAGS:
+            counts[tag] += 1
+    return frozenset(tag for tag, seen in counts.items() if seen / total >= threshold)
 
 
 def group_actors(profiles: Sequence[ClientProfile]) -> list[ActorGroup]:

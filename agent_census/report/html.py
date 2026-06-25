@@ -21,6 +21,7 @@ from .aggregate import (
     group_actors,
     network_matrix,
     time_range,
+    typical_conduct,
 )
 from .format import (
     actor_spread,
@@ -498,7 +499,9 @@ def _client_cell(profile: ClientProfile) -> str:
     )
 
 
-def _client_row(profile: ClientProfile, *, filterable: bool = False) -> str:
+def _client_row(
+    profile: ClientProfile, *, filterable: bool = False, suppress: frozenset[str] = frozenset()
+) -> str:
     cls = profile.classification
     evidence = _esc(truncate(top_evidence(profile)))
     attrs = ""
@@ -513,7 +516,7 @@ def _client_row(profile: ClientProfile, *, filterable: bool = False) -> str:
         f"<td class='num'>{profile.features.request_count:,}</td>"
         f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
         f"<td class='num'>{cls.confidence:.0%}</td>"
-        f"<td>{_tags_html(cls.tags)}</td><td>{evidence}</td></tr>"
+        f"<td>{_tags_html(cls.tags - suppress)}</td><td>{evidence}</td></tr>"
     )
 
 
@@ -542,7 +545,9 @@ def _ip_member_tr(ip: str) -> str:
     )
 
 
-def _folded_tbody(profile: ClientProfile, *, filterable: bool = False) -> str:
+def _folded_tbody(
+    profile: ClientProfile, *, filterable: bool = False, suppress: frozenset[str] = frozenset()
+) -> str:
     """A single entry that folded many IPs into one (an ASN operator, a verified
     bot, an egress/subnet cluster): a collapsible summary over its clustered IPs."""
     cls = profile.classification
@@ -561,23 +566,26 @@ def _folded_tbody(profile: ClientProfile, *, filterable: bool = False) -> str:
         f"<td class='num'>{profile.features.request_count:,}</td>"
         f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
         f"<td class='num'>{cls.confidence:.0%}</td>"
-        f"<td>{_tags_html(cls.tags)}</td>"
+        f"<td>{_tags_html(cls.tags - suppress)}</td>"
         f"<td>{_esc(truncate(top_evidence(profile)))}</td></tr>"
     )
     rows = "".join(_ip_member_tr(ip) for ip in members)
     return f"<tbody class='actor'>{summary}{rows}</tbody>"
 
 
-def _actor_tbody(actor: ActorGroup, *, filterable: bool = False) -> str:
+def _actor_tbody(
+    actor: ActorGroup, *, filterable: bool = False, suppress: frozenset[str] = frozenset()
+) -> str:
     """One actor as a ``<tbody>``: a lone client, or a collapsible summary + members.
 
     The members are ordinary rows sharing the table's Requests/Bandwidth columns,
-    hidden until the summary row is clicked (toggled by the page script).
+    hidden until the summary row is clicked (toggled by the page script). ``suppress``
+    drops the kind's baseline conduct tags (shown in the header instead).
     """
     if not actor.collapsed:
         if len(actor.lead.member_ips) >= 2:
-            return _folded_tbody(actor.lead, filterable=filterable)
-        return f"<tbody>{_client_row(actor.lead, filterable=filterable)}</tbody>"
+            return _folded_tbody(actor.lead, filterable=filterable, suppress=suppress)
+        return f"<tbody>{_client_row(actor.lead, filterable=filterable, suppress=suppress)}</tbody>"
     cls = actor.lead.classification
     _, _, ua = client_id_parts(actor.lead)
     spread = actor_spread(actor.distinct_ips, actor.distinct_asns)
@@ -596,7 +604,7 @@ def _actor_tbody(actor: ActorGroup, *, filterable: bool = False) -> str:
         f"<td class='num'>{actor.requests:,}</td>"
         f"<td class='num'>{human_bytes(actor.total_bytes)}</td>"
         f"<td class='num'>{cls.confidence:.0%}</td>"
-        f"<td>{_tags_html(cls.tags)}</td><td>{evidence}</td></tr>"
+        f"<td>{_tags_html(cls.tags - suppress)}</td><td>{evidence}</td></tr>"
     )
     members = "".join(_member_tr(m) for m in actor.members)
     return f"<tbody class='actor'>{summary}{members}</tbody>"
@@ -604,16 +612,22 @@ def _actor_tbody(actor: ActorGroup, *, filterable: bool = False) -> str:
 
 def _kind_section(kind: Kind, group: list[ClientProfile], rollup: KindRollup, top: int) -> str:
     actors = group_actors(group)
+    typical = typical_conduct(group)
     title = f"{_kind_badge(kind)} {rollup.clients:,} clients · {rollup.requests:,} requests"
     parts = [
         f'<h2 id="{kind.value}">{title}</h2>',
         f'<p class="blurb">{_esc(KIND_BLURB.get(kind, ""))}</p>',
-        f"<table><thead>{_SECTION_HEAD}</thead>"
-        f"{''.join(_actor_tbody(a) for a in actors[:top])}</table>",
     ]
+    if typical:
+        chips = "".join(f'<span class="tag">{_esc(t)}</span>' for t in ordered_tags(typical))
+        parts.append(f'<p class="muted">Typically: {chips}</p>')
+    parts.append(
+        f"<table><thead>{_SECTION_HEAD}</thead>"
+        f"{''.join(_actor_tbody(a, suppress=typical) for a in actors[:top])}</table>"
+    )
     extra = actors[top:_EXPAND_LIMIT]
     if extra:
-        extra_rows = "".join(_actor_tbody(a, filterable=True) for a in extra)
+        extra_rows = "".join(_actor_tbody(a, filterable=True, suppress=typical) for a in extra)
         parts.append(
             # Shared name -> native exclusive accordion: opening one closes the rest.
             '<details name="kind-extra"><summary>'

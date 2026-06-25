@@ -130,6 +130,27 @@ def test_folded_single_entry_shows_ips_and_sample_ua() -> None:
     assert "Sberbank (3 IPs)" in text and "inspect --kind ai_crawler" in text
 
 
+def test_typical_conduct_hoisted_to_header_and_dropped_from_rows() -> None:
+    from agent_census.report.aggregate import typical_conduct
+
+    profs = [
+        _profile(f"9.9.9.{i}", "scan/1", tags=frozenset({"probing", "bursty"}), requests=5)
+        for i in range(4)
+    ]
+    # Only the conduct tag is "typical"; bursty is a fingerprint dimension.
+    assert typical_conduct(profs) == frozenset({"probing"})
+
+    md = md_section(Kind.VULN_SCANNER, profs, _rollup(clients=4, requests=20), top=5)
+    text = "\n".join(md)
+    assert "_Typically: probing._" in text
+    # probing is hoisted: rows show the fingerprint (bursty) but not the baseline.
+    rows = [ln for ln in md if "scan/1" in ln]
+    assert rows and all("bursty" in ln and "probing" not in ln for ln in rows)
+
+    html = html_section(Kind.VULN_SCANNER, profs, _rollup(clients=4, requests=20), top=5)
+    assert "Typically:" in html
+
+
 def test_html_single_client_is_not_collapsed() -> None:
     html = html_section(Kind.SCRAPER, [_profile("9.9.9.1", "solo/1")], _rollup(1, 10), top=5)
     assert "tbody class='actor'" not in html

@@ -118,6 +118,14 @@ def ordered_tags(tags: frozenset[str] | set[str]) -> list[str]:
     return sorted(tags, key=lambda t: (_TAG_ORDER.get(t, len(_TAG_ORDER)), t))
 
 
+# The conduct tier: noteworthy behaviour flagged only when present. When one is
+# near-universal within a kind it's summarised in the section header ("typically:
+# …") and dropped from the rows, so per-row conduct shows only the exceptions.
+CONDUCT_TAGS = frozenset(
+    {"probing", "404-storm", "exotic-method", "uses-HEAD", "post-heavy", "forged-referer"}
+)
+
+
 def as_display(org: str | None, number: str | None) -> str:
     """An AS for display: org + number, just the number, just the org, or ``–``."""
     if org and number:

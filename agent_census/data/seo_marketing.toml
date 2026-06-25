@@ -7,6 +7,7 @@
 ua_substring = "AhrefsBot"
 domains = ["ahrefs.com", "ahrefs.net"]
 ranges_url = "https://api.ahrefs.com/v3/public/crawler-ip-ranges"
+asns = [140577]  # Ahrefs Pte Ltd runs its own AS -- recognise it by network too
 
 [[agent]]
 # https://www.semrush.com/bot/

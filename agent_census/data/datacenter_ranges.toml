@@ -25,7 +25,7 @@
 
 [[source]]
 name = "Hetzner"
-asns = [24940, 212317]
+asns = [24940, 212317, 213230]
 
 [[source]]
 name = "OVH"
@@ -119,7 +119,7 @@ asns = [209155]
 
 [[source]]
 name = "Scaleway"
-asns = [202023, 12876]
+asns = [202023, 12876, 29447]
 
 [[source]]
 name = "Huawei Cloud"
@@ -139,12 +139,72 @@ asns = [202306]
 
 [[source]]
 name = "Tencent Cloud"
-asns = [139341, 132203, 137876]
-
-[[source]]
-name = "CloudVPS"
-asns = [204770]
+asns = [139341, 132203, 137876, 45090]
 
 [[source]]
 name = "Interserver"
 asns = [19318]
+
+[[source]]
+name = "Cherry Servers"
+asns = [216444, 204770]  # 204770 (formerly labelled CloudVPS) is Cherry Servers
+
+[[source]]
+name = "netcup"
+asns = [197540]
+
+[[source]]
+name = "Datacamp"  # CDN77 / DataCamp hosting + CDN
+asns = [60068, 212238]
+
+[[source]]
+name = "all-inkl.com"  # Neue Medien Muennich GmbH
+asns = [34788]
+
+[[source]]
+name = "Fastly"
+asns = [54113]
+
+[[source]]
+name = "Akamai"
+asns = [36183]
+
+[[source]]
+name = "ColoCrossing"
+asns = [36352]
+
+[[source]]
+name = "Unified Layer"  # Bluehost / HostGator / Newfold
+asns = [46606]
+
+[[source]]
+name = "M247"
+asns = [9009]
+
+[[source]]
+name = "IONOS"
+asns = [8560]
+
+[[source]]
+name = "EGIHosting"
+asns = [18779]
+
+[[source]]
+name = "Latitude.sh"
+asns = [396356]
+
+[[source]]
+name = "PrivateLayer"
+asns = [51852]
+
+[[source]]
+name = "HostRoyale"
+asns = [203020]
+
+[[source]]
+name = "PonyNet"  # FranTech / BuyVM
+asns = [53667]
+
+[[source]]
+name = "Clouvider"
+asns = [62240]

@@ -7,8 +7,9 @@ traffic each kind accounts for. Output is Markdown, or a self-contained HTML pag
 
 The kinds it knows include browsers, crawlers, search engines, social-preview
 fetchers, AI crawlers (GPTBot, ClaudeBot), archivers (Internet Archive, Common
-Crawl), SEO and marketing crawlers, scrapers, vulnerability scanners, spam bots,
-feed readers, and uptime monitors. Two kinds cover clients pretending to be
+Crawl), SEO and marketing crawlers, data harvesters (crawlers building a private
+corpus, e.g. Turnitin), scrapers, vulnerability scanners, spam bots, feed readers,
+and uptime monitors. Two kinds cover clients pretending to be
 something else: `spoofed_browser` (a datacentre IP presenting a desktop browser
 User-Agent) and `impersonator` (one that fails crawler verification). Anything it
 can't classify with confidence is `unknown`.

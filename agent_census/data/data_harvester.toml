@@ -1,0 +1,16 @@
+# Data harvesters: crawlers that ingest web content into a private, proprietary
+# corpus or dataset for their own product -- plagiarism/similarity indexes, data
+# brokers, dataset builders. Distinct from public search (search_engine), public
+# preservation (archiver), AI/LLM training (ai_crawler), and SEO (seo_marketing).
+#
+# Add `domains` / `ranges` / `ranges_url` only when the operator publishes a
+# verification mechanism; without one an entry is a declared-but-unverifiable
+# crawler (recognised by UA, never confirmed or flagged impersonator).
+
+[[agent]]
+# https://turnitin.com/robot/crawlerinfo.html -- builds Turnitin's plagiarism corpus.
+ua_substring = "TurnitinBot"
+
+[[agent]]
+# https://panscient.com/ -- crawls to build datasets.
+ua_substring = "panscient"

@@ -32,6 +32,7 @@ class Kind(str, Enum):
     ARCHIVER = "archiver"
     AI_CRAWLER = "ai_crawler"
     SEO_MARKETING = "seo_marketing"
+    DATA_HARVESTER = "data_harvester"
     FEED_READER = "feed_reader"
     MONITOR = "monitor"
     SCRAPER = "scraper"

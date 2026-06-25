@@ -196,6 +196,7 @@ KNOWN_AGENT_CATEGORIES = (
     "archiver",
     "ai_crawler",
     "seo_marketing",
+    "data_harvester",
 )
 
 

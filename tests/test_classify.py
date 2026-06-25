@@ -828,6 +828,17 @@ def test_pure_feed_reader_not_tagged() -> None:
     assert "fetches-non-feeds" not in result.tags
 
 
+def test_turnitin_classifies_as_data_harvester() -> None:
+    feats = ClientFeatures(
+        request_count=5,
+        ua_empty=False,
+        user_agent="TurnitinBot/3.0 (+https://turnitin.com/robot/crawlerinfo.html)",
+    )
+    result = classify_client(feats)
+    assert result.primary is Kind.DATA_HARVESTER
+    assert "declares-known-bot" in result.tags
+
+
 def test_search_engine_and_social_preview_are_distinct() -> None:
     google = classify_client(
         ClientFeatures(request_count=4, user_agent="Mozilla/5.0 (compatible; Googlebot/2.1)")

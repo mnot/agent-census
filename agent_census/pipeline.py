@@ -61,7 +61,14 @@ DEFAULT_MAX_PER_KIND = 1000
 DEFAULT_RETIRED_CAP = 50_000
 
 # Declared-crawler categories, checked individually so per-UA matches cache.
-_CRAWLER_CATEGORIES = ("search_engine", "social_preview", "archiver", "ai_crawler", "seo_marketing")
+_CRAWLER_CATEGORIES = (
+    "search_engine",
+    "social_preview",
+    "archiver",
+    "ai_crawler",
+    "seo_marketing",
+    "data_harvester",
+)
 
 # Network buckets for the kind x network cross-tab. A client's network is the
 # hosting provider its IP belongs to, the shared-egress network it came through,

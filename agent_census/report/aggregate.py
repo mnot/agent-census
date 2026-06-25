@@ -21,6 +21,7 @@ KIND_ORDER: tuple[Kind, ...] = (
     Kind.ARCHIVER,
     Kind.AI_CRAWLER,
     Kind.SEO_MARKETING,
+    Kind.DATA_HARVESTER,
     Kind.MONITOR,
     Kind.CRAWLER,
     Kind.SCRAPER,
@@ -40,6 +41,8 @@ KIND_BLURB: dict[Kind, str] = {
     Kind.SOCIAL_PREVIEW: "Link-unfurl fetchers building share previews.",
     Kind.AI_CRAWLER: "AI / LLM data-gathering crawlers.",
     Kind.SEO_MARKETING: "SEO / marketing / brand-monitoring crawlers.",
+    Kind.DATA_HARVESTER: "Crawlers ingesting content into a private corpus or dataset "
+    "(plagiarism indexes, data brokers) -- not public search, preservation, or AI training.",
     Kind.IMPERSONATOR: "Clients faking a declared crawler identity (DNS / IP-range mismatch).",
     Kind.SCRAPER: "Content harvesters hitting pages cold, without following links.",
     Kind.VULN_SCANNER: "Clients probing for known-vulnerable paths and misconfigurations.",

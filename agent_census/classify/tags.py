@@ -27,7 +27,14 @@ from ..model import (
 
 _UA_ROTATION_THRESHOLD = 4
 # Declared-crawler data categories, checked individually so per-UA results cache.
-_CRAWLER_CATEGORIES = ("search_engine", "social_preview", "archiver", "ai_crawler", "seo_marketing")
+_CRAWLER_CATEGORIES = (
+    "search_engine",
+    "social_preview",
+    "archiver",
+    "ai_crawler",
+    "seo_marketing",
+    "data_harvester",
+)
 _FEED_TOKENS = tuple(token.lower() for token in load_list("feed_readers"))
 
 

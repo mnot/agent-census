@@ -12,6 +12,7 @@ from .archiver import ArchiverClassifier
 from .base import Classifier
 from .browser import BrowserClassifier
 from .crawler import CrawlerClassifier
+from .data_harvester import DataHarvesterClassifier
 from .feed_reader import FeedReaderClassifier
 from .monitor import MonitorClassifier
 from .scraper import ScraperClassifier
@@ -27,6 +28,7 @@ _CLASSIFIERS: tuple[Classifier, ...] = (
     ArchiverClassifier(),
     AiCrawlerClassifier(),
     SeoMarketingClassifier(),
+    DataHarvesterClassifier(),
     VulnScannerClassifier(),
     BrowserClassifier(),
     CrawlerClassifier(),

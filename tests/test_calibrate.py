@@ -191,3 +191,32 @@ def test_cli_calibrate_runs_end_to_end(tmp_path: Path) -> None:
     # zgrab scanner is tagged probing, Googlebot declares but isn't verified here.
     assert "## Conflicting signals" in text and "python-requests" in text
     assert "probing" in text
+
+
+def test_regex_gap_section_lists_only_unreadable_versions() -> None:
+    # The "regex gaps" list should hold UAs we genuinely can't version -- not a
+    # parseable browser that merely lacks an age band (a middling version age).
+    profiles = (
+        _profile(
+            "1.1.1.1",
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) "
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+            requests=50,
+            kind=Kind.BROWSER,
+            tags=frozenset({"browser-ua"}),
+            browser=True,
+        ),
+        _profile(
+            "2.2.2.2",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+            requests=50,
+            kind=Kind.BROWSER,
+            tags=frozenset({"browser-ua"}),  # band-less but parseable (mid-age)
+            browser=True,
+        ),
+    )
+    out = render_calibration(_result(profiles), source="x", top=30)
+    gaps = out.split("### Unparsed browser UAs (regex gaps)", 1)[1].split("\n### ", 1)[0]
+    assert "Mobile/15E148" in gaps  # no version token -> a real gap
+    assert "Chrome/142" not in gaps  # parses fine -> not a gap

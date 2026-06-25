@@ -19,6 +19,7 @@ from dataclasses import dataclass
 
 from ..model import ClientProfile, Kind
 from ..pipeline import AnalysisResult
+from ..uas import browser_version
 from .format import elide_ua, kind_label, truncate
 
 DEFAULT_TOP = 30
@@ -224,8 +225,9 @@ def _browser_quality(result: AnalysisResult, top: int) -> list[str]:
         bands[band] += 1
         band_req[band] += profile.features.request_count
     lines += [
-        "Version-age band over browser-shaped clients. `browser-ua` = looked like "
-        "a browser but the version couldn't be parsed (a regex coverage gap).",
+        "Version-age band over browser-shaped clients. `browser-ua` means no age "
+        "verdict -- either the version couldn't be read *or* it sits between current "
+        "and stale; the regex-gap list below is the truly-unreadable subset.",
         "",
         "| Band | Clients | Requests |",
         "| --- | ---: | ---: |",
@@ -245,7 +247,13 @@ def _browser_subgroups(
     unparsed: dict[str, _Cluster] = defaultdict(_Cluster)
     headless = []
     for profile in browsers:
-        if "browser-ua" in profile.classification.tags:
+        # A genuine regex gap: looks like a browser, but no version can be read at
+        # all. (A readable version with a middling age also lacks a band, but it is
+        # not a gap, so don't list it here.)
+        if (
+            profile.features.ua_looks_like_browser
+            and browser_version(profile.features.user_agent) is None
+        ):
             unparsed[_ua(profile)].add(profile)
         feats = profile.features
         if feats.page_count > 0 and feats.asset_coload_ratio < 0.1:

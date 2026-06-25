@@ -999,3 +999,50 @@ def test_feed_reading_app_stays_feed_reader() -> None:
     )
     assert classify_client(feats).primary is Kind.FEED_READER
 
+
+
+def test_datacenter_library_harvester_is_a_scraper() -> None:
+    # A generic HTTP library fetching several pages from hosting is a scraper, even
+    # at a volume too low for the main scraper signal -- the origin tips it.
+    feats = ClientFeatures(request_count=9, distinct_paths=9, user_agent="Go-http-client/2.0")
+    assert classify_client(feats, datacenter=True).primary is Kind.SCRAPER
+    # The same library from a residential IP is left unknown (could be an app/script).
+    assert classify_client(feats, datacenter=False).primary is Kind.UNKNOWN
+
+
+def test_residential_brief_browser_is_floored_to_browser() -> None:
+    # A real, current browser UA from a residential IP whose short visit co-loaded
+    # no assets still reads as a probable browser (low confidence), not unknown.
+    from datetime import datetime, timezone
+
+    feats = ClientFeatures(
+        request_count=3,
+        distinct_paths=3,
+        ua_looks_like_browser=True,
+        ua_empty=False,
+        ratio_404=0.0,
+        last_seen=datetime(2026, 6, 1, tzinfo=timezone.utc),
+        user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+    )
+    assert classify_client(feats, datacenter=False).primary is Kind.BROWSER
+    # From hosting the same shape is a spoofed browser, not a real one.
+    assert classify_client(feats, datacenter=True).primary is Kind.SPOOFED_BROWSER
+
+
+def test_ancient_residential_browser_is_not_floored() -> None:
+    # The floor excludes ancient UAs: a years-stale Chrome is the tell, so it stays
+    # out of the browser bucket even from a residential IP.
+    from datetime import datetime, timezone
+
+    feats = ClientFeatures(
+        request_count=3,
+        distinct_paths=3,
+        ua_looks_like_browser=True,
+        ua_empty=False,
+        ratio_404=0.0,
+        last_seen=datetime(2026, 6, 1, tzinfo=timezone.utc),
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/99.0.4844.5 Safari/537.36",
+    )
+    assert classify_client(feats, datacenter=False).primary is not Kind.BROWSER

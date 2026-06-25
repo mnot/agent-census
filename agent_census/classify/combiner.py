@@ -9,6 +9,7 @@ falsely-claimed good-bot identity.
 
 from __future__ import annotations
 
+from .. import uas
 from ..model import (
     BotVerification,
     Classification,
@@ -32,6 +33,7 @@ _PRIORITY: tuple[Kind, ...] = (
     Kind.FEED_READER,
     Kind.MONITOR,
     Kind.BROWSER,
+    Kind.APP,
     Kind.SCRAPER,
     Kind.CRAWLER,
     Kind.SPOOFED_BROWSER,
@@ -110,6 +112,18 @@ def combine(
                 evidence=("browser User-Agent from a datacenter IP, without browser behaviour",),
                 all_signals=stored,
             )
+        # A generic HTTP library (or no UA) fetching several pages from hosting
+        # infrastructure is harvesting content -- a scraper -- even when no single
+        # signal cleared the bar. The datacenter origin is what tips it: the same
+        # library from a residential IP could be an app or a one-off script.
+        if datacenter and _looks_like_datacenter_scraper(features):
+            return Classification(
+                primary=Kind.SCRAPER,
+                confidence=0.5,
+                tags=frozenset(tags),
+                evidence=("generic HTTP client harvesting pages from a datacenter IP",),
+                all_signals=stored,
+            )
         # A would-be-unknown client with a single request gets its own bucket:
         # one hit is too little to characterize, so we file it by volume.
         if features.request_count == 1:
@@ -139,6 +153,17 @@ def combine(
         tags=frozenset(tags),
         evidence=evidence,
         all_signals=stored,
+    )
+
+
+def _looks_like_datacenter_scraper(features: ClientFeatures) -> bool:
+    """A generic-library / UA-less client harvesting several pages, benignly."""
+    return (
+        features.request_count >= 2
+        and features.distinct_paths >= 2
+        and (uas.is_library(features.user_agent) or features.ua_empty)
+        and features.vuln_path_hits == 0
+        and features.traversal_hits == 0
     )
 
 

@@ -12,6 +12,13 @@ from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
 from .tags import identifies_as_known_agent
 
+# A browser-shaped UA with positive evidence but no disqualifying behaviour is
+# floored to here, so a brief, asset-less visit (a real person who didn't trigger
+# sub-resource loading) isn't lost to UNKNOWN. It matches the default unknown
+# threshold; the combiner's datacenter discount then keeps the rescue to
+# residential clients -- a hosting "browser" still drops to spoofed_browser.
+_BROWSER_FLOOR = 0.45
+
 
 class BrowserClassifier(Classifier):
     label = Kind.BROWSER
@@ -26,6 +33,11 @@ class BrowserClassifier(Classifier):
 
         confidence = 0.0
         evidence: list[str] = []
+        # Set when a signal positively argues *against* a browser (a cap or a
+        # penalty). While clean, an under-supported browser shape is floored at the
+        # end; once disqualified, it is left to fall where its confidence lands. A
+        # stale (but not ancient) version is a mild nudge, not a disqualifier.
+        disqualified = False
 
         if features.asset_coload_ratio > 0.4:
             confidence += 0.45
@@ -44,6 +56,7 @@ class BrowserClassifier(Classifier):
         elif regularity is not None and regularity < 0.15 and features.request_count >= 5:
             # Metronomic cadence is a machine, not a person clicking around.
             confidence -= 0.2
+            disqualified = True
             evidence.append("metronomic timing — automated, not human")
 
         if features.referer_following_ratio > 0.3:
@@ -83,11 +96,13 @@ class BrowserClassifier(Classifier):
             # Years behind on a family that auto-updates: almost always a frozen,
             # spoofed UA, so cap the browser hypothesis below the threshold.
             confidence = min(confidence, 0.3)
+            disqualified = True
             evidence.append("browser version years out of date — modern browsers auto-update")
         elif evidence and band == "impossible":
             # Claims a version that doesn't exist yet: a forged UA, not a real
             # browser, so cap the hypothesis just like an ancient one.
             confidence = min(confidence, 0.3)
+            disqualified = True
             evidence.append("browser version is impossibly new — forged User-Agent")
 
         # A browser never auto-fetches /robots.txt; checking it is a crawler's
@@ -95,6 +110,7 @@ class BrowserClassifier(Classifier):
         # nudges an otherwise browser-shaped client the right way.
         if evidence and features.fetched_robots_txt:
             confidence -= 0.15
+            disqualified = True
             evidence.append("fetched /robots.txt — a crawler's habit, not a browser's")
 
         # A browser revalidates what it re-requests (earning 304s) and serves
@@ -112,6 +128,7 @@ class BrowserClassifier(Classifier):
             dominant = (cold_refetch and revisits >= features.request_count * 0.5) or (
                 features.request_count >= 2000
             )
+            disqualified = True
             if dominant:
                 # Re-fetching dominates, or the volume is large enough that zero
                 # revalidations is itself damning: cap below the confident threshold.
@@ -129,6 +146,7 @@ class BrowserClassifier(Classifier):
         # human browsing by hand.)
         if features.traversal_hits > 0 or features.vuln_path_hits >= 2:
             confidence = min(confidence, 0.3)
+            disqualified = True
             evidence.append("but probes attack paths — not human browsing")
 
         # Fabricated referers (the Referer is the requested URL itself) are
@@ -136,6 +154,7 @@ class BrowserClassifier(Classifier):
         # faking organic traffic, not browsing.
         if features.self_referer_ratio >= 0.5 and features.request_count >= 4:
             confidence = min(confidence, 0.3)
+            disqualified = True
             evidence.append("but referers are fabricated (Referer = the requested URL)")
 
         # A browser fetches pages and their sub-resources with GET; it does not
@@ -146,8 +165,16 @@ class BrowserClassifier(Classifier):
         # HEAD don't each pick up a spurious browser signal.
         if evidence and features.head_ratio > 0.1:
             confidence = min(confidence, 0.3)
+            disqualified = True
             evidence.append(f"but {features.head_ratio:.0%} HEAD requests — browsers issue GET")
 
         if not evidence:
             return []
+        # A browser-shaped UA with positive evidence and nothing arguing against it
+        # is a probable browser even without the asset-loading proof -- a brief
+        # visit. Floor it so it clears the unknown threshold rather than being lost;
+        # ancient/forged UAs and any non-browser behaviour disqualify it above.
+        if features.ua_looks_like_browser and not disqualified and confidence < _BROWSER_FLOOR:
+            confidence = _BROWSER_FLOOR
+            evidence.append("browser-shaped User-Agent with no non-browser behaviour")
         return [self._signal(confidence, evidence)]

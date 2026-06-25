@@ -242,6 +242,33 @@ def test_current_safari_year_numbering_is_not_impossible() -> None:
     assert uas.version_age_band(ua, as_of) == "current"
 
 
+def test_safari_year_numbering_ages_on_continuous_scale() -> None:
+    # With the 18 -> 26 jump undone, Safari ages one major per year, so staleness is
+    # measured on the real timeline rather than the broken raw numbers.
+    from datetime import datetime, timezone
+
+    from agent_census import uas
+
+    jun26 = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    safari26 = (
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 "
+        "(KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1"
+    )
+    months = uas.version_age_months(safari26, jun26)
+    assert months is not None and 0 < months < 14  # ~9mo old, not the broken ~-70
+
+    def band(major: str) -> str | None:
+        ua = (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
+            f"(KHTML, like Gecko) Version/{major} Safari/605.1.15"
+        )
+        return uas.version_age_band(ua, jun26)
+
+    assert band("18.0") is None  # last year's release -- not yet stale
+    assert band("17.0") == "stale"  # ~2+ years behind by mid-2026
+    assert band("14.1") == "stale"  # but still only stale, never ancient
+
+
 def test_impossible_version_browser_is_capped() -> None:
     from datetime import datetime, timezone
 

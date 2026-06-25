@@ -205,6 +205,20 @@ def _release_index() -> dict[str, BrowserRelease]:
     return {rel.name.lower(): rel for rel in load_browser_releases()}
 
 
+# Safari's major jumped 18 (2024) -> 26 (2025) when Apple aligned every OS and
+# Safari to the year-based number (26 = the 2025 release, like iOS/macOS 26),
+# skipping 19-25. Map the year-based majors back onto the continuous pre-jump
+# scale (26 -> 19, 27 -> 20, …) so the one-major-per-year cadence stays linear and
+# Safari ages correctly in both directions. Pre-jump numbers are unchanged.
+_SAFARI_JUMP_FROM = 26  # first year-based major
+_SAFARI_JUMP_GAP = 7  # 26 follows 18, so 19..25 were skipped
+
+
+def _safari_continuous_major(major: int) -> int:
+    """Safari's major on the continuous timeline, undoing the 2025 year-renumber."""
+    return major - _SAFARI_JUMP_GAP if major >= _SAFARI_JUMP_FROM else major
+
+
 def version_age_months(ua: str | None, as_of: datetime | None) -> float | None:
     """How many months out of date the UA's browser version was at ``as_of``.
 
@@ -223,39 +237,53 @@ def version_age_months(ua: str | None, as_of: datetime | None) -> float | None:
     release = _release_index().get(family)
     if release is None:
         return None
+    if family == "safari":
+        major = _safari_continuous_major(major)
     estimated = release.anchor_date + timedelta(
         days=(major - release.anchor_major) * release.days_per_major
     )
     return (as_of.date() - estimated).days / 30.4
 
 
+def _safari_age_band(age: float) -> str | None:
+    """Version-age band for Safari, judged on its roughly yearly cadence.
+
+    Safari is OS-bundled (not silently auto-updating) and lingers on old Apple
+    hardware, so it never earns the ``impossible``/``ancient`` cap the auto-update
+    families get -- only ``current`` or ``stale``. With the year-renumber undone
+    upstream the cadence is one major per year, so ``current`` spans the ~year the
+    release stays latest and ``stale`` means at least two annual versions behind.
+    """
+    if age < -13:
+        return None  # implausibly ahead of the yearly cadence -- no freshness credit
+    if age <= 13:
+        return "current"
+    return "stale" if age >= 24 else None
+
+
 def version_age_band(ua: str | None, as_of: datetime | None) -> str | None:
     """Classify the UA's browser version age: ``current`` / ``stale`` / ``ancient``.
 
     None when no browser version or active time is known. Auto-updating families
-    (Chrome/Firefox) are judged tightly -- years behind is ``ancient``. Safari is
-    OS-bundled and lingers on old Apple hardware, so it only ever reaches
-    ``stale`` and only when many years behind. The single source of truth for
-    both the browser classifier's confidence nudge and the ``*-ua`` tags.
+    (Chrome/Firefox) are judged tightly -- years behind is ``ancient``, far ahead
+    is ``impossible``. Safari is OS-bundled and judged on its yearly cadence
+    (:func:`_safari_age_band`), only ever reaching ``current`` or ``stale``. The
+    single source of truth for both the browser classifier's confidence nudge and
+    the ``*-ua`` tags.
     """
     parsed = browser_version(ua)
     age = version_age_months(ua, as_of)
     if parsed is None or age is None:
         return None
-    # Safari is OS-bundled on a roughly yearly cadence, and Apple's numbering jumped
-    # (18 in 2024 -> 26 in 2025, aligned with the OS year), so the linear cadence
-    # model can't judge it tightly: never flag Safari impossible or ancient, only
-    # weakly stale when many years behind.
-    is_safari = parsed[0] == "safari"
-    if not is_safari and age < -12:
+    if parsed[0] == "safari":
+        return _safari_age_band(age)
+    if age < -12:
         # Claims a version more than a year ahead of the family's release cadence:
         # impossible for a real auto-updating browser, so it's a forged UA (e.g.
         # Chrome/999 to look maximally fresh), not a "current" one.
         return "impossible"
     if age <= 6:
         return "current"
-    if is_safari:
-        return "stale" if age >= 48 else None
     if age >= 36:
         return "ancient"
     return "stale" if age >= 18 else None

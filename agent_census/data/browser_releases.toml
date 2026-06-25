@@ -8,9 +8,11 @@
 #
 # Safari is included but treated leniently by the classifier: it ships bundled
 # with macOS/iOS on a ~yearly cadence (not silent auto-update), and old-but-real
-# Apple hardware keeps old versions around, so only a years-stale Safari is a
-# weak nudge -- never the cap the auto-updating families get. Its version is the
-# "Version/<n>" token, not the frozen "Safari/605.1.15" WebKit build.
+# Apple hardware keeps old versions around, so it only ever reads current/stale,
+# never the cap the auto-updating families get. Its version is the "Version/<n>"
+# token, not the frozen "Safari/605.1.15" WebKit build. The anchor stays on the
+# pre-2025 numbering; Apple's year-renumber jump (18 -> 26) is undone in code
+# (uas._safari_continuous_major) so this stays one linear major per year.
 
 [[family]]
 name = "Chrome"

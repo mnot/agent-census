@@ -42,8 +42,8 @@ def test_lookup_uses_remote_ranges_only_when_enabled(monkeypatch: pytest.MonkeyP
 def test_vpn_recognised_by_asn_folds_as_egress(
     tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Netprotect (AS54203) publishes no range list, so it's matched by the logged
-    # AS number: three exit IPs with one UA collapse into one tagged entry.
+    # Strong Technology (AS54203) publishes no range list, so it's matched by the
+    # logged AS number: three exit IPs with one UA collapse into one tagged entry.
     monkeypatch.setattr(egress, "lookup", lambda ip: None)  # no range match
     fmt = '%h %l %u %t "%r" %>s %b "%{Referer}i" "%{User-Agent}i" "%{MM_ASN}e"'
     ua = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"
@@ -56,9 +56,9 @@ def test_vpn_recognised_by_asn_folds_as_egress(
     parser = resolve("apache", {"format": fmt})
     result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
 
-    # The client keeps its own identity (Netprotect), is tagged 'vpn', and is summed
-    # into the shared "VPNs" cross-tab column.
-    vpns = [p for p in result.profiles if p.client_id.ip == "Netprotect"]
+    # The client keeps its own identity (Strong Technology), is tagged 'vpn', and is
+    # summed into the shared "VPNs" cross-tab column.
+    vpns = [p for p in result.profiles if p.client_id.ip == "Strong Technology"]
     assert len(vpns) == 1
     assert vpns[0].features.request_count == 3
     assert set(vpns[0].member_ips) == {"5.5.5.0", "5.5.5.1", "5.5.5.2"}

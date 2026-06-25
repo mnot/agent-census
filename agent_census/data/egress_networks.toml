@@ -47,10 +47,10 @@ group = "Corporate proxies"
 asns = [13150]  # SASE vendor, same category as Zscaler/Netskope
 
 [[network]]
-name = "Netprotect"
+name = "Strong Technology"
 tag = "vpn"
 group = "VPNs"
-asns = [54203, 62651]  # operates consumer VPN brands
+asns = [54203, 62651]  # StrongVPN operator
 
 [[network]]
 name = "Proton"

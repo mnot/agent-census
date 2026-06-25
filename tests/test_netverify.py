@@ -232,6 +232,23 @@ def test_ranges_url_fetch_failure_is_unverified(monkeypatch: pytest.MonkeyPatch)
     assert BotVerifier().verify("192.0.2.7", "FetchBot/1.0").status is VerificationStatus.UNVERIFIED
 
 
+def test_ranges_url_honours_declared_format(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A non-"prefixes" feed (here a plain text CIDR list) must be parsed with the
+    # agent's declared format, not blindly as JSON -- otherwise a real client is
+    # left UNVERIFIED and an impersonator is never caught.
+    _patch_spec(
+        monkeypatch,
+        "TextBot",
+        CrawlerSpec(ranges_url="https://example.test/ips.txt", fmt="text"),
+    )
+    monkeypatch.setattr(
+        netverify, "_fetch_ranges_text", lambda url, name=None: "192.0.2.0/24\n# comment\n"
+    )
+    verifier = BotVerifier()
+    assert verifier.verify("192.0.2.7", "TextBot/1.0").status is VerificationStatus.VERIFIED
+    assert verifier.verify("198.51.100.1", "TextBot/1.0").status is VerificationStatus.IMPERSONATOR
+
+
 def test_forward_dns_matches_noncanonical_ipv6(monkeypatch: pytest.MonkeyPatch) -> None:
     # The log may carry a non-canonical IPv6 spelling while getaddrinfo returns the
     # canonical one; the forward-confirm must compare them as addresses, not strings,

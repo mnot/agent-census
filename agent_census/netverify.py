@@ -40,10 +40,10 @@ from . import uas
 from .dataload import KNOWN_AGENT_CATEGORIES, CrawlerSpec, load_tokens
 from .iprange import Network as _Network
 from .iprange import cache_dir
+from .iprange import extract_cidrs as _extract_cidrs
 from .iprange import fetch_ranges_text as _fetch_ranges_text
 from .iprange import ip_in as _ip_in
 from .iprange import parse_networks as _parse_networks
-from .iprange import parse_prefixes as _parse_prefixes
 from .model import BotVerification, ClientId, VerificationStatus
 
 # Outcome of one verification check (range or reverse DNS): a definitive pass or
@@ -225,7 +225,7 @@ class BotVerifier:
                 cached = self._ranges.get(spec.ranges_url)
             if cached is None:
                 text = _fetch_ranges_text(spec.ranges_url, name)
-                cached = _parse_networks(_parse_prefixes(text)) if text else ()
+                cached = _parse_networks(_extract_cidrs(text, spec.fmt)) if text else ()
                 with self._lock:
                     self._ranges[spec.ranges_url] = cached
             networks.extend(cached)

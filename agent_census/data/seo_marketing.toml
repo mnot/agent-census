@@ -66,3 +66,4 @@ ua_substring = "Barkrowler"
 # https://serpstatbot.com
 ua_substring = "serpstatbot"
 ranges_url = "https://serpstatbot.com/serpstatbot-ip.txt"
+format = "text"  # one CIDR per line, not JSON

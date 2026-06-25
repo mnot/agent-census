@@ -134,6 +134,7 @@ class CrawlerSpec:
     domains: tuple[str, ...] = ()
     ranges: tuple[str, ...] = ()
     ranges_url: str | None = None
+    fmt: str = "prefixes"  # how to parse ranges_url (see iprange.extract_cidrs)
     # When an agent declares both ranges and domains, both must verify by default
     # (either failing is impersonation). Set this for operators whose reverse DNS
     # isn't reliable: ranges become primary and the domains are only a fallback
@@ -235,6 +236,7 @@ def load_tokens(category: str) -> tuple[tuple[str, CrawlerSpec], ...]:
             domains=tuple(entry.get("domains", [])),
             ranges=tuple(entry.get("ranges", [])),
             ranges_url=entry.get("ranges_url"),
+            fmt=entry.get("format", "prefixes"),
             rdns_fallback=bool(entry.get("rdns_fallback", False)),
         )
         pairs.append((ua, spec))

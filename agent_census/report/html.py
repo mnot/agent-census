@@ -33,6 +33,7 @@ from .format import (
     human_bytes,
     human_duration,
     kind_label,
+    ordered_tags,
     top_evidence,
     truncate,
 )
@@ -61,7 +62,9 @@ _TAG_COLORS: dict[str, str] = {
     "verified": "#16a34a",  # confirmed identity -> strong green
     "impersonator": "#dc2626",
     "ignores-robots": "#d97706",
-    "fake-browser": "#ea580c",  # browser costume, no browser behaviour -> orange
+    "probing": "#dc2626",  # requested attack paths -> red
+    "404-storm": "#d97706",
+    "ancient-ua": "#dc2626",  # years-stale browser version -> almost certainly spoofed
     "datacenter": "#9333ea",  # origin is hosting, not an eyeball network -> purple
     "ua-rotating": "#d97706",  # many UAs from a hosting/non-browser source -> amber
     "forged-referer": "#dc2626",  # Referer faked to mimic navigation -> red
@@ -76,8 +79,20 @@ _TAG_COLORS: dict[str, str] = {
 _TAG_HELP: dict[str, str] = {
     "datacenter": "Source IP is in a known datacenter / cloud hosting range, "
     "not a consumer or ISP network.",
-    "fake-browser": "Presents a browser User-Agent but shows no browser behaviour: "
-    "no asset co-loading, no referer-following.",
+    "bursty": "Irregular, bursty request timing — human-like, not clockwork.",
+    "steady": "Moderately regular request timing.",
+    "loads-assets": "After fetching pages it pulled their sub-resources (CSS/JS/images) — "
+    "the browser fingerprint.",
+    "no-assets": "Fetched HTML pages but never their sub-resources — not rendering them "
+    "like a browser.",
+    "follows-links": "Often arrives at a page via a Referer it fetched earlier — on-site "
+    "navigation.",
+    "cold": "Requests pages cold, without following on-site links.",
+    "browser-ua": "User-Agent matches a real browser profile (Mozilla + a layout engine).",
+    "generic-ua": "User-Agent is a generic HTTP library/tool (curl, python-requests…), not a "
+    "named agent.",
+    "bot-ua": "User-Agent self-identifies as a bot/crawler.",
+    "post-heavy": "Most requests are POSTs — form/submission traffic, e.g. comment or login spam.",
     "has-cache": "Received 304 Not Modified responses — makes conditional requests "
     "and holds a real cache, the mark of a browser or a polite poller.",
     "uses-HEAD": "Issues HEAD requests for more than an incidental share of its traffic "
@@ -277,7 +292,7 @@ def _tags_html(tags: frozenset[str]) -> str:
     if not tags:
         return '<span class="muted">–</span>'
     spans = []
-    for tag in sorted(tags):
+    for tag in ordered_tags(tags):
         color = _TAG_COLORS.get(tag)
         style = f' style="background:{color};color:#fff"' if color else ""
         description = _tag_title(tag)

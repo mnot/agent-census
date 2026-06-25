@@ -6,15 +6,9 @@ link-following) and often rides a generic HTTP-library or empty User-Agent.
 
 from __future__ import annotations
 
-import re
-
+from .. import uas
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
-
-_LIBRARY_UA = re.compile(
-    r"python-requests|httpx|aiohttp|scrapy|libwww|java/|go-http|okhttp|node-fetch|axios|curl|wget",
-    re.I,
-)
 
 
 class ScraperClassifier(Classifier):
@@ -36,7 +30,7 @@ class ScraperClassifier(Classifier):
             confidence += 0.15
             evidence.append("accesses URLs cold (no on-site link-following)")
 
-        if features.user_agent and _LIBRARY_UA.search(features.user_agent):
+        if uas.is_library(features.user_agent):
             confidence += 0.2
             evidence.append("User-Agent is a generic HTTP library")
         elif features.ua_empty and broad:

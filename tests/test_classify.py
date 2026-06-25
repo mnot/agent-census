@@ -186,7 +186,7 @@ def test_claude_user_is_an_ai_crawler_not_a_spoofed_browser() -> None:
     )
     result = classify_client(feats, datacenter=True)
     assert result.primary is Kind.AI_CRAWLER
-    assert "fake-browser" not in result.tags
+    assert result.primary is not Kind.SPOOFED_BROWSER
 
 
 def test_stale_browser_version_is_not_a_browser() -> None:
@@ -304,17 +304,21 @@ def test_combiner_one_request_keeps_confident_kind() -> None:
 _FAKE_BROWSER = ClientFeatures(
     request_count=5,
     ua_looks_like_browser=True,
+    ua_empty=False,
     asset_coload_ratio=0.0,
     referer_following_ratio=0.0,
+    page_count=4,  # fetched HTML pages...
+    referer_count=4,  # ...with referers present, so no-assets/cold are measurable
 )
 
 
 def test_combiner_spoofed_browser_from_datacenter() -> None:
     # Browser UA + hosting IP + no browser behaviour, otherwise unknown -> spoofed.
+    # The verdict's evidence is now in the tags: browser-ua, but no-assets and cold.
     signals = [Signal(Kind.BROWSER, 0.3, ("ua only",), "browser")]
     result = combine(signals, _FAKE_BROWSER, datacenter=True, unknown_threshold=0.45)
     assert result.primary is Kind.SPOOFED_BROWSER
-    assert {"fake-browser", "datacenter"} <= result.tags
+    assert {"browser-ua", "no-assets", "cold", "datacenter"} <= result.tags
 
 
 def test_browser_version_parsing_and_age() -> None:
@@ -363,11 +367,11 @@ def test_contact_marker_in_ua_reads_as_a_bot_not_a_browser() -> None:
 
 
 def test_combiner_fake_browser_without_datacenter_stays_unknown() -> None:
-    # The same costume from a non-hosting IP is only tagged, not promoted.
+    # The same costume from a non-hosting IP is only fingerprinted, not promoted.
     signals = [Signal(Kind.BROWSER, 0.3, ("ua only",), "browser")]
     result = combine(signals, _FAKE_BROWSER, datacenter=False, unknown_threshold=0.45)
     assert result.primary is Kind.UNKNOWN
-    assert "fake-browser" in result.tags
+    assert {"browser-ua", "no-assets", "cold"} <= result.tags
     assert "datacenter" not in result.tags
 
 
@@ -382,8 +386,8 @@ def test_feed_reader_with_safari_prefix_is_not_fake_browser() -> None:
         user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
         "AppleWebKit/605.1.15 (KHTML, like Gecko) NetNewsWire/6.1",
     )
-    tags = combine([Signal(Kind.FEED_READER, 0.5, ("feed UA",), "feed_reader")], feats).tags
-    assert "fake-browser" not in tags
+    result = combine([Signal(Kind.FEED_READER, 0.5, ("feed UA",), "feed_reader")], feats)
+    assert result.primary is Kind.FEED_READER  # not mistaken for a spoofed browser
 
 
 def test_combiner_real_browser_behaviour_from_datacenter_is_not_spoofed() -> None:
@@ -392,7 +396,6 @@ def test_combiner_real_browser_behaviour_from_datacenter_is_not_spoofed() -> Non
     signals = [Signal(Kind.BROWSER, 0.3, ("weak",), "browser")]
     result = combine(signals, feats, datacenter=True, unknown_threshold=0.45)
     assert result.primary is not Kind.SPOOFED_BROWSER
-    assert "fake-browser" not in result.tags
 
 
 def test_many_uas_on_residential_ip_is_shared_not_rotating() -> None:
@@ -487,6 +490,47 @@ def test_has_cache_tag_on_304() -> None:
     # No 304 -> no tag.
     plain = ClientFeatures(request_count=5, status_counts={200: 5})
     assert "has-cache" not in combine(signals, plain).tags
+
+
+def test_fingerprint_poles_and_indeterminate_gating() -> None:
+    from datetime import datetime, timezone
+
+    # A real browser: the positive poles across dimensions.
+    browser = ClientFeatures(
+        request_count=20,
+        ua_empty=False,
+        ua_looks_like_browser=True,
+        rate_regularity=0.8,
+        asset_coload_ratio=0.7,
+        page_count=10,
+        referer_following_ratio=0.6,
+        referer_count=15,
+        status_counts={200: 18, 304: 2},
+        user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36",
+        last_seen=datetime(2024, 1, 1, tzinfo=timezone.utc),
+    )
+    bt = classify_client(browser).tags
+    assert {"browser-ua", "bursty", "loads-assets", "follows-links", "has-cache", "current-ua"} <= bt
+
+    # A cold library scraper: the negative poles -- and navigation is *omitted*
+    # (not "cold") because no request carried a Referer, so it can't be judged.
+    bot = ClientFeatures(
+        request_count=50,
+        ua_empty=False,
+        ua_looks_like_browser=False,
+        rate_regularity=0.05,
+        asset_coload_ratio=0.0,
+        page_count=40,
+        referer_count=0,  # no referers -> navigation indeterminate
+        distinct_paths=10,
+        status_counts={200: 50},
+        user_agent="python-requests/2.31.0",
+    )
+    tt = classify_client(bot).tags
+    assert {"generic-ua", "metronomic", "no-assets"} <= tt
+    assert "follows-links" not in tt and "cold" not in tt  # indeterminate -> no tag
+    assert "no-cache" not in tt  # caching is one-sided: absence of 304 is unknowable
 
 
 def test_behavioural_tags_promoted_from_evidence() -> None:

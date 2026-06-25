@@ -21,6 +21,7 @@ from .format import (
     human_bytes,
     kind_label,
     md_escape,
+    ordered_tags,
     top_evidence,
     truncate,
 )
@@ -178,7 +179,7 @@ def _kind_section(
     shown = actors[:top]
     for actor in shown:
         cls = actor.lead.classification
-        tags = ", ".join(sorted(cls.tags)) or "–"
+        tags = ", ".join(ordered_tags(cls.tags)) or "–"
         evidence = md_escape(truncate(top_evidence(actor.lead)))
         lines.append(
             f"| {_actor_label(actor)} | {actor.requests:,} | "

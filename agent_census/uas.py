@@ -68,6 +68,21 @@ def declares_bot(ua: str | None) -> bool:
     return bool(_BOT_RE.search(ua) or _BOT_CONTACT_RE.search(ua))
 
 
+# Anonymous HTTP clients: a library/tool name with no product identity of its own.
+_LIBRARY_RE = re.compile(
+    r"python-requests|httpx|aiohttp|scrapy|libwww|java/|go-http|okhttp|node-fetch|axios|curl|wget",
+    re.I,
+)
+
+
+@lru_cache(maxsize=16384)
+def is_library(ua: str | None) -> bool:
+    """True when the UA is a generic HTTP library/tool rather than a named agent."""
+    if is_empty(ua) or ua is None:
+        return False
+    return bool(_LIBRARY_RE.search(ua))
+
+
 def match_known(ua: str | None, pairs: tuple[tuple[str, _P], ...]) -> tuple[str, _P] | None:
     """Return the first ``(substring, payload)`` whose substring occurs in ``ua``."""
     if is_empty(ua) or ua is None:

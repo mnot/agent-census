@@ -99,6 +99,116 @@ def looks_like_fake_browser(features: ClientFeatures) -> bool:
     )
 
 
+def _fingerprint_tags(features: ClientFeatures) -> set[str]:
+    """The behavioural fingerprint: one tag per dimension we can actually measure.
+
+    Each dimension emits its observed value (a polar pair, or a gradation) only
+    when there is enough data to judge it -- so an absent tag means "couldn't
+    tell", never a silent "no". This is the evidence a reader weighs themselves.
+    """
+    tags: set[str] = set()
+
+    # Cadence: how regular the inter-arrival timing is (clockwork vs. human).
+    reg = features.rate_regularity
+    if reg is not None and features.request_count >= 5:
+        tags.add("metronomic" if reg < 0.15 else "bursty" if reg > 0.6 else "steady")
+
+    # Sub-resource loading: a browser pulls a page's CSS/JS/images. Only judgeable
+    # when the client actually fetched HTML pages.
+    if features.page_count > 0:
+        if features.asset_coload_ratio > 0.4:
+            tags.add("loads-assets")
+        elif features.asset_coload_ratio < 0.1:
+            tags.add("no-assets")
+
+    # Navigation: following on-site links (referer is a path fetched earlier).
+    # Only judgeable when some request carried a Referer at all.
+    if features.referer_count > 0 and features.request_count >= 4:
+        if features.referer_following_ratio > 0.3:
+            tags.add("follows-links")
+        elif features.referer_following_ratio < 0.1:
+            tags.add("cold")
+
+    # Caching: a 304 proves a real cache. Its absence is content/server-dependent
+    # (uncacheable or no-store content, a server without validators), not reliably
+    # "no cache" -- so this dimension is one-sided: a positive only.
+    if features.status_counts.get(304, 0) > 0:
+        tags.add("has-cache")
+
+    # Browser version age (current-ua / stale-ua / ancient-ua), when the UA names one.
+    band = uas.version_age_band(features.user_agent, features.last_seen)
+    if band is not None:
+        tags.add(f"{band}-ua")
+
+    # User-Agent shape, when one is present.
+    if not features.ua_empty:
+        if features.ua_looks_like_browser:
+            tags.add("browser-ua")
+        elif uas.is_library(features.user_agent):
+            tags.add("generic-ua")
+        elif features.ua_declares_bot:
+            tags.add("bot-ua")
+
+    return tags
+
+
+def _conduct_tags(features: ClientFeatures) -> set[str]:
+    """Noteworthy behaviour, flagged only when present (no negative pole)."""
+    tags: set[str] = set()
+    if features.vuln_path_hits > 0 or features.traversal_hits > 0:
+        tags.add("probing")
+    if features.ratio_404 > 0.6 and features.distinct_404_paths >= 15:
+        tags.add("404-storm")
+    if features.exotic_method_count > 0:
+        tags.add("exotic-method")  # PUT/DELETE/PROPFIND/CONNECT … — scanners, WebDAV probes
+    if features.head_ratio > 0.1:
+        tags.add("uses-HEAD")
+    if features.post_ratio > 0.5 and features.request_count >= 5:
+        tags.add("post-heavy")
+    if (
+        features.self_referer_ratio >= 0.5
+        and features.request_count >= 4
+        # Only meaningful for a client posing as a browser: a fabricated Referer.
+        and features.ua_looks_like_browser
+        and not identifies_as_known_agent(features)
+    ):
+        tags.add("forged-referer")
+    return tags
+
+
+def _fact_tags(
+    features: ClientFeatures,
+    compliance: ComplianceReport | None,
+    verification: BotVerification | None,
+    datacenter: bool,
+) -> set[str]:
+    """Established facts about the client's identity and origin (no behaviour)."""
+    tags: set[str] = set()
+    if datacenter:
+        tags.add("datacenter")
+    if features.ua_empty:
+        tags.add("no-user-agent")
+    if features.fetched_robots_txt:
+        tags.add("checked-robots")
+    if uas.match_asn_any(features.as_number):
+        tags.add("asn-attributed")  # recognised by origin AS, not its User-Agent
+    if verification is not None and verification.status is VerificationStatus.VERIFIED:
+        tags.add("verified")
+    if _declares_known_crawler(features):
+        tags.add("declares-known-bot")
+    # Only the actionable robots case is tagged; respecting it is the quiet norm.
+    if compliance is not None and compliance.verdict is RobotsVerdict.IGNORES:
+        tags.add("ignores-robots")
+    if features.ua_count_for_ip >= _UA_ROTATION_THRESHOLD:
+        # Many UAs on one IP: evasive rotation from a hosting IP or a browser
+        # costume; otherwise a benign shared egress (NAT / VPN / proxy / carrier).
+        if datacenter or looks_like_fake_browser(features):
+            tags.add("ua-rotating")
+        else:
+            tags.add("shared-ip")
+    return tags
+
+
 def derive_tags(
     features: ClientFeatures,
     compliance: ComplianceReport | None,
@@ -106,80 +216,9 @@ def derive_tags(
     *,
     datacenter: bool = False,
 ) -> set[str]:
-    """Compute the secondary tags for a client."""
-    tags: set[str] = set()
-
-    if datacenter:
-        tags.add("datacenter")
-    if looks_like_fake_browser(features):
-        tags.add("fake-browser")
-
-    if features.status_counts.get(304, 0) > 0:
-        # A 304 means the client made a conditional request and held a cached copy
-        # -- a real cache, which corroborates a browser or a polite feed reader.
-        tags.add("has-cache")
-    if features.head_ratio > 0.1:
-        # More than incidental HEAD. Browsers fetch with GET, so this points away
-        # from a human at a browser and toward a machine -- a monitor, link-
-        # checker, feed reader checking freshness, or other bot.
-        tags.add("uses-HEAD")
-    if features.fetched_robots_txt:
-        tags.add("checked-robots")
-    if uas.match_asn_any(features.as_number):
-        # Recognised by origin AS number (a configured crawler network), not its UA.
-        tags.add("asn-attributed")
-    band = uas.version_age_band(features.user_agent, features.last_seen)
-    if band is not None:
-        # How current the claimed browser version is for when the client was
-        # active: current-ua / stale-ua / ancient-ua. Only set when the UA carries
-        # a browser version, so it marks browsers and browser-spoofing clients.
-        tags.add(f"{band}-ua")
-    if features.ua_empty:
-        tags.add("no-user-agent")
-    if features.ua_count_for_ip >= _UA_ROTATION_THRESHOLD:
-        # Many UAs on one IP reads two ways. From a hosting IP, or paired with a
-        # browser costume and no browser behaviour, it's evasive rotation. Other-
-        # wise it's almost always a shared egress (NAT / VPN / proxy / carrier)
-        # where many real clients share the address -- benign, so name it plainly.
-        if datacenter or looks_like_fake_browser(features):
-            tags.add("ua-rotating")
-        else:
-            tags.add("shared-ip")
-
-    # Only the actionable case is tagged: ignoring robots.txt. Respecting it is the
-    # quiet norm -- no per-client tag (its aggregate is the summary robots column).
-    if compliance is not None and compliance.verdict is RobotsVerdict.IGNORES:
-        tags.add("ignores-robots")
-
-    if verification is not None and verification.status is VerificationStatus.VERIFIED:
-        tags.add("verified")
-
-    if _declares_known_crawler(features):
-        tags.add("declares-known-bot")
-
-    if features.vuln_path_hits > 0 or features.traversal_hits > 0:
-        tags.add("probing")  # badly behaved, but not necessarily a forged identity
-
-    if features.exotic_method_count > 0:
-        tags.add("exotic-method")  # PUT/DELETE/PROPFIND/CONNECT … — scanners, WebDAV probes
-
-    if features.ratio_404 > 0.6 and features.distinct_404_paths >= 15:
-        # Many distinct misses: scanning for content, or a broken integration.
-        tags.add("404-storm")
-
-    regularity = features.rate_regularity
-    if regularity is not None and regularity < 0.15 and features.request_count >= 5:
-        tags.add("metronomic")  # near-constant intervals — clockwork automation, not a human
-
-    if (
-        features.self_referer_ratio >= 0.5
-        and features.request_count >= 4
-        # Only meaningful for a client posing as a browser: a Referer faked to mimic
-        # navigation. A non-browser UA (or a declared agent) self-referring is not
-        # faking browser traffic, so the tag says nothing there.
-        and features.ua_looks_like_browser
-        and not identifies_as_known_agent(features)
-    ):
-        tags.add("forged-referer")  # Referer set to the requested URL -- faked navigation
-
-    return tags
+    """The client's tags: a measured behavioural fingerprint, conduct flags, and facts."""
+    return (
+        _fingerprint_tags(features)
+        | _conduct_tags(features)
+        | _fact_tags(features, compliance, verification, datacenter)
+    )

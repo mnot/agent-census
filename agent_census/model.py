@@ -158,10 +158,12 @@ class ClientFeatures:  # pylint: disable=too-many-instance-attributes
     breadth_ratio: float = 0.0  # fraction of consecutive hops that change subtree
     referer_following_ratio: float = 0.0  # referer is a path this client fetched earlier
     self_referer_ratio: float = 0.0  # referer == the requested path (fabricated; browsers never do)
+    referer_count: int = 0  # requests that carried a Referer (0 -> can't judge navigation)
 
     # asset co-loading (the browser fingerprint)
     asset_coload_ratio: float = 0.0  # HTML responses followed by sub-resource fetches
     static_ratio: float = 0.0  # static-asset requests / total
+    page_count: int = 0  # HTML page responses (0 -> can't judge sub-resource loading)
 
     # method mix
     method_counts: dict[str, int] = field(default_factory=dict)

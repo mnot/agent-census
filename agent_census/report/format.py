@@ -72,6 +72,52 @@ def as_label(org: str, number: str | None = None) -> str:
     return f"{org} (AS{num})"
 
 
+# Tag display order: the behavioural fingerprint first (grouped by dimension and
+# read left-to-right), then conduct flags, then established facts. Tags outside
+# this list (egress networks, etc.) sort to the end alphabetically.
+_TAG_ORDER = {
+    tag: i
+    for i, tag in enumerate(
+        (
+            "browser-ua",
+            "generic-ua",
+            "bot-ua",
+            "current-ua",
+            "stale-ua",
+            "ancient-ua",
+            "bursty",
+            "steady",
+            "metronomic",
+            "loads-assets",
+            "no-assets",
+            "follows-links",
+            "cold",
+            "has-cache",
+            "probing",
+            "404-storm",
+            "exotic-method",
+            "uses-HEAD",
+            "post-heavy",
+            "forged-referer",
+            "datacenter",
+            "asn-attributed",
+            "verified",
+            "declares-known-bot",
+            "no-user-agent",
+            "checked-robots",
+            "ignores-robots",
+            "ua-rotating",
+            "shared-ip",
+        )
+    )
+}
+
+
+def ordered_tags(tags: frozenset[str] | set[str]) -> list[str]:
+    """Tags in fingerprint → conduct → fact reading order; unknowns trail, sorted."""
+    return sorted(tags, key=lambda t: (_TAG_ORDER.get(t, len(_TAG_ORDER)), t))
+
+
 def as_display(org: str | None, number: str | None) -> str:
     """An AS for display: org + number, just the number, just the org, or ``–``."""
     if org and number:

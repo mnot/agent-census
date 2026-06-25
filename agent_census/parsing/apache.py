@@ -99,6 +99,47 @@ def _tokenize(fmt: str) -> list[Directive | str]:
     return tokens
 
 
+def _compile_tokens(tokens: list[Directive | str]) -> tuple[str, list[tuple[str, Setter]]]:
+    """Build the line regex and the ``(group, setter)`` list from tokens.
+
+    Every field after the first is made optional, nested from the end, so a line
+    that omits one or more *trailing* fields still matches (the absent fields are
+    left unset). This lets new fields be appended to the format over time while a
+    log that mixes old and new lines keeps parsing -- only the tail is forgiving;
+    a missing middle field, or any unconsumed text, still fails the full match.
+
+    Inter-field literals are split at their first whitespace: the part before it
+    closes the preceding field (e.g. a quote or ``]``), and the whitespace-onward
+    part (the separator and any opening delimiter) begins the next field's unit.
+    """
+    parts: list[str] = []
+    setters: list[tuple[str, Setter]] = []
+    unit_starts: list[int] = []  # index in `parts` where each optional field-unit begins
+    for token in tokens:
+        if isinstance(token, str):
+            ws = re.search(r"\s", token)
+            if ws is not None and parts:
+                head, tail = token[: ws.start()], token[ws.start() :]
+                if head:
+                    parts.append(re.escape(head))
+                unit_starts.append(len(parts))
+                parts.append(re.escape(tail))
+            else:
+                parts.append(re.escape(token))
+        else:
+            group = f"g{len(setters)}"
+            parts.append(f"(?P<{group}>{token.pattern})")
+            setters.append((group, token.setter))
+    if not unit_starts:
+        return "".join(parts), setters
+    bounds = zip(unit_starts, unit_starts[1:] + [len(parts)])
+    units = ["".join(parts[start:end]) for start, end in bounds]
+    tail = ""
+    for unit in reversed(units):  # nest: head (?:u0 (?:u1 …)? )?
+        tail = f"(?:{unit}{tail})?"
+    return "".join(parts[: unit_starts[0]]) + tail, setters
+
+
 class ApacheParser(LogParser):
     """Parser for a single, fixed Apache log format."""
 
@@ -107,18 +148,10 @@ class ApacheParser(LogParser):
     def __init__(self, log_format: str) -> None:
         self.log_format = log_format
         tokens = _tokenize(log_format)
-        pattern_parts: list[str] = []
-        setters: list[tuple[str, Setter]] = []
-        for token in tokens:
-            if isinstance(token, str):
-                pattern_parts.append(re.escape(token))
-            else:
-                group = f"g{len(setters)}"
-                pattern_parts.append(f"(?P<{group}>{token.pattern})")
-                setters.append((group, token.setter))
+        pattern, setters = _compile_tokens(tokens)
         if not setters:
             raise FormatSpecError("log format contains no directives")
-        self._regex = re.compile("".join(pattern_parts))
+        self._regex = re.compile(pattern)
         self._setters = setters
 
     def parse_lines(self, lines: Iterator[str]) -> Iterator[ParseOutcome]:
@@ -137,7 +170,10 @@ class ApacheParser(LogParser):
             builder = _Builder()
             try:
                 for group, setter in self._setters:
-                    setter(builder, match.group(group))
+                    value = match.group(group)
+                    if value is None:
+                        continue  # an omitted trailing field — leave it unset
+                    setter(builder, value)
             except (ValueError, KeyError) as exc:
                 yield ParseOutcome(
                     skip_reason=f"field conversion failed: {exc}",

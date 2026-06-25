@@ -199,3 +199,38 @@ def _combined(time_field: str) -> str:
 
 def _common(request_field: str) -> str:
     return f'192.0.2.10 - - [10/Oct/2000:13:55:36 +0000] {request_field} 200 1'
+
+
+def test_trailing_fields_are_optional() -> None:
+    # A field appended to the format may be absent on older lines: the line still
+    # parses and the missing field is just left unset.
+    fmt = PRESETS["combined"] + ' "%{Content-Type}o"'
+    base = (
+        '192.0.2.10 - - [10/Oct/2000:13:55:36 -0700] "GET / HTTP/1.1" 200 10 '
+        '"-" "curl/8"'
+    )
+    without = _one(fmt, base)
+    assert without.entry is not None
+    assert without.entry.status == 200 and without.entry.user_agent == "curl/8"
+    assert "out:Content-Type" not in without.entry.extra  # absent, not errored
+
+    with_ct = _one(fmt, base + ' "text/html"')
+    assert with_ct.entry is not None
+    assert with_ct.entry.extra.get("out:Content-Type") == "text/html"
+
+
+def test_two_trailing_fields_can_be_absent() -> None:
+    fmt = PRESETS["combined"] + ' "%{Content-Type}o" "%{X-Cache}o"'
+    base = (
+        '192.0.2.10 - - [10/Oct/2000:13:55:36 -0700] "GET / HTTP/1.1" 200 10 '
+        '"-" "curl/8"'
+    )
+    assert _one(fmt, base).entry is not None  # both trailing fields omitted
+    assert _one(fmt, base + ' "text/html"').entry is not None  # one omitted
+
+
+def test_missing_middle_field_still_skips() -> None:
+    # Only the *tail* is forgiving: a line missing an interior field (here %b, the
+    # byte count) doesn't line up and is skipped, not silently mis-parsed.
+    line = '192.0.2.10 - - [10/Oct/2000:13:55:36 -0700] "GET / HTTP/1.1" 200 "-" "curl/8"'
+    assert _one(PRESETS["combined"], line).entry is None

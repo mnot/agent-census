@@ -25,7 +25,11 @@ rdns_fallback = true
 
 # Common Crawl -- a nonprofit that publishes an open WARC archive of the web.
 # https://commoncrawl.org/ccbot
+# The published range list is authoritative ("IP ranges used by CCBot"; FCrDNS is
+# only "also recommended"), and CCBot runs on AWS where reverse DNS is unreliable,
+# so verify by range with DNS as a fallback rather than requiring both.
 [[agent]]
 ua_substring = "CCBot"
 domains = ["crawl.commoncrawl.org"]
 ranges_url = "https://index.commoncrawl.org/ccbot.json"
+rdns_fallback = true

@@ -530,7 +530,10 @@ def test_probing_declared_crawler_is_tagged_not_impersonator() -> None:
     # Declares Googlebot and probes vuln paths: keeps its kind, gets a 'probing'
     # tag. Probing is misbehaviour, not a forged identity (that's DNS's call).
     feats = ClientFeatures(
-        request_count=5, user_agent="Mozilla/5.0 (compatible; Googlebot/2.1)", vuln_path_hits=3
+        request_count=5,
+        user_agent="Mozilla/5.0 (compatible; Googlebot/2.1)",
+        vuln_path_hits=3,
+        vuln_path_ratio=0.6,  # 3 of 5 requests are probes -- genuinely probing
     )
     signals = [Signal(Kind.SEARCH_ENGINE, 0.8, ("declares Googlebot",), "search_engine")]
     result = combine(signals, feats)
@@ -722,12 +725,40 @@ def test_feed_reader_fetching_non_feeds_is_tagged() -> None:
 
 def test_feed_ua_terms_are_word_anchored() -> None:
     # The short generic terms ("atom", "rss") must not match inside unrelated words.
-    from agent_census.classify.feed_reader import _ua_is_feed_reader
+    from agent_census.classify.feed_reader import ua_is_feed_reader
 
-    assert not _ua_is_feed_reader("Mozilla/5.0 Anatomy/1.0")  # 'atom' inside 'Anatomy'
-    assert not _ua_is_feed_reader("atomic-loader/2")  # 'atom' inside 'atomic'
-    assert _ua_is_feed_reader("My RSS Poller/1.0")  # 'rss' as a whole word
-    assert _ua_is_feed_reader("SomeClient (atom)")  # 'atom' as a whole word
+    assert not ua_is_feed_reader("Mozilla/5.0 Anatomy/1.0")  # 'atom' inside 'Anatomy'
+    assert not ua_is_feed_reader("atomic-loader/2")  # 'atom' inside 'atomic'
+    assert ua_is_feed_reader("My RSS Poller/1.0")  # 'rss' as a whole word
+    assert ua_is_feed_reader("SomeClient (atom)")  # 'atom' as a whole word
+
+
+def test_feed_reader_ua_is_not_tagged_bot_ua() -> None:
+    # A feed reader that also self-declares a bot names itself a feed tool, not a
+    # generic unrecognised bot, so it must not pick up the bot-ua tag.
+    from agent_census.classify.tags import derive_tags
+
+    feats = ClientFeatures(
+        request_count=10,
+        user_agent="PollerBot/1.0 (RSS reader)",
+        ua_declares_bot=True,
+    )
+    assert "bot-ua" not in derive_tags(feats, None, None)
+
+
+def test_feed_reader_from_datacenter_is_not_spoofed_browser() -> None:
+    # Browser-shaped UA, hosting origin, no browser behaviour -- would be a spoofed
+    # browser, except it names a feed tool, so its identity wins over the costume.
+    feats = ClientFeatures(
+        request_count=10,
+        user_agent="Mozilla/5.0 (compatible) QuietReader (RSS reader)",
+        ua_looks_like_browser=True,
+        ua_declares_bot=True,
+        asset_coload_ratio=0.0,
+        referer_following_ratio=0.0,
+    )
+    result = combine([], feats, datacenter=True)
+    assert result.primary is not Kind.SPOOFED_BROWSER
 
 
 def test_declared_bot_is_not_a_browser_even_when_co_loading() -> None:

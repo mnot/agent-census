@@ -35,7 +35,13 @@ _FEED_UA = re.compile(
 
 
 @lru_cache(maxsize=16384)
-def _ua_is_feed_reader(ua: str | None) -> bool:
+def ua_is_feed_reader(ua: str | None) -> bool:
+    """True if the UA names a feed reader or generic feed tool (rss/atom/…).
+
+    Shared with the tag layer so a feed reader is recognised identically there --
+    keeping it out of the browser / spoofed-browser heuristics and the ``bot-ua``
+    tag, however it behaves in a given window.
+    """
     if not ua:
         return False
     return bool(_FEED_UA.search(ua))
@@ -46,7 +52,7 @@ class FeedReaderClassifier(Classifier):
     name = "feed_reader"
 
     def evaluate(self, features: ClientFeatures) -> list[Signal]:
-        feed_ua = _ua_is_feed_reader(features.user_agent)
+        feed_ua = ua_is_feed_reader(features.user_agent)
         feed_dominant = features.feed_requests > 0 and features.feed_ratio >= 0.5
         # Feeds have to be the point: either a declared reader, or feeds are the
         # majority of traffic. A client that mostly hammers non-feed pages and only

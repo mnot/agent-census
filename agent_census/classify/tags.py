@@ -16,7 +16,6 @@ from __future__ import annotations
 from functools import lru_cache
 
 from .. import uas
-from ..dataload import load_list
 from ..model import (
     BotVerification,
     ClientFeatures,
@@ -24,6 +23,7 @@ from ..model import (
     RobotsVerdict,
     VerificationStatus,
 )
+from .feed_reader import ua_is_feed_reader
 
 _UA_ROTATION_THRESHOLD = 4
 # Declared-crawler data categories, checked individually so per-UA results cache.
@@ -35,18 +35,11 @@ _CRAWLER_CATEGORIES = (
     "seo_marketing",
     "data_harvester",
 )
-_FEED_TOKENS = tuple(token.lower() for token in load_list("feed_readers"))
 
 
 @lru_cache(maxsize=16384)
 def _ua_names_crawler(ua: str | None) -> bool:
     return any(uas.match_category(ua, category) for category in _CRAWLER_CATEGORIES)
-
-
-@lru_cache(maxsize=16384)
-def _ua_names_feed_reader(ua: str | None) -> bool:
-    low = (ua or "").lower()
-    return any(token in low for token in _FEED_TOKENS)
 
 
 def _declares_known_crawler(features: ClientFeatures) -> bool:
@@ -82,7 +75,7 @@ def identifies_as_known_agent(features: ClientFeatures) -> bool:
     return (
         features.ua_declares_bot
         or _ua_names_crawler(features.user_agent)
-        or _ua_names_feed_reader(features.user_agent)
+        or ua_is_feed_reader(features.user_agent)
         or uas.match_asn_any(features.as_number) is not None
     )
 
@@ -155,7 +148,13 @@ def _fingerprint_tags(features: ClientFeatures) -> set[str]:
             tags.add("browser-ua")
         elif uas.is_library(features.user_agent):
             tags.add("generic-ua")
-        elif features.ua_declares_bot and not _declares_known_crawler(features):
+        elif (
+            features.ua_declares_bot
+            and not _declares_known_crawler(features)
+            and not ua_is_feed_reader(features.user_agent)
+        ):
+            # A self-declared bot we don't recognise -- but a feed reader names
+            # itself a feed tool, not a generic bot, so it's never "bot-ua".
             tags.add("bot-ua")
 
     return tags
@@ -164,7 +163,11 @@ def _fingerprint_tags(features: ClientFeatures) -> set[str]:
 def _conduct_tags(features: ClientFeatures) -> set[str]:
     """Noteworthy behaviour, flagged only when present (no negative pole)."""
     tags: set[str] = set()
-    if features.vuln_path_hits > 0 or features.traversal_hits > 0:
+    # Path-traversal / injection markers are unambiguous, so any is enough. Plain
+    # vuln-path hits are gated on a ratio: a broad crawler that grazes a few
+    # attack-shaped URLs over tens of thousands of requests isn't a scanner, while
+    # a focused probe run is mostly probes (and a lone pure probe is ratio 1.0).
+    if features.traversal_hits > 0 or features.vuln_path_ratio >= 0.05:
         tags.add("probing")
     if features.ratio_404 > 0.6 and features.distinct_404_paths >= 15:
         tags.add("404-storm")

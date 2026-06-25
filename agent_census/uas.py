@@ -171,11 +171,14 @@ def product_token(ua: str | None) -> str | None:
 
 # Major-version tokens per family. Firefox and Chrome first; every Chromium
 # browser (Chrome, Edge, Opera, Brave, …) carries a "Chrome/<n>" token at the
-# Chromium major, so matching it covers them all. Safari's real version is the
-# "Version/<n>" token (the trailing "Safari/605.x" is a frozen WebKit build);
-# Chrome desktop UAs carry no "Version/" token, so the Chrome check wins first.
-_FIREFOX_VER_RE = re.compile(r"firefox/(\d+)", re.I)
-_CHROME_VER_RE = re.compile(r"chrome/(\d+)", re.I)
+# Chromium major, so matching it covers them all. The iOS browsers wear their own
+# tokens -- Chrome for iOS is "CriOS/<n>" and Firefox for iOS is "FxiOS/<n>" --
+# but track the same release trains, so fold them into the respective family.
+# Safari's real version is the "Version/<n>" token (the trailing "Safari/605.x" is
+# a frozen WebKit build); Chrome desktop UAs carry no "Version/" token, so the
+# Chrome check wins first.
+_FIREFOX_VER_RE = re.compile(r"(?:firefox|fxios)/(\d+)", re.I)
+_CHROME_VER_RE = re.compile(r"(?:chrome|crios)/(\d+)", re.I)
 _SAFARI_VER_RE = re.compile(r"version/(\d+)[\d._]*\s+(?:mobile/\S+\s+)?safari", re.I)
 
 

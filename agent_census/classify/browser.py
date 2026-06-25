@@ -84,6 +84,11 @@ class BrowserClassifier(Classifier):
             # spoofed UA, so cap the browser hypothesis below the threshold.
             confidence = min(confidence, 0.3)
             evidence.append("browser version years out of date — modern browsers auto-update")
+        elif evidence and band == "impossible":
+            # Claims a version that doesn't exist yet: a forged UA, not a real
+            # browser, so cap the hypothesis just like an ancient one.
+            confidence = min(confidence, 0.3)
+            evidence.append("browser version is impossibly new — forged User-Agent")
 
         # A browser never auto-fetches /robots.txt; checking it is a crawler's
         # habit. Slight on its own (a person could type the URL once), but it

@@ -209,6 +209,39 @@ def test_stale_browser_version_is_not_a_browser() -> None:
     assert classify_client(feats).primary is not Kind.BROWSER
 
 
+def test_impossible_future_version_is_not_current() -> None:
+    # A UA claiming a version far beyond the release cadence (e.g. Chrome/999 to
+    # look maximally fresh) must not be rated "current" and rewarded the freshness
+    # bonus -- it's a forged string.
+    from datetime import datetime, timezone
+
+    from agent_census import uas
+
+    as_of = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    ua = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/999.0.0.0 Safari/537.36"
+    )
+    assert uas.version_age_band(ua, as_of) == "impossible"
+
+
+def test_impossible_version_browser_is_capped() -> None:
+    from datetime import datetime, timezone
+
+    feats = ClientFeatures(
+        request_count=18000,
+        distinct_paths=600,
+        asset_coload_ratio=0.7,
+        ua_looks_like_browser=True,
+        ratio_404=0.0,
+        last_seen=datetime(2026, 6, 1, tzinfo=timezone.utc),
+        status_counts={200: 17000, 304: 50},
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/999.0.0.0 Safari/537.36",
+    )
+    assert classify_client(feats).primary is not Kind.BROWSER
+
+
 def test_old_safari_is_only_mildly_dinged_not_capped() -> None:
     # Safari is OS-bundled and common in old versions on old Apple hardware, so a
     # well-behaved old Safari stays a browser (mild ding, never the cap Chrome

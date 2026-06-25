@@ -242,12 +242,15 @@ def version_age_band(ua: str | None, as_of: datetime | None) -> str | None:
     age = version_age_months(ua, as_of)
     if parsed is None or age is None:
         return None
+    if age < -12:
+        # Claims a version more than a year ahead of the family's release cadence:
+        # impossible for a real auto-updating browser, so it's a forged UA (e.g.
+        # Chrome/999 to look maximally fresh), not a "current" one.
+        return "impossible"
     if age <= 6:
         return "current"
     if parsed[0] == "safari":
         return "stale" if age >= 48 else None
     if age >= 36:
         return "ancient"
-    if age >= 18:
-        return "stale"
-    return None
+    return "stale" if age >= 18 else None

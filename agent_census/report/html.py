@@ -67,6 +67,7 @@ _TAG_COLORS: dict[str, str] = {
     "probing": "#dc2626",  # requested attack paths -> red
     "404-storm": "#d97706",
     "ancient-browser-ua": "#dc2626",  # years-stale browser version -> almost certainly spoofed
+    "impossible-browser-ua": "#dc2626",  # version newer than exists -> forged UA
     "datacenter": "#9333ea",  # origin is hosting, not an eyeball network -> purple
     "ua-rotating": "#d97706",  # many UAs from a hosting/non-browser source -> amber
     "forged-referer": "#dc2626",  # Referer faked to mimic navigation -> red
@@ -109,6 +110,8 @@ _TAG_HELP: dict[str, str] = {
     "for its active period; unusual for an auto-updating browser.",
     "ancient-browser-ua": "Browser User-Agent whose version is years out of date. Chromium and "
     "Firefox auto-update, so this is almost always a frozen, spoofed User-Agent.",
+    "impossible-browser-ua": "Browser User-Agent claiming a version newer than any that has "
+    "been released for its active period — a forged User-Agent.",
     "checked-robots": "Requested /robots.txt at some point.",
     "no-user-agent": "Sent no User-Agent header.",
     "ua-rotating": "Many distinct User-Agents from one IP, paired with a hosting origin "

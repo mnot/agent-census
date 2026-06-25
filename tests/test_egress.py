@@ -16,7 +16,10 @@ def test_known_egress_networks_are_registered() -> None:
     from agent_census.dataload import load_egress_networks
 
     tags = {network.tag for network in load_egress_networks()}
-    assert {"icloud-private-relay", "tor-exit"} <= tags
+    assert {"icloud-private-relay", "tor-exit", "vpn", "corporate-proxy"} <= tags
+    # Several networks share a cross-tab column ("group") while keeping their tag.
+    groups = {network.group for network in load_egress_networks()}
+    assert {"Privacy proxies", "VPNs", "Corporate proxies"} <= groups
 
 
 def test_lookup_uses_remote_ranges_only_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -53,11 +56,14 @@ def test_vpn_recognised_by_asn_folds_as_egress(
     parser = resolve("apache", {"format": fmt})
     result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
 
-    nordvpn = [p for p in result.profiles if p.client_id.ip == "NordVPN"]
-    assert len(nordvpn) == 1
-    assert nordvpn[0].features.request_count == 3
-    assert set(nordvpn[0].member_ips) == {"5.5.5.0", "5.5.5.1", "5.5.5.2"}
-    assert "vpn" in nordvpn[0].classification.tags
+    # The client keeps its own identity (NordVPN), is tagged 'vpn', and is summed
+    # into the shared "VPNs" cross-tab column.
+    vpns = [p for p in result.profiles if p.client_id.ip == "NordVPN"]
+    assert len(vpns) == 1
+    assert vpns[0].features.request_count == 3
+    assert set(vpns[0].member_ips) == {"5.5.5.0", "5.5.5.1", "5.5.5.2"}
+    assert "vpn" in vpns[0].classification.tags
+    assert vpns[0].network == "VPNs"
 
 
 def test_relay_traffic_folds_into_one_entry(

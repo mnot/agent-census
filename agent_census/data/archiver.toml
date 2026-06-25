@@ -1,10 +1,11 @@
 # Web-archiving / preservation crawlers (keep copies of the web, not index it).
 # One [[agent]] per crawler. ua_substring is matched case-insensitively against
-# the User-Agent. Verified by published IP ranges -- some Internet Archive
-# crawler IPs have no reverse DNS, so ranges are more reliable than rDNS here.
+# the User-Agent. Verified by reverse/forward DNS against the listed domains
+# unless an entry carries its own ranges_url.
 
 # Internet Archive / Wayback Machine -- https://archive.org/details/archive.org_bot
-# Verified against a published feed of Internet Archive's crawler ranges.
+# Verified by rDNS: the published range feed sits behind Cloudflare and blocks
+# some fetches as bots, so it isn't reliable to pull; rDNS is good enough here.
 [[agent]]
 ua_substring = "archive.org_bot"
 domains = ["archive.org"]

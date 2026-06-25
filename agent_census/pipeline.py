@@ -372,6 +372,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
     egress_token: dict[tuple[str, str | None], str | None] = {}
     egress_members: dict[tuple[str, str | None], set[str]] = {}
     egress_tag: dict[str, str] = {}
+    egress_group: dict[str, str] = {}  # network name -> cross-tab column header
     # Datacenter clients sharing a /24 (or /48) and UA are lumped into one entry,
     # keyed by (subnet, UA), the same way -- an adjacent VM fleet is one actor.
     dc_acc: OrderedDict[tuple[str, str | None], FeatureAccumulator] = OrderedDict()
@@ -606,6 +607,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             # A relay/proxy egress IP is a throwaway; fold by network + UA.
             fold(egress_acc, egress_token, egress_members, (network.name, ua), entry)
             egress_tag.setdefault(network.name, network.tag)
+            egress_group.setdefault(network.name, network.group or network.name)
         elif entity is not None and asn is not None:
             # A recognised ASN operator: one entry for the whole AS, IP and UA alike.
             fold(asn_acc, asn_token, asn_members, (entity, None), entry)
@@ -651,7 +653,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             None,
             tuple(sorted(egress_members[(name, user_agent)])),
             extra_tags=frozenset({egress_tag[name]}),
-            network=name,
+            network=egress_group[name],
             network_category=_NET_EGRESS,
         )
         client_count += 1

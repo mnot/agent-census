@@ -134,12 +134,15 @@ def test_network_table_renders_with_providers(
     html = render_report_html(result, source="x")
     assert "Requests by kind and network" in html
     assert "Amazon AWS" in html
-    # The residential (non-hosting) column header carries the grey-wash + divider.
-    assert f"netoff'>{_esc(RESIDENTIAL_NETWORK)}</th>" in html
+    # The residential (non-hosting) column header carries the grey-wash + divider
+    # and a hover description.
+    assert f">{_esc(RESIDENTIAL_NETWORK)}</th>" in html
     assert "class='num netdiv netoff'" in html  # first non-hosting col: divider + grey
+    assert "Consumer ISP" in html  # residential column-header tooltip
     # Body cells carry their raw count for the JS toggle; the control + script are present.
     assert "td class='num mxcell" in html and "data-v=" in html
     assert "id='netmode'" in html and "id='nettab'" in html
+    assert "rgba(220,38,38" in html  # red heat on the total row/column
 
 
 def test_filter_haystack_includes_as_name() -> None:

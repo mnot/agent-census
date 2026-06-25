@@ -12,7 +12,7 @@ from functools import lru_cache
 
 from ..dataload import load_egress_networks
 from ..model import ClientProfile, Kind
-from ..pipeline import OTHER_HOSTING, AnalysisResult, KindRollup
+from ..pipeline import OTHER_HOSTING, RESIDENTIAL_NETWORK, AnalysisResult, KindRollup
 from .aggregate import (
     KIND_BLURB,
     KIND_ORDER,
@@ -74,7 +74,7 @@ _TAG_COLORS: dict[str, str] = {
     "icloud-private-relay": "#0284c7",  # privacy relay; a positive browser signal -> blue
     "tor-exit": "#6d28d9",  # Tor exit node; anonymised egress -> violet
     "vpn": "#0d9488",  # consumer VPN egress -> teal
-    "corporate-proxy": "#0369a1",  # SASE / corporate egress -> blue
+    "corporate-proxy": "#7c3aed",  # SASE / corporate egress -> violet
     # 'shared-ip' is left neutral (grey): many UAs but a benign shared egress.
 }
 
@@ -150,6 +150,28 @@ def _egress_tag_help() -> dict[str, str]:
 def _tag_title(tag: str) -> str:
     """Hover description for a tag, or '' if none is known."""
     return _TAG_HELP.get(tag) or _egress_tag_help().get(tag, "")
+
+
+# Hover descriptions for the cross-tab column headers. The egress buckets group
+# several networks, so spell out their members; the catch-all columns get a note.
+_NETWORK_HELP: dict[str, str] = {
+    "Privacy proxies": "Anonymising relays that front real users' own browsers "
+    "(iCloud Private Relay, Tor exit nodes). The source IP is not an identity.",
+    "VPNs": "Consumer VPN exit pools (e.g. NordVPN) — many users behind a shared address pool.",
+    "Corporate proxies": "Enterprise security gateways / SASE fronting a company's users "
+    "(Zscaler, Netskope).",
+    OTHER_HOSTING: "Hosting providers too small for their own column, folded together.",
+    RESIDENTIAL_NETWORK: "Consumer ISP, mobile, and otherwise unrecognised networks.",
+}
+
+
+def _network_title(name: str, category: str) -> str:
+    """Hover description for a cross-tab column header."""
+    if name in _NETWORK_HELP:
+        return _NETWORK_HELP[name]
+    if category == "datacenter":
+        return f"{name}: a datacenter / cloud hosting network."
+    return ""
 
 
 _CSS = """
@@ -440,14 +462,29 @@ def _network_table(result: AnalysisResult) -> str:
     def div(i: int) -> str:
         return " netdiv" if i == first_off else ""
 
+    def title(net: str) -> str:
+        desc = _network_title(net, matrix.categories.get(net, ""))
+        return f' title="{_esc(desc)}"' if desc else ""
+
     head = (
         "<tr><th>Kind</th>"
         + "".join(
-            f"<th class='num{div(i)}{'' if matrix.is_hosting(n) else ' netoff'}'>{_esc(n)}</th>"
+            f"<th class='num{div(i)}{'' if matrix.is_hosting(n) else ' netoff'}'{title(n)}>"
+            f"{_esc(n)}</th>"
             for i, n in enumerate(nets)
         )
         + "<th class='num netdiv'>Total</th></tr>"
     )
+
+    # The Total column and All-kinds row carry their own (red) heat, keyed to the
+    # biggest per-kind and per-network total -- a different axis from the blue cells.
+    peak_row = max(matrix.row_totals.values(), default=0)
+    peak_col = max(matrix.col_totals.values(), default=0)
+
+    def red(value: int, peak: int) -> str:
+        if value <= 0 or peak <= 0:
+            return ""
+        return f' style="background:rgba(220,38,38,{value / peak * 0.8:.3f})"'
 
     rows = []
     for kind in matrix.kinds:
@@ -458,14 +495,19 @@ def _network_table(result: AnalysisResult) -> str:
         )
         rows.append(
             f'<tr><td><a href="#{kind.value}">{_kind_badge(kind)}</a></td>'
-            f"{cells}<td class='num netdiv'>{matrix.row_totals[kind]:,}</td></tr>"
+            f"{cells}<td class='num netdiv'{red(matrix.row_totals[kind], peak_row)}>"
+            f"{matrix.row_totals[kind]:,}</td></tr>"
         )
-    totals = "".join(
-        f"<td class='num{div(i)}'>{matrix.col_totals[n]:,}</td>" for i, n in enumerate(nets)
-    )
+
+    def total_cell(i: int, net: str) -> str:
+        col = matrix.col_totals[net]
+        return f"<td class='num{div(i)}'{red(col, peak_col)}>{col:,}</td>"
+
+    totals = "".join(total_cell(i, n) for i, n in enumerate(nets))
     rows.append(
         "<tr class='netall'><td><strong>All kinds</strong></td>"
-        f"{totals}<td class='num netdiv'>{matrix.total:,}</td></tr>"
+        f"{totals}<td class='num netdiv' style=\"background:rgba(220,38,38,0.8)\">"
+        f"{matrix.total:,}</td></tr>"
     )
     control = (
         "<div class='netctl'><label>Show <select id='netmode'>"

@@ -5,19 +5,23 @@
 # User-Agent and tag it, rather than scattering them across egress IPs.
 #
 # Each [[network]] mirrors a datacenter source ([name], optional inline `ranges`,
-# `ranges_url` + `format`) plus a `tag` applied to its clients. Ranges are
-# fetched by default (cached weekly); --no-fetch-ranges disables. Add networks
-# freely.
+# `ranges_url` + `format`, or `asns`) plus a `tag` applied to its clients. The
+# optional `group` is only the cross-tab column header: networks sharing a group
+# (e.g. Zscaler + Netskope -> "Corporate proxies") are summed into one column but
+# keep their own identity and tag. Ranges are fetched by default (cached weekly);
+# --no-fetch-ranges disables. Add networks freely.
 
 [[network]]
 name = "iCloud Private Relay"
 tag = "icloud-private-relay"
+group = "Privacy proxies"
 ranges_url = "https://mask-api.icloud.com/egress-ip-ranges.csv"
 format = "csv"  # first column is the prefix
 
 [[network]]
 name = "Tor"
 tag = "tor-exit"
+group = "Privacy proxies"
 ranges_url = "https://ip1.info/tor-ips/tor-ips.txt"
 format = "text"  # one exit-node IP per line
 
@@ -27,14 +31,17 @@ format = "text"  # one exit-node IP per line
 [[network]]
 name = "NordVPN"
 tag = "vpn"
+group = "VPNs"
 asns = [136787]  # TEFINCOM S.A.
 
 [[network]]
 name = "Zscaler"
 tag = "corporate-proxy"
+group = "Corporate proxies"
 asns = [22616, 62044]  # Zscaler announces from several ASes; add more as you see them
 
 [[network]]
 name = "Netskope"
 tag = "corporate-proxy"
+group = "Corporate proxies"
 asns = [55256]

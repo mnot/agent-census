@@ -109,6 +109,7 @@ _SOURCE_SCHEMA = {
 _NETWORK_SCHEMA = {
     "name": "str",
     "tag": "str",
+    "group": "str",
     "ranges": "str[]",
     "ranges_url": "str",
     "format": "str",
@@ -157,8 +158,9 @@ class RangeSource:
 class EgressNetwork:
     """A named shared-egress network whose clients are merged and tagged."""
 
-    name: str = ""
+    name: str = ""  # the network's own identity -> client id (e.g. "Tor", "NordVPN")
     tag: str = ""
+    group: str = ""  # cross-tab column header; several networks may share one (e.g. "VPNs")
     ranges: tuple[str, ...] = ()
     ranges_url: str | None = None
     fmt: str = "prefixes"
@@ -311,6 +313,7 @@ def load_egress_networks() -> tuple[EgressNetwork, ...]:
             EgressNetwork(
                 name=entry.get("name", ""),
                 tag=entry.get("tag", ""),
+                group=entry.get("group", ""),
                 ranges=tuple(entry.get("ranges", [])),
                 ranges_url=entry.get("ranges_url"),
                 fmt=entry.get("format", "prefixes"),

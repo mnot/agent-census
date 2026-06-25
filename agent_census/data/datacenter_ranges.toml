@@ -199,7 +199,7 @@ asns = [51852]
 
 [[source]]
 name = "HostRoyale"
-asns = [203020]
+asns = [203020, 207990]
 
 [[source]]
 name = "PonyNet"  # FranTech / BuyVM
@@ -208,3 +208,31 @@ asns = [53667]
 [[source]]
 name = "Clouvider"
 asns = [62240]
+
+[[source]]
+name = "Stark Industries Solutions"  # bulletproof host, heavily used for scanning/attacks
+asns = [44477]
+
+[[source]]
+name = "Packethub"
+asns = [141039]
+
+[[source]]
+name = "GSL Networks"
+asns = [137409]
+
+[[source]]
+name = "ColocationX"
+asns = [208046]
+
+[[source]]
+name = "WorldStream"
+asns = [49981]
+
+[[source]]
+name = "web2objects"
+asns = [62874]
+
+[[source]]
+name = "IPXO"
+asns = [206092]

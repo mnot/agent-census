@@ -48,6 +48,10 @@ format = "prefixes"
 asns = [15169, 396982]  # Google (15169) + Google Cloud (396982)
 
 [[source]]
+name = "Microsoft"
+asns = [8075]
+
+[[source]]
 name = "Cloudflare (IPv4)"
 ranges_url = "https://www.cloudflare.com/ips-v4"
 format = "text"
@@ -137,3 +141,11 @@ asns = [202306]
 [[source]]
 name = "Tencent Cloud"
 asns = [139341, 132203, 137876]
+
+[[source]]
+name = "CloudVPS"
+asns = [204770]
+
+[[source]]
+name = "Interserver"
+asns = [19318]

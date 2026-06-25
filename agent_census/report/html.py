@@ -65,7 +65,7 @@ _TAG_COLORS: dict[str, str] = {
     "ignores-robots": "#d97706",
     "probing": "#dc2626",  # requested attack paths -> red
     "404-storm": "#d97706",
-    "ancient-ua": "#dc2626",  # years-stale browser version -> almost certainly spoofed
+    "ancient-browser-ua": "#dc2626",  # years-stale browser version -> almost certainly spoofed
     "datacenter": "#9333ea",  # origin is hosting, not an eyeball network -> purple
     "ua-rotating": "#d97706",  # many UAs from a hosting/non-browser source -> amber
     "forged-referer": "#dc2626",  # Referer faked to mimic navigation -> red
@@ -89,21 +89,23 @@ _TAG_HELP: dict[str, str] = {
     "follows-links": "Often arrives at a page via a Referer it fetched earlier — on-site "
     "navigation.",
     "cold": "Requests pages cold, without following on-site links.",
-    "browser-ua": "User-Agent matches a real browser profile (Mozilla + a layout engine).",
+    "browser-ua": "User-Agent matches a real browser profile (Mozilla + a layout engine), but "
+    "carries no readable version to age.",
     "generic-ua": "User-Agent is a generic HTTP library/tool (curl, python-requests…), not a "
     "named agent.",
-    "bot-ua": "User-Agent self-identifies as a bot/crawler.",
+    "bot-ua": "User-Agent self-identifies as a bot, but not one we recognise — obscure, new, "
+    "or fabricated.",
     "post-heavy": "Most requests are POSTs — form/submission traffic, e.g. comment or login spam.",
     "has-cache": "Received 304 Not Modified responses — makes conditional requests "
     "and holds a real cache, the mark of a browser or a polite poller.",
     "uses-HEAD": "Issues HEAD requests for more than an incidental share of its traffic "
     "— browsers fetch with GET, so this points to a monitor, link-checker, or other bot.",
-    "current-ua": "Claims a browser version current for when it was active — consistent "
-    "with a real, auto-updating browser.",
-    "stale-ua": "Claims a browser version well behind the release cadence for its active "
-    "period; unusual for an auto-updating browser.",
-    "ancient-ua": "Claims a browser version years out of date. Chromium and Firefox "
-    "auto-update, so this is almost always a frozen, spoofed User-Agent.",
+    "current-browser-ua": "Browser User-Agent whose version is current for when the client "
+    "was active — consistent with a real, auto-updating browser.",
+    "stale-browser-ua": "Browser User-Agent whose version is well behind the release cadence "
+    "for its active period; unusual for an auto-updating browser.",
+    "ancient-browser-ua": "Browser User-Agent whose version is years out of date. Chromium and "
+    "Firefox auto-update, so this is almost always a frozen, spoofed User-Agent.",
     "checked-robots": "Requested /robots.txt at some point.",
     "no-user-agent": "Sent no User-Agent header.",
     "ua-rotating": "Many distinct User-Agents from one IP, paired with a hosting origin "

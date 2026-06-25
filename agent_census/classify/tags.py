@@ -135,18 +135,20 @@ def _fingerprint_tags(features: ClientFeatures) -> set[str]:
     if features.status_counts.get(304, 0) > 0:
         tags.add("has-cache")
 
-    # Browser version age (current-ua / stale-ua / ancient-ua), when the UA names one.
-    band = uas.version_age_band(features.user_agent, features.last_seen)
-    if band is not None:
-        tags.add(f"{band}-ua")
-
-    # User-Agent shape, when one is present.
+    # User-Agent shape, when one is present -- one mutually-exclusive tag. For a
+    # browser the version age is folded in (current/stale/ancient-browser-ua);
+    # plain browser-ua means a browser shell whose version we couldn't read.
+    # Otherwise a generic HTTP library, or a self-declared bot we *don't*
+    # recognise (a recognised crawler is the declares-known-bot fact instead).
     if not features.ua_empty:
-        if features.ua_looks_like_browser:
+        band = uas.version_age_band(features.user_agent, features.last_seen)
+        if band is not None:
+            tags.add(f"{band}-browser-ua")
+        elif features.ua_looks_like_browser:
             tags.add("browser-ua")
         elif uas.is_library(features.user_agent):
             tags.add("generic-ua")
-        elif features.ua_declares_bot:
+        elif features.ua_declares_bot and not _declares_known_crawler(features):
             tags.add("bot-ua")
 
     return tags

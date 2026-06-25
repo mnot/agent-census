@@ -79,12 +79,12 @@ _TAG_ORDER = {
     tag: i
     for i, tag in enumerate(
         (
+            "current-browser-ua",
+            "stale-browser-ua",
+            "ancient-browser-ua",
             "browser-ua",
             "generic-ua",
             "bot-ua",
-            "current-ua",
-            "stale-ua",
-            "ancient-ua",
             "bursty",
             "steady",
             "metronomic",

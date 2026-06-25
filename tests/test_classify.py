@@ -220,6 +220,7 @@ def test_old_safari_is_only_mildly_dinged_not_capped() -> None:
         distinct_paths=40,
         asset_coload_ratio=0.7,
         ua_looks_like_browser=True,
+        ua_empty=False,
         ratio_404=0.0,
         last_seen=datetime(2026, 6, 1, tzinfo=timezone.utc),
         user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
@@ -227,31 +228,44 @@ def test_old_safari_is_only_mildly_dinged_not_capped() -> None:
     )
     result = classify_client(feats)
     assert result.primary is Kind.BROWSER  # not capped
-    assert "stale-ua" in result.tags  # but flagged stale, never ancient
+    assert "stale-browser-ua" in result.tags  # but flagged stale, never ancient
+
+
+def test_bot_ua_only_for_unrecognised_bots() -> None:
+    # A recognised crawler is the declares-known-bot fact, never doubled by bot-ua.
+    known = classify_client(
+        ClientFeatures(
+            request_count=5,
+            ua_empty=False,
+            ua_declares_bot=True,
+            user_agent="Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+        )
+    )
+    assert "declares-known-bot" in known.tags and "bot-ua" not in known.tags
+    # A self-declared bot we don't recognise gets bot-ua, and no declares-known-bot.
+    unknown = classify_client(
+        ClientFeatures(request_count=5, ua_empty=False, ua_declares_bot=True, user_agent="FooBot/1.0")
+    )
+    assert "bot-ua" in unknown.tags and "declares-known-bot" not in unknown.tags
 
 
 def test_ua_age_tags() -> None:
     from datetime import datetime, timezone
 
     def tags_for(ua: str, when: datetime) -> frozenset[str]:
-        feats = ClientFeatures(
-            request_count=10,
-            ua_looks_like_browser=True,
-            asset_coload_ratio=0.6,
-            last_seen=when,
-            user_agent=ua,
-        )
+        feats = ClientFeatures(request_count=10, ua_empty=False, last_seen=when, user_agent=ua)
         return classify_client(feats).tags
 
     y2026 = datetime(2026, 6, 1, tzinfo=timezone.utc)
-    assert "ancient-ua" in tags_for("Chrome/106.0.0.0 Safari/537.36", y2026)
-    assert "current-ua" in tags_for(
+    assert "ancient-browser-ua" in tags_for("Chrome/106.0.0.0 Safari/537.36", y2026)
+    assert "current-browser-ua" in tags_for(
         "Chrome/120.0.0.0 Safari/537.36", datetime(2024, 1, 1, tzinfo=timezone.utc)
     )
-    assert "stale-ua" in tags_for("Firefox/100.0", datetime(2024, 6, 1, tzinfo=timezone.utc))
-    # A UA with no browser version carries none of the *-ua tags.
-    no_ua_tags = tags_for("curl/8.0", y2026)
-    assert not any(t.endswith("-ua") for t in no_ua_tags)
+    assert "stale-browser-ua" in tags_for("Firefox/100.0", datetime(2024, 6, 1, tzinfo=timezone.utc))
+    # A generic library has no browser version -> generic-ua, no browser/age tag.
+    curl_tags = tags_for("curl/8.0", y2026)
+    assert "generic-ua" in curl_tags
+    assert not any(t.endswith("-browser-ua") for t in curl_tags)
 
 
 def test_current_browser_version_stays_a_browser() -> None:
@@ -511,7 +525,10 @@ def test_fingerprint_poles_and_indeterminate_gating() -> None:
         last_seen=datetime(2024, 1, 1, tzinfo=timezone.utc),
     )
     bt = classify_client(browser).tags
-    assert {"browser-ua", "bursty", "loads-assets", "follows-links", "has-cache", "current-ua"} <= bt
+    # The UA-shape tag folds in the version age, so it's current-browser-ua, not
+    # a separate browser-ua + current-ua pair.
+    assert {"current-browser-ua", "bursty", "loads-assets", "follows-links", "has-cache"} <= bt
+    assert "browser-ua" not in bt
 
     # A cold library scraper: the negative poles -- and navigation is *omitted*
     # (not "cold") because no request carried a Referer, so it can't be judged.

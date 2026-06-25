@@ -14,3 +14,13 @@ ua_substring = "TurnitinBot"
 [[agent]]
 # https://panscient.com/ -- crawls to build datasets.
 ua_substring = "panscient"
+
+[[agent]]
+# https://www.diffbot.com/ -- structured-data extraction sold as a product.
+ua_substring = "Diffbot"
+domains = ["diffbot.com"]
+
+[[agent]]
+# Omgili / webz.io -- web data resale.
+ua_substring = "Omgilibot"
+domains = ["omgili.com"]

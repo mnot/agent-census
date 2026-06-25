@@ -79,10 +79,6 @@ ua_substring = "Bytespider"
 ua_substring = "TikTokSpider"
 
 [[agent]]
-ua_substring = "Diffbot"
-domains = ["diffbot.com"]
-
-[[agent]]
 ua_substring = "cohere-ai"
 domains = ["cohere.com"]
 
@@ -93,10 +89,6 @@ domains = ["cohere.com"]
 [[agent]]
 ua_substring = "ImagesiftBot"
 domains = ["imagesift.com"]
-
-[[agent]]
-ua_substring = "Omgilibot"
-domains = ["omgili.com"]
 
 [[agent]]
 ua_substring = "YouBot"

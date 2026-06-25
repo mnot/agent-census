@@ -158,6 +158,24 @@ def test_port_and_pid_directives() -> None:
     assert entry.extra["pid:pid"] == "1234"
 
 
+def test_custom_time_with_space_does_not_skip_line() -> None:
+    # A custom strftime time containing a space (%{%Y-%m-%d %H:%M:%S}t) must still
+    # match: a blanket \S+ stops at the space and would skip every line.
+    fmt = '%h "%{%Y-%m-%d %H:%M:%S}t" "%r" %>s'
+    line = '10.0.0.1 "2023-10-10 12:00:00" "GET / HTTP/1.1" 200'
+    entry = _one(fmt, line).entry
+    assert entry is not None
+    assert entry.extra["time:%Y-%m-%d %H:%M:%S"] == "2023-10-10 12:00:00"
+
+
+def test_custom_time_with_space_unquoted_matches() -> None:
+    fmt = "%h %{%Y-%m-%d %H:%M:%S}t %>s"
+    line = "10.0.0.1 2023-10-10 12:00:00 200"
+    entry = _one(fmt, line).entry
+    assert entry is not None
+    assert entry.extra["time:%Y-%m-%d %H:%M:%S"] == "2023-10-10 12:00:00"
+
+
 def test_unsupported_directive_fails_loudly() -> None:
     with pytest.raises(FormatSpecError):
         ApacheParser("%h %z")

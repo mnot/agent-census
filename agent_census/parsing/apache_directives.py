@@ -278,17 +278,61 @@ _PARAM_EXTRA: dict[str, tuple[str, str]] = {
     "C": (_QUOTED, "cookie:"),
     "n": (_UNQUOTED, "note:"),
     "e": (_UNQUOTED, "env:"),
-    "t": (_UNQUOTED, "time:"),
     "x": (_UNQUOTED, "ssl:"),
     "p": (_UNQUOTED, "port:"),
     "P": (_UNQUOTED, "pid:"),
 }
+
+# strftime conversion -> the regex that matches what it writes. Anything not
+# listed falls back to ``\S+``; literal characters in the format (including the
+# spaces a custom time can contain) are matched literally.
+_STRFTIME_REGEX = {
+    "Y": r"\d{4}", "y": r"\d{2}", "C": r"\d{2}", "G": r"\d{4}",
+    "m": r"\d{2}", "d": r"\d{2}", "e": r" ?\d{1,2}",
+    "H": r"\d{2}", "I": r"\d{2}", "M": r"\d{2}", "S": r"\d{2}",
+    "j": r"\d{3}", "U": r"\d{2}", "W": r"\d{2}", "V": r"\d{2}",
+    "u": r"\d", "w": r"\d", "s": r"\d+",
+    "p": r"[AP]M", "P": r"[ap]m",
+    "z": r"[+-]\d{4}", "Z": r"[A-Za-z]+",
+    "a": r"[A-Za-z]{3}", "A": r"[A-Za-z]+",
+    "b": r"[A-Za-z]{3}", "h": r"[A-Za-z]{3}", "B": r"[A-Za-z]+",
+    "F": r"\d{4}-\d{2}-\d{2}", "T": r"\d{2}:\d{2}:\d{2}", "R": r"\d{2}:\d{2}",
+    "D": r"\d{2}/\d{2}/\d{2}", "n": r"\n", "t": r"\t", "%": r"%",
+}  # fmt: skip
+
+
+def _strftime_fragment(fmt: str) -> str:
+    """Regex matching what an Apache ``%{fmt}t`` custom time writes.
+
+    Translating the strftime pattern (rather than using a blanket ``\\S+``) is
+    what lets a format containing a space -- e.g. ``%{%Y-%m-%d %H:%M:%S}t`` --
+    match at all, since ``\\S+`` stops at the first space and would fail the
+    whole line."""
+    out: list[str] = []
+    i = 0
+    while i < len(fmt):
+        char = fmt[i]
+        if char == "%" and i + 1 < len(fmt):
+            out.append(_STRFTIME_REGEX.get(fmt[i + 1], _UNQUOTED))
+            i += 2
+        else:
+            out.append(re.escape(char))
+            i += 1
+    return "".join(out) or _UNQUOTED
 
 
 def param_directive(name: str, letter: str) -> Directive:
     """Return the spec for a ``%{name}letter`` directive, or raise."""
     if letter == "i":
         return Directive(_QUOTED, _route_request_header(name))
+    if letter == "t":
+        # A custom time emits the strftime output verbatim (no brackets). When the
+        # format contains a space (e.g. ``%{%Y-%m-%d %H:%M:%S}t``) the blanket
+        # ``\S+`` can't span it and fails the whole line, so derive the fragment
+        # from the format. Space-free formats -- including Apache's ``msec`` /
+        # ``begin:`` time tokens -- keep the permissive ``\S+``.
+        pattern = _strftime_fragment(name) if " " in name else _UNQUOTED
+        return Directive(pattern, _extra_setter(f"time:{name}"))
     spec = _PARAM_EXTRA.get(letter)
     if spec is None:
         raise FormatSpecError(f"unsupported parameterized directive '%{{{name}}}{letter}'")

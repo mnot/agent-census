@@ -81,19 +81,6 @@ _NET_EGRESS = "egress"
 _NET_RESIDENTIAL = "residential"
 
 
-def _parse_asn(value: str | None) -> int | None:
-    """Parse a logged AS number (``16509`` or ``AS16509``) to an int, or None."""
-    if not value:
-        return None
-    text = value.strip()
-    if text[:2].lower() == "as":
-        text = text[2:]
-    try:
-        return int(text)
-    except ValueError:
-        return None
-
-
 def _hosting_provider(rep_ip: str, as_number: str | None) -> str | None:
     """The hosting provider for a client -- by IP range, else by its AS number.
 
@@ -101,7 +88,7 @@ def _hosting_provider(rep_ip: str, as_number: str | None) -> str | None:
     may be known only by ASN (e.g. Hetzner, whose ranges aren't bundled), so the
     AS fallback is what keeps such a client on the hosting side.
     """
-    return datacenter_provider(rep_ip) or datacenter_provider_for_asn(_parse_asn(as_number))
+    return datacenter_provider(rep_ip) or datacenter_provider_for_asn(uas.parse_asn(as_number))
 
 
 def _logged_asn(entry: LogEntry) -> str | None:
@@ -460,7 +447,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             # provider we know only by ASN is still recognised as a datacenter.
             provider = datacenter_provider(key.ip)
             if provider is None:
-                provider = datacenter_provider_for_asn(_parse_asn(features.as_number))
+                provider = datacenter_provider_for_asn(uas.parse_asn(features.as_number))
             asn_agent = uas.match_asn_any(features.as_number)
             if provider is not None:
                 network, network_category = provider, _NET_DATACENTER
@@ -612,7 +599,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         ip, ua = entry.remote_host, entry.user_agent
         asn = _asn_of(entry, ip)
         # Egress by IP range, else by AS number (VPNs/proxies that publish no list).
-        network = egress.lookup(ip) or egress.lookup_asn(_parse_asn(asn))
+        network = egress.lookup(ip) or egress.lookup_asn(uas.parse_asn(asn))
         entity = uas.match_asn_any(asn)
         crawler = _declared_spec(ua)
         if network is not None:

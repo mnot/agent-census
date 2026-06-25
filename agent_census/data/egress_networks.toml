@@ -29,12 +29,6 @@ format = "text"  # one exit-node IP per line
 # network. They publish no clean range list, so they're matched by AS number --
 # which needs the log to carry the client ASN (e.g. %{MM_ASN}e).
 [[network]]
-name = "NordVPN"
-tag = "vpn"
-group = "VPNs"
-asns = [136787]  # TEFINCOM S.A.
-
-[[network]]
 name = "Zscaler"
 tag = "corporate-proxy"
 group = "Corporate proxies"

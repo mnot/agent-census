@@ -42,6 +42,7 @@ from .inspect import ROLLUP_MIN_CLIENTS
 
 _KIND_COLORS: dict[Kind, str] = {
     Kind.BROWSER: "#2563eb",
+    Kind.APP: "#6366f1",
     Kind.CRAWLER: "#0891b2",
     Kind.SEARCH_ENGINE: "#16a34a",
     Kind.ARCHIVER: "#047857",

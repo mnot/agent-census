@@ -15,6 +15,7 @@ from .format import CONDUCT_TAGS
 # can't-say buckets (singleton, unknown) at the very end.
 KIND_ORDER: tuple[Kind, ...] = (
     Kind.BROWSER,
+    Kind.APP,
     Kind.FEED_READER,
     Kind.SOCIAL_PREVIEW,
     Kind.SEARCH_ENGINE,
@@ -35,6 +36,7 @@ KIND_ORDER: tuple[Kind, ...] = (
 
 KIND_BLURB: dict[Kind, str] = {
     Kind.BROWSER: "Interactive browsers loading pages and their sub-resources.",
+    Kind.APP: "Native mobile / desktop apps requesting via a platform networking stack.",
     Kind.CRAWLER: "Bots walking the site by following links at a steady pace.",
     Kind.SEARCH_ENGINE: "Declared search-engine crawlers indexing the site.",
     Kind.ARCHIVER: "Web-archiving / preservation crawlers (Internet Archive / Wayback Machine).",

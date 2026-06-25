@@ -184,10 +184,10 @@ also checks robots.txt compliance and verifies declared crawlers by DNS / IP
 range (on by default; --no-verify-bots to skip the network lookups).
 
 Client kinds:
-  browser       feed_reader    social_preview  search_engine  archiver
-  ai_crawler    seo_marketing  monitor         crawler        scraper
-  spoofed_browser  spam_bot    vuln_scanner    impersonator   singleton
-  unknown
+  browser       app            feed_reader     social_preview search_engine
+  archiver      ai_crawler     seo_marketing   monitor        crawler
+  scraper       spoofed_browser  spam_bot      vuln_scanner   impersonator
+  singleton     unknown
 
 Output is Markdown (default) or a self-contained HTML page.
 """

@@ -975,3 +975,27 @@ def test_classify_client_runs_all() -> None:
     )
     result = classify_client(feats)
     assert result.primary is Kind.BROWSER
+
+
+def test_native_app_stack_is_app_kind() -> None:
+    # An iOS app using CFNetwork, and a Flutter app using dart:io, are first-party
+    # app traffic -- not a browser, not a crawler.
+    cfnet = ClientFeatures(
+        request_count=20, user_agent="HackerNews/1541 CFNetwork/3860.600.12 Darwin/25.5.0"
+    )
+    assert classify_client(cfnet).primary is Kind.APP
+    dart = ClientFeatures(request_count=5, user_agent="Dart/3.11 (dart:io)")
+    assert classify_client(dart).primary is Kind.APP
+
+
+def test_feed_reading_app_stays_feed_reader() -> None:
+    # A feed reader that happens to ride CFNetwork is still a feed reader: the more
+    # specific identity (and its behaviour) outweighs the generic app stack.
+    feats = ClientFeatures(
+        request_count=10,
+        user_agent="NetNewsWire (RSS) CFNetwork/1410 Darwin/23.0.0",
+        feed_requests=10,
+        feed_ratio=1.0,
+    )
+    assert classify_client(feats).primary is Kind.FEED_READER
+

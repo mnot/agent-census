@@ -1,0 +1,17 @@
+# Native-app HTTP clients: platform networking stacks and app frameworks a
+# first-party mobile / desktop app uses to make requests -- not a browser engine,
+# not a crawler. Matched case-insensitively as a substring of the User-Agent.
+#
+# Deliberately conservative: only tokens that reliably mean "a native app".
+# okhttp is left out on purpose -- it's the default Android HTTP client but is
+# also the workhorse of countless scrapers, so its origin (not the UA) decides.
+
+app_clients = [
+    "CFNetwork",            # Apple URL Loading System (iOS / macOS apps)
+    "com.apple.",           # an Apple app's bundle id (e.g. com.apple.WebKit.Networking)
+    "NetworkingExtension",  # Apple network extension
+    "dart:io",              # Dart / Flutter apps
+    "AFNetworking",         # iOS networking library
+    "Alamofire",            # iOS / Swift networking library
+    "Ktor client",          # Kotlin / Android networking library
+]

@@ -8,6 +8,7 @@ aggregates by label), but it sets the order signals appear in inspect output.
 from __future__ import annotations
 
 from .ai_crawler import AiCrawlerClassifier
+from .app import AppClientClassifier
 from .archiver import ArchiverClassifier
 from .base import Classifier
 from .browser import BrowserClassifier
@@ -31,6 +32,7 @@ _CLASSIFIERS: tuple[Classifier, ...] = (
     DataHarvesterClassifier(),
     VulnScannerClassifier(),
     BrowserClassifier(),
+    AppClientClassifier(),
     CrawlerClassifier(),
     ScraperClassifier(),
     MonitorClassifier(),

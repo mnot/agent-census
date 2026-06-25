@@ -25,6 +25,7 @@ class Kind(str, Enum):
     """
 
     BROWSER = "browser"
+    APP = "app"
     CRAWLER = "crawler"
     VULN_SCANNER = "vuln_scanner"
     SEARCH_ENGINE = "search_engine"

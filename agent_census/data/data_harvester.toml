@@ -8,22 +8,20 @@
 # crawler (recognised by UA, never confirmed or flagged impersonator).
 
 [[agent]]
-# https://turnitin.com/robot/crawlerinfo.html -- builds Turnitin's plagiarism corpus.
-# Published crawler range 199.47.80.0-199.47.87.255 (the /21 also covers the
-# narrower 199.47.82.16-31 Turnitin lists).
+# https://turnitin.com/robot/crawlerinfo.html
 ua_substring = "TurnitinBot"
 ranges = ["199.47.80.0/21"]
 
 [[agent]]
-# https://panscient.com/ -- crawls to build datasets.
+# https://www.panscient.com/faq.htm
 ua_substring = "panscient"
 
 [[agent]]
-# https://www.diffbot.com/ -- structured-data extraction sold as a product.
+# https://www.diffbot.com/
 ua_substring = "Diffbot"
 domains = ["diffbot.com"]
 
 [[agent]]
-# Omgili / webz.io -- web data resale.
+# Omgili / webz.io
 ua_substring = "Omgilibot"
 domains = ["omgili.com"]

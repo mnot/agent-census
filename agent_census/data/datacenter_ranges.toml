@@ -48,10 +48,6 @@ format = "prefixes"
 asns = [15169, 396982]  # Google (15169) + Google Cloud (396982)
 
 [[source]]
-name = "Microsoft"
-asns = [8075]
-
-[[source]]
 name = "Cloudflare (IPv4)"
 ranges_url = "https://www.cloudflare.com/ips-v4"
 format = "text"
@@ -103,6 +99,9 @@ ranges_url = "https://stat.ripe.net/data/announced-prefixes/data.json?resource=A
 format = "ripestat"
 asns = [51167]
 
+[[source]]
+name = "Microsoft"
+asns = [8075]
 
 # Microsoft Azure publishes its ranges as a weekly "Service Tags" download whose
 # URL embeds a rotating date, so there is no stable URL to pin here; the inline

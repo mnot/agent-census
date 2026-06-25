@@ -14,6 +14,7 @@ from functools import lru_cache
 from ..dataload import load_list
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
+from .tags import identifies_as_known_agent
 
 _APP_TOKENS = re.compile("|".join(re.escape(token) for token in load_list("app_clients")), re.I)
 
@@ -32,6 +33,11 @@ class AppClientClassifier(Classifier):
     name = "app"
 
     def evaluate(self, features: ClientFeatures) -> list[Signal]:
+        # A platform networking stack is the *weakest* identity: if the UA also
+        # names a feed reader, crawler, or bot, that more specific identity wins
+        # (a feed reader on CFNetwork is a feed reader, not just "an app").
+        if identifies_as_known_agent(features):
+            return []
         token = app_stack_token(features.user_agent)
         if token is None:
             return []

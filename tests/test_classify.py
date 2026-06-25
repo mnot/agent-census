@@ -1011,6 +1011,21 @@ def test_feed_reading_app_stays_feed_reader() -> None:
     assert classify_client(feats).primary is Kind.FEED_READER
 
 
+def test_feed_reader_app_not_feed_dominant_is_not_an_app() -> None:
+    # Reeder / Tapestry / "RSS Mobile" ride CFNetwork but name a feed reader. Even
+    # when feeds aren't the majority of the window, the named identity beats the
+    # generic app stack -- they must not be filed as `app`.
+    for ua in (
+        "Reeder/5.0 CFNetwork/1410 Darwin/23.0.0",
+        "Tapestry/1.0 CFNetwork/1410 Darwin/23.0.0",
+        "RSS%20Mobile/2.1 CFNetwork/1410 Darwin/23.0.0",
+    ):
+        feats = ClientFeatures(
+            request_count=10, distinct_paths=8, feed_requests=3, feed_ratio=0.3, user_agent=ua
+        )
+        assert classify_client(feats).primary is not Kind.APP, ua
+
+
 
 def test_datacenter_library_harvester_is_a_scraper() -> None:
     # A generic HTTP library fetching several pages from hosting is a scraper, even

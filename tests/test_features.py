@@ -173,6 +173,18 @@ def test_feed_requests_by_filename() -> None:
     assert feats.feed_ratio == 0.75
 
 
+def test_feed_token_must_be_a_whole_filename_part() -> None:
+    # The feed tokens match a whole dot/dash/underscore part, not a bare substring,
+    # so ordinary pages that merely contain "feed"/"atom"/"rss" don't read as feeds.
+    entries = [
+        entry("/anatomy.html", offset=0),  # 'atom' inside 'anatomy'
+        entry("/feedback/", offset=1),  # 'feed' inside 'feedback'
+        entry("/rss.xml", offset=2),  # a real feed -- 'rss' is a whole part
+    ]
+    feats = extract_features(entries)
+    assert feats.feed_requests == 1
+
+
 def test_feed_requests_by_content_type() -> None:
     from agent_census.model import LogEntry
 

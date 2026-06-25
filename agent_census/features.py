@@ -78,7 +78,11 @@ def _top_segment(path: str) -> str:
 
 
 # Tokens that mark a feed in a URL filename, e.g. /blog/feed/, /index.rss, atom.xml.
-_FEED_TOKENS = ("feed", "rss", "atom")
+# Matched as a whole dot/dash/underscore-delimited part, not a bare substring, so
+# "feedback.html" / "anatomy.html" don't read as feeds (mirrors the word-anchored
+# UA-side detection in classify/feed_reader.py).
+_FEED_TOKENS = frozenset({"feed", "rss", "atom"})
+_FILENAME_PARTS = re.compile(r"[.\-_]")
 
 
 def _response_content_type(entry: LogEntry) -> str:
@@ -109,9 +113,9 @@ def _as_identity(entry: LogEntry) -> tuple[str | None, str | None]:
 
 def _is_feed_request(entry: LogEntry, path: str) -> bool:
     """True if the request looks like a feed poll: feed-ish URL or RSS/Atom type."""
-    parts = [p for p in path.split("/") if p]
-    filename = parts[-1].lower() if parts else ""
-    if any(token in filename for token in _FEED_TOKENS):
+    segments = [p for p in path.split("/") if p]
+    filename = segments[-1].lower() if segments else ""
+    if _FEED_TOKENS.intersection(_FILENAME_PARTS.split(filename)):
         return True
     content_type = _response_content_type(entry)
     return "rss" in content_type or "atom" in content_type

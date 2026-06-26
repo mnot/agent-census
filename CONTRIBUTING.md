@@ -59,6 +59,29 @@ The best way to submit a change is through a pull request. A few things to keep 
 If you're not sure how to dig in, feel free to ask for help, or sketch out an idea in an issue first.
 
 
+## Calibrating the Classifier
+
+The confidence weights and thresholds are hand-tuned, so they need checking
+against real logs. `agent-census calibrate` emits a Markdown digest of the
+traffic most likely to be misclassified -- a tuning aid, not the human report.
+Each section is capped (`--top`), and it keeps every client in memory, so it's
+heavier than `analyze`. It surfaces:
+
+* **Unrecognised ASNs** -- clients with an AS number that matched no list and
+  fell to residential. High-volume, non-browser ones are candidates for the ASN
+  lists; feed them into `audit --asn`.
+* **Declared but unverified crawlers** -- self-identified bots we couldn't
+  confirm, split into recognised-but-unverified and wholly unrecognised.
+* **Anomaly / spoof flags** -- every client tagged as forged or hostile. Scan for
+  false positives: a real client flagged here is a heuristic bug.
+* **Browser identification quality** -- version-age bands and regex gaps (browser
+  UAs we couldn't read a version from), plus tells like a browser UA from a
+  datacentre or one that loaded no assets.
+* **Singletons, unknown clusters, and conflicting signals** -- one-request
+  clients, traffic the combiner couldn't place, and clients where two classifiers
+  fired strongly for different kinds.
+
+
 ## Auditing Data
 
 `agent-census audit` audits the packaged data -- currently, the datacentre/ASN

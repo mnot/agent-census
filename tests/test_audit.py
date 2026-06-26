@@ -207,6 +207,25 @@ def test_render_concerns_groups_and_falls_back() -> None:
     assert "Nothing flagged" in "\n".join(_render_concerns({}, [], []))
 
 
+def test_concerns_traffic_mix_can_be_suppressed_for_egress() -> None:
+    report = _report(radar_org="StrongVPN", bot_pct=8.0, ripe_holder="StrongVPN")
+    # Datacentre: low automation is suspect and flagged.
+    assert any(h == "Traffic mix" for h, _k, _m in _concerns(report, "StrongVPN"))
+    # Egress: low automation is normal, so no traffic concern (name still checked).
+    assert all(h != "Traffic mix" for h, _k, _m in _concerns(report, "StrongVPN", flag_traffic_mix=False))
+
+
+def test_render_concerns_emits_extra_sections() -> None:
+    rendered = "\n".join(
+        _render_concerns(
+            {}, [], [], extras=(("Automation per network (informational)", ["AS1: 8% automated"]),)
+        )
+    )
+    assert "## Automation per network (informational)" in rendered
+    assert "AS1: 8% automated" in rendered
+    assert "Nothing flagged" not in rendered  # an extra section counts as content
+
+
 def test_render_concerns_sorts_traffic_mix_least_automated_first() -> None:
     rendered = "\n".join(
         _render_concerns({"Traffic mix": [(40.0, "AS40: forty"), (5.0, "AS5: five")]}, [], [])

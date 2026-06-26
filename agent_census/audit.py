@@ -27,7 +27,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from . import USER_AGENT, userconfig
-from .dataload import load_range_sources
+from .dataload import load_egress_networks, load_range_sources
 from .iprange import cache_dir
 
 _RADAR = "https://api.cloudflare.com/client/v4/radar"
@@ -477,8 +477,15 @@ _DEAD = "Unknown / dead ASNs"
 _CONCERN_ORDER = (_WRONG_NAME, _TRAFFIC_MIX, _DEAD)
 
 
-def _concerns(report: AsnReport, label: str) -> list[tuple[str, float, str]]:
-    """Zero or more ``(heading, sort_key, message)`` problems this listing raises."""
+def _concerns(
+    report: AsnReport, label: str, *, flag_traffic_mix: bool = True
+) -> list[tuple[str, float, str]]:
+    """Zero or more ``(heading, sort_key, message)`` problems this listing raises.
+
+    ``flag_traffic_mix`` is for datacentres, whose egress should be near-all
+    automated; for an egress network (a VPN/proxy fronting real users) low
+    automation is normal, so the caller turns that concern off.
+    """
     if not report.radar_known:  # Radar doesn't know it; the registry / PeeringDB might
         hints = _other_sources(report)
         note = (
@@ -495,7 +502,7 @@ def _concerns(report: AsnReport, label: str) -> list[tuple[str, float, str]]:
         if report.ripe_holder:
             msg += f" and RIPE has {report.ripe_holder!r}"
         out.append((_WRONG_NAME, 0.0, msg))
-    if report.bot_pct is not None and report.bot_pct < _BOT_MIXED:
+    if flag_traffic_mix and report.bot_pct is not None and report.bot_pct < _BOT_MIXED:
         # sort the section least-automated (most suspect) first
         msg = f"AS{report.asn} ({label}): only {report.bot_pct:.0f}% automated according to Radar"
         out.append((_TRAFFIC_MIX, report.bot_pct, msg))
@@ -503,79 +510,149 @@ def _concerns(report: AsnReport, label: str) -> list[tuple[str, float, str]]:
 
 
 def _render_concerns(
-    by_heading: dict[str, list[tuple[float, str]]], suggestions: list[str], duplicates: list[str]
+    by_heading: dict[str, list[tuple[float, str]]],
+    suggestions: list[str],
+    duplicates: list[str],
+    *,
+    extras: tuple[tuple[str, list[str]], ...] = (),
+    level: str = "##",
 ) -> list[str]:
+    """Render a dataset's findings. ``extras`` are extra ``(heading, lines)``
+    sections (e.g. egress automation); ``level`` sets the heading depth."""
     lines: list[str] = []
     for heading in _CONCERN_ORDER:
         items = by_heading.get(heading)
         if items:
             messages = [m for _key, m in sorted(items, key=lambda im: im[0])]
-            lines += [f"## {heading}", "", *(f"- {m}" for m in messages), ""]
+            lines += [f"{level} {heading}", "", *(f"- {m}" for m in messages), ""]
+    for title, body in extras:
+        if body:
+            lines += [f"{level} {title}", "", *(f"- {m}" for m in body), ""]
     if suggestions:
         # Each entry is a self-contained block (a single bullet, or a parent with a
         # sub-list) already including its leading "- ", so emit them verbatim.
-        lines += ["## Suggested additions (datacentre siblings)", "", *suggestions, ""]
+        lines += [f"{level} Suggested additions (datacentre siblings)", "", *suggestions, ""]
     if duplicates:
-        lines += ["## Duplicate ASNs", "", *(f"- {d}" for d in duplicates), ""]
-    if not any(by_heading.values()) and not suggestions and not duplicates:
-        lines += ["_Nothing flagged: every listed ASN matches Radar and looks datacentre-like._"]
+        lines += [f"{level} Duplicate ASNs", "", *(f"- {d}" for d in duplicates), ""]
+    extras_empty = not any(body for _t, body in extras)
+    if not any(by_heading.values()) and not suggestions and not duplicates and extras_empty:
+        lines += ["_Nothing flagged._"]
     return lines
 
 
 def audit_file(client: _Client, use_pdb: bool, verbose: bool) -> int:
-    """Audit datacenter_ranges.toml: concerns grouped by type, full listing on --verbose."""
-    sources = load_range_sources("datacenter_ranges")
-    known: set[int] = {asn for src in sources for asn in src.asns}
+    """Audit both packaged datasets -- datacentre ranges and egress networks."""
+    datacentre = [(s.name, s.asns) for s in load_range_sources("datacenter_ranges")]
+    egress = [(n.name, n.asns) for n in load_egress_networks()]
+    # Listed across *both* files: siblings already covered anywhere aren't suggested,
+    # and the same ASN appearing in both datasets is itself worth flagging.
+    known = {asn for _n, asns in (*datacentre, *egress) for asn in asns}
     pdb = _peeringdb_batch(client, known) if use_pdb else {}
     ripe = _ripe_batch(client, known)
+    origin: dict[int, set[tuple[str, str]]] = {}  # asn -> {(dataset, provider)}
+    lines = ["# ASN data audit", ""]
+    lines += _audit_section(
+        client, "Datacentre ranges", datacentre, known, ripe, pdb, use_pdb, verbose, origin
+    )
+    lines += _audit_section(
+        client, "Egress networks", egress, known, ripe, pdb, use_pdb, verbose, origin
+    )
+    lines += _cross_dataset(origin)
+    sys.stdout.write("\n".join(lines).rstrip() + "\n")
+    return 0
+
+
+def _audit_section(  # pylint: disable=too-many-locals
+    client: _Client,
+    title: str,
+    entries: list[tuple[str, tuple[int, ...]]],
+    known: set[int],
+    ripe: dict[int, str],
+    pdb: dict[int, tuple[str | None, str | None]],
+    use_pdb: bool,
+    verbose: bool,
+    origin: dict[int, set[tuple[str, str]]],
+) -> list[str]:
+    """One dataset's findings under an ``## title`` heading (concerns at ``###``).
+
+    Datacentre entries suggest datacentre-like siblings and flag a low traffic mix;
+    egress entries do neither -- their automation share is reported, not judged.
+    """
+    datacentre = title.startswith("Datacentre")
     seen: dict[int, str] = {}
     duplicates: list[str] = []
-    sibs_by_provider: dict[str, dict[int, tuple[str, float]]] = (
-        {}
-    )  # provider -> {asn: (name, bot%)}
-    suggested_seen: set[int] = set()  # an ASN is suggested once, under the first provider only
     by_heading: dict[str, list[tuple[float, str]]] = {}
+    sibs_by_provider: dict[str, dict[int, tuple[str, float]]] = {}
+    suggested_seen: set[int] = set()
+    automation: list[tuple[float, str]] = []  # egress: reported for context, not flagged
     detail: list[str] = []  # the full per-provider listing (only printed with --verbose)
-    for source in sources:
-        if not source.asns:
+    for name, asns in entries:
+        if not asns:
             continue
         if verbose:
-            detail += [f"## {source.name}", ""]
-        for asn in source.asns:
-            if asn in seen and seen[asn] != source.name:
-                duplicates.append(f"AS{asn}: listed under both {seen[asn]!r} and {source.name!r}")
-            seen[asn] = source.name
+            detail += [f"### {name}", ""]
+        for asn in asns:
+            if asn in seen and seen[asn] != name:
+                duplicates.append(f"AS{asn}: listed under both {seen[asn]!r} and {name!r}")
+            seen[asn] = name
+            origin.setdefault(asn, set()).add((title, name))
             report = gather(client, asn)
             report.ripe_holder = ripe.get(asn)
             _attach_pdb(report, pdb, use_pdb)
-            siblings = _datacentre_siblings(client, report, known)
+            siblings = _datacentre_siblings(client, report, known) if datacentre else []
             if verbose:
                 detail.append(_asn_bullet(report, siblings))
-            for heading, sort_key, message in _concerns(report, source.name):
+            for heading, sort_key, message in _concerns(report, name, flag_traffic_mix=datacentre):
                 by_heading.setdefault(heading, []).append((sort_key, message))
+            if not datacentre and report.bot_pct is not None:
+                automation.append(
+                    (report.bot_pct, f"AS{asn} ({name}): {report.bot_pct:.0f}% automated per Radar")
+                )
             for sib_asn, sib_name, sib_bot in siblings:
                 if sib_asn in suggested_seen:  # don't suggest the same sibling twice
                     continue
                 suggested_seen.add(sib_asn)
-                sibs_by_provider.setdefault(source.name, {})[sib_asn] = (sib_name, sib_bot)
+                sibs_by_provider.setdefault(name, {})[sib_asn] = (sib_name, sib_bot)
         if verbose:
             detail.append("")
     suggestions = [
         _render_suggestion(provider, [(a, n, b) for a, (n, b) in sorted(bag.items())])
         for provider, bag in sibs_by_provider.items()
     ]
-    lines = ["# Datacentre ASN audit", ""]
+    extras = (
+        ()
+        if datacentre
+        else (("Automation per network (informational)", [m for _k, m in sorted(automation)]),)
+    )
+    out = [f"## {title}", ""]
     if verbose:
-        lines += [*detail, "---", ""]
-    lines += _render_concerns(by_heading, suggestions, duplicates)
-    sys.stdout.write("\n".join(lines).rstrip() + "\n")
-    return 0
+        out += [*detail]
+    out += _render_concerns(by_heading, suggestions, duplicates, extras=extras, level="###")
+    out += [""]
+    return out
+
+
+def _cross_dataset(origin: dict[int, set[tuple[str, str]]]) -> list[str]:
+    """ASNs that appear in more than one dataset -- a datacentre listed as egress too."""
+    lines: list[str] = []
+    for asn in sorted(origin):
+        if len({dataset for dataset, _name in origin[asn]}) > 1:
+            where = ", ".join(f"{name!r} ({dataset})" for dataset, name in sorted(origin[asn]))
+            lines.append(f"- AS{asn}: {where}")
+    if lines:
+        return ["## Listed in more than one dataset", "", *lines, ""]
+    return []
 
 
 def assess_candidates(client: _Client, asns: list[int], use_pdb: bool) -> int:
     """Assess arbitrary ASNs as datacentre candidates (e.g. from calibrate)."""
-    sources = load_range_sources("datacenter_ranges")
-    listed: dict[int, str] = {asn: src.name for src in sources for asn in src.asns}
+    listed: dict[int, str] = {}
+    for src in load_range_sources("datacenter_ranges"):
+        for asn in src.asns:
+            listed[asn] = f"{src.name} (datacentre)"
+    for net in load_egress_networks():
+        for asn in net.asns:
+            listed[asn] = f"{net.name} (egress)"
     known = set(listed)
     pdb = _peeringdb_batch(client, asns) if use_pdb else {}
     ripe = _ripe_batch(client, asns)

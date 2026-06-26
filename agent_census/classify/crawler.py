@@ -7,9 +7,9 @@ than hitting URLs cold.
 
 from __future__ import annotations
 
-from .. import uas
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
+from .tags import recognised_specific_agent
 
 
 class CrawlerClassifier(Classifier):
@@ -17,10 +17,11 @@ class CrawlerClassifier(Classifier):
     name = "crawler"
 
     def evaluate(self, features: ClientFeatures) -> list[Signal]:
-        # A UA recognised as a specific crawler (search engine, SEO, AI, …) belongs to
-        # that category's classifier; the generic crawler must not compete with it
-        # (its behavioural score could otherwise outrank the specific recognition).
-        if uas.names_known_crawler(features.user_agent):
+        # A client recognised as a specific agent -- a known crawler (by UA token or
+        # origin AS) or a feed reader -- belongs to that classifier; the generic
+        # crawler must not compete (its behavioural score could otherwise outrank the
+        # recognition). It still claims an *un*recognised self-declared bot.
+        if recognised_specific_agent(features):
             return []
         confidence = 0.0
         evidence: list[str] = []

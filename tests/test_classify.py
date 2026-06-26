@@ -11,6 +11,7 @@ from agent_census.classify.browser import BrowserClassifier
 from agent_census.classify.combiner import combine
 from agent_census.classify.crawler import CrawlerClassifier
 from agent_census.classify.feed_reader import FeedReaderClassifier
+from agent_census.classify.scraper import ScraperClassifier
 from agent_census.classify.vuln_scanner import VulnScannerClassifier
 from agent_census.model import (
     BotVerification,
@@ -241,10 +242,15 @@ def test_recognised_crawler_is_not_downgraded_to_generic_crawler(
         ua_empty=False,
         user_agent="Mozilla/5.0 (compatible; SomeKnownBot/1.0; +http://example.com/bot)",
     )
-    # Unrecognised: the generic crawler classifier owns it.
+    # Unrecognised: the generic crawler and scraper classifiers own it.
     assert classify_client(feats).primary is Kind.CRAWLER
-    # Recognised in a specific category: crawler must defer (here, faked recognition).
+    # Recognised by UA token: both generic classifiers defer.
     monkeypatch.setattr(uas, "names_known_crawler", lambda ua: True)
+    assert not CrawlerClassifier().evaluate(feats)
+    assert not ScraperClassifier().evaluate(feats)
+    monkeypatch.setattr(uas, "names_known_crawler", lambda ua: False)
+    # Recognised by origin AS (a spoofed-UA crawler): crawler must defer here too.
+    monkeypatch.setattr(uas, "match_asn_any", lambda asn: "Sberbank")
     assert not CrawlerClassifier().evaluate(feats)
 
 

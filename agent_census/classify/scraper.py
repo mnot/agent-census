@@ -9,6 +9,7 @@ from __future__ import annotations
 from .. import uas
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
+from .tags import recognised_specific_agent
 
 
 class ScraperClassifier(Classifier):
@@ -16,6 +17,10 @@ class ScraperClassifier(Classifier):
     name = "scraper"
 
     def evaluate(self, features: ClientFeatures) -> list[Signal]:
+        # A recognised specific agent (known crawler by UA/AS, or a feed reader) is
+        # owned by its own classifier; the generic scraper defers to it.
+        if recognised_specific_agent(features):
+            return []
         confidence = 0.0
         evidence: list[str] = []
 

@@ -56,9 +56,20 @@ def identifies_as_known_agent(features: ClientFeatures) -> bool:
     UA looks like Chrome and even co-loads assets, but the origin network gives it
     away, so the browser hypothesis must still bow to the crawler classification.
     """
+    return features.ua_declares_bot or recognised_specific_agent(features)
+
+
+def recognised_specific_agent(features: ClientFeatures) -> bool:
+    """A *positively identified* agent: a known crawler (by UA token or origin AS),
+    or a feed reader. Unlike :func:`identifies_as_known_agent` this excludes a bare
+    self-declared bot -- one that says it's a bot but names no specific identity.
+
+    The generic ``crawler`` / ``scraper`` classifiers defer to such an agent: it has
+    a specific classifier of its own, whose verdict a behavioural score must not
+    outrank (a recognised crawler that also crawls broadly is not a generic crawler).
+    """
     return (
-        features.ua_declares_bot
-        or uas.names_known_crawler(features.user_agent)
+        uas.names_known_crawler(features.user_agent)
         or ua_is_feed_reader(features.user_agent)
         or uas.match_asn_any(features.as_number) is not None
     )

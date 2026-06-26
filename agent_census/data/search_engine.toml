@@ -65,6 +65,55 @@ ua_substring = "YandexImages"
 domains = ["yandex.com", "yandex.net", "yandex.ru"]
 
 [[agent]]
+ua_substring = "YandexBlogs"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexFavicons"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexMobileBot"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexMedia"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexOntoDB"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexRCA"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexRenderResourcesBot"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexVideo"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexAdditionalBot"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexComBot"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+# arguably not search
+[[agent]]
+ua_substring = "YandexImageResizer"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexUserproxy"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
 # https://support.apple.com/en-us/119829
 ua_substring = "Applebot"
 domains = ["applebot.apple.com"]

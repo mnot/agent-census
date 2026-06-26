@@ -312,7 +312,7 @@ def test_network_rollups_attribute_providers_and_render(
     # its network bucket; a residential client stays in the catch-all.
     monkeypatch.setattr(pipeline, "datacenter_subnet", lambda ip: None)
     monkeypatch.setattr(
-        pipeline, "datacenter_provider", lambda ip: "Amazon AWS" if ip.startswith("52.") else None
+        pipeline, "datacenter_provider", lambda ip: "Amazon" if ip.startswith("52.") else None
     )
     rows = [
         ("52.1.1.1", "python-requests/2.31.0"),
@@ -328,15 +328,15 @@ def test_network_rollups_attribute_providers_and_render(
     parser = resolve("apache", {"format": PRESETS["combined"]})
     result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
 
-    assert "Amazon AWS" in result.network_rollups
+    assert "Amazon" in result.network_rollups
     assert pipeline.RESIDENTIAL_NETWORK in result.network_rollups
-    assert result.network_categories["Amazon AWS"] == "datacenter"
-    aws_requests = sum(r.requests for r in result.network_rollups["Amazon AWS"].values())
+    assert result.network_categories["Amazon"] == "datacenter"
+    aws_requests = sum(r.requests for r in result.network_rollups["Amazon"].values())
     assert aws_requests == 2  # both 52.x clients
 
     text = render_report(result, source="x")
     assert "Requests by kind and network" in text
-    assert "Amazon AWS" in text
+    assert "Amazon" in text
 
 
 def test_logged_asn_marks_datacenter_without_ip_ranges(tmp_path: Path) -> None:
@@ -352,8 +352,8 @@ def test_logged_asn_marks_datacenter_without_ip_ranges(tmp_path: Path) -> None:
     parser = resolve("apache", {"format": fmt})
     result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
 
-    assert "Amazon AWS" in result.network_rollups
-    assert result.network_categories["Amazon AWS"] == "datacenter"
+    assert "Amazon" in result.network_rollups
+    assert result.network_categories["Amazon"] == "datacenter"
     profile = next(p for p in result.profiles if p.client_id.ip == "9.9.9.9")
     assert "datacenter" in profile.classification.tags
 
@@ -373,10 +373,10 @@ def test_markdown_network_table_bolds_row_leader() -> None:
         identity_strategy="ip_ua",
         identity_stats=IdentityStats(0, 0, 0),
         network_rollups={
-            "Amazon AWS": {Kind.SCRAPER: KindRollup(clients=1, requests=900)},
+            "Amazon": {Kind.SCRAPER: KindRollup(clients=1, requests=900)},
             RESIDENTIAL_NETWORK: {Kind.SCRAPER: KindRollup(clients=1, requests=100)},
         },
-        network_categories={"Amazon AWS": "datacenter", RESIDENTIAL_NETWORK: "residential"},
+        network_categories={"Amazon": "datacenter", RESIDENTIAL_NETWORK: "residential"},
     )
     text = render_report(result, source="x")
     assert "Requests by kind and network" in text

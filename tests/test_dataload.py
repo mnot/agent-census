@@ -67,7 +67,7 @@ def test_asn_range_feeds_loaded(synthetic_asn_crawler: object) -> None:
 
 def test_range_source_asns_parse_as_ints() -> None:
     by_name = {s.name: s for s in load_range_sources("datacenter_ranges")}
-    assert 16509 in by_name["Amazon AWS"].asns  # EC2
+    assert 16509 in by_name["Amazon"].asns  # EC2
     assert 24940 in by_name["Hetzner"].asns
     assert all(isinstance(asn, int) for s in by_name.values() for asn in s.asns)
 

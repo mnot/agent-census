@@ -46,8 +46,9 @@ def _header(
     skips = result.skips
     stats = result.identity_stats
     start, end = time_range(result.rollups)
+    heading = "# Agent Census" + (f" — {result.site}" if result.site else "")
     lines = [
-        "# Agent Census",
+        heading,
         "",
         f"- **Source:** `{source}`",
         f"- **Lines:** {skips.total_lines:,} total · {skips.parsed:,} parsed · "

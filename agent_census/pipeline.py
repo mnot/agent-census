@@ -13,7 +13,7 @@ from __future__ import annotations
 import gzip
 import heapq
 import itertools
-from collections import OrderedDict, defaultdict
+from collections import Counter, OrderedDict, defaultdict
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
@@ -292,6 +292,9 @@ class AnalysisResult:
     # Each network label's category (datacenter / egress / residential), so the
     # report can collapse only the datacenter tail.
     network_categories: dict[str, str] = field(default_factory=dict)
+    # The site analysed: the first --vhost if one was given, else the most common
+    # served host (logged %v, else the Host header). None if the log carries none.
+    site: str | None = None
 
 
 def read_lines(path: Path) -> Iterator[str]:
@@ -438,6 +441,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
     seq = itertools.count()
     total = parsed = skipped = excluded = 0
     client_count = singleton_count = multi_ua_ips = 0
+    host_counts: Counter[str] = Counter()  # served host -> line count, for the site label
     latest_ts: float | None = None
     reasons: dict[str, int] = defaultdict(int)
 
@@ -634,6 +638,9 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             excluded += 1
             continue
         parsed += 1
+        served = _vhost_of(entry)
+        if served:
+            host_counts[served] += 1
         ip, ua = entry.remote_host, entry.user_agent
         asn = _asn_of(entry, ip)
         # Egress by IP range, else by AS number (VPNs/proxies that publish no list).
@@ -747,6 +754,11 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
 
     profiles = [profile for heap in kept.values() for (_, _, profile) in heap]
     profiles.sort(key=lambda p: p.features.request_count, reverse=True)
+    if vhosts:
+        site: str | None = vhosts[0]
+    else:
+        top = host_counts.most_common(1)
+        site = top[0][0] if top else None
     return AnalysisResult(
         profiles=tuple(profiles),
         skips=SkipStats(total, parsed, skipped, dict(reasons), excluded),
@@ -758,6 +770,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             for net, kinds in net_rollups.items()
         },
         network_categories=dict(net_categories),
+        site=site,
     )
 
 

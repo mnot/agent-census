@@ -55,13 +55,13 @@ agent-census analyze cloudflare-logs.json --log-format-preset cloudflare
 
 *Use `agent-census analyze -h` for the full list of analysis options.*
 
-To **check `robots.txt` compliance**, use `--robots-file` to supply a local file, hostname, or URL:
+**robots.txt compliance**: Use `--robots-file` to supply a local file, hostname, or URL:
 
 ```
 agent-census analyze access.log --robots-file ./robots.txt
 ```
 
-Output is a self-contained HTML page by default; redirect it with `-o`, or pass
+**Output format**: Output is a self-contained HTML page by default; redirect it with `-o`, or pass
 `--md` for Markdown:
 
 ```
@@ -69,19 +69,27 @@ agent-census analyze access.log -o census.html
 agent-census analyze access.log --md
 ```
 
-`--vhost SUBSTRING` analyses only the lines served for a matching host:
+**Host header filtering**: `--vhost SUBSTRING` analyses only the lines served for a matching host:
 
 ```
 agent-census analyze access.log --log-format-preset vhost_combined \
     --vhost mnot.net --vhost www.mnot.net
 ```
 
-Use `--identity` to change how requests are associated with clients. The default, `ip_ua`, groups
-by (IP, User-Agent). Behind a CDN, use `forwarded` (the left-most `X-Forwarded-For`); for
-IP-rotating bots in one range, `ip_ua_subnet`.
+**Client identity**: Use `--identity` to change how requests are associated with clients. The
+default, `ip_ua`, groups by (IP, User-Agent). Behind a CDN, use `forwarded` (the left-most
+`X-Forwarded-For`); for IP-rotating bots in one range, `ip_ua_subnet`.
 
 ```
 agent-census analyze access.log --identity forwarded
+```
+
+**AS lookups**: If your logs don't record the AS number, point `--mm-asn-db` at a [MaxMind ASN
+database](https://dev.maxmind.com/geoip/docs/databases/asn/) to recover it from each client's IP.
+The database is consulted first (it can be fresher than the log) and is remembered between runs:
+
+```
+agent-census analyze access.log --mm-asn-db ./GeoLite2-ASN.mmdb
 ```
 
 ### Remembered settings
@@ -142,7 +150,8 @@ preset, so add them to a custom `LogFormat` (quoted) -- they're worth it:
   `mod_maxminddb`) -- name datacentre clients by their hosting organisation, and
   recognise datacentres and ASN-listed crawlers by AS number. Much of
   [Networks and hosting](#networks-and-hosting) leans on these; log **both** (the
-  number drives recognition, the org names it).
+  number drives recognition, the org names it). Can't log them? `--mm-asn-db`
+  recovers the AS from a MaxMind database instead (see [Options](#options)).
 - **Content-Type** (`"%{Content-Type}o"`) -- the response media type, which
   sharpens feed-reader detection (an RSS/Atom type, not just a feed-shaped URL).
 - **X-Forwarded-For** (`"%{X-Forwarded-For}i"`) -- if you're behind a CDN or

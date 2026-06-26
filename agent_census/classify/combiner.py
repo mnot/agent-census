@@ -46,10 +46,12 @@ _RANK = {kind: i for i, kind in enumerate(_PRIORITY)}
 DEFAULT_UNKNOWN_THRESHOLD = 0.45
 
 # Positive "this is a machine" tells (tags). A would-be-unknown client carrying one
-# is automation of an unidentified kind, not a true unknown. Kept to tells that are
-# definitional (a library UA, a headless engine) or behaviourally proven (re-fetching
-# without ever caching) -- never mere absence of human signal.
-_AUTOMATION_TELLS = frozenset({"headless-browser", "no-browser-cache", "generic-ua"})
+# is automation of an unidentified kind, not a true unknown -- and characterisable
+# even from a single request, so it outranks the singleton bucket. Kept to tells that
+# are definitional (a library UA, a self-declared bot, a headless engine) or
+# behaviourally proven (re-fetching without ever caching) -- never mere absence of
+# human signal.
+_AUTOMATION_TELLS = frozenset({"headless-browser", "no-browser-cache", "generic-ua", "bot-ua"})
 
 
 def _pick(by_label: dict[Kind, float]) -> Kind:
@@ -156,14 +158,17 @@ def _below_threshold(
         return verdict(
             Kind.SCRAPER, 0.5, "generic HTTP client harvesting pages from a datacenter IP"
         )
-    # One request is too little to characterize: bucket it by volume.
-    if features.request_count == 1:
-        return verdict(Kind.SINGLETON, 1.0, "single request — too little activity to characterize")
-    # A positive machine tell with no purpose behind it: automation, kind unidentified.
+    # A positive machine tell with no purpose behind it: automation, kind
+    # unidentified. Checked before the singleton bucket -- a one-shot that names a
+    # library / declares itself a bot / runs headless is characterisable, not
+    # "too little to tell".
     if tags & _AUTOMATION_TELLS:
         return verdict(
             Kind.AUTOMATION, 0.5, "a machine tell is present, but no purpose could be identified"
         )
+    # One request, and nothing else to go on: too little to characterize, by volume.
+    if features.request_count == 1:
+        return verdict(Kind.SINGLETON, 1.0, "single request — too little activity to characterize")
     confidence = max(by_label.values()) if by_label else 0.0
     return Classification(
         primary=Kind.UNKNOWN,

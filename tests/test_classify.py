@@ -477,6 +477,23 @@ def test_combiner_one_request_keeps_confident_kind() -> None:
     assert result.primary is Kind.VULN_SCANNER
 
 
+def test_one_request_library_is_automation_not_singleton() -> None:
+    # A one-shot library client carries a machine tell, so it's characterisable as
+    # automation -- it shouldn't fall into the "too little to tell" singleton bucket.
+    feats = ClientFeatures(request_count=1, ua_empty=False, user_agent="curl/8.7.1")
+    assert classify_client(feats).primary is Kind.AUTOMATION
+
+
+def test_one_request_self_declared_bot_is_automation() -> None:
+    feats = ClientFeatures(
+        request_count=1,
+        ua_empty=False,
+        ua_declares_bot=True,
+        user_agent="MysteryBot/1.0 (+http://example.com/bot)",
+    )
+    assert classify_client(feats).primary is Kind.AUTOMATION
+
+
 _FAKE_BROWSER = ClientFeatures(
     request_count=5,
     ua_looks_like_browser=True,

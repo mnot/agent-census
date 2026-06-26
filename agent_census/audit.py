@@ -26,7 +26,7 @@ import urllib.parse
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from . import __version__, userconfig
+from . import USER_AGENT, userconfig
 from .dataload import load_range_sources
 from .iprange import cache_dir
 
@@ -36,7 +36,6 @@ _PEERINGDB = "https://www.peeringdb.com/api"
 # `sourceapp` is requested as a courtesy so RIPE can attribute the traffic. Each
 # holder reads "<RIR handle> - <org name>".
 _RIPESTAT = "https://stat.ripe.net/data/as-names/data.json?sourceapp=agent-census"
-_UA = f"agent-census/{__version__} (+https://pypi.org/project/agent-census)"
 _TIMEOUT = 20
 _MAX_ATTEMPTS = 3  # per request, on connection error or 429/5xx
 _RETRY_CAP = 30.0  # seconds; ceiling on any single backoff
@@ -155,7 +154,7 @@ class _Client:
         parts = urllib.parse.urlsplit(url)
         host = parts.netloc
         path = parts.path + (f"?{parts.query}" if parts.query else "")
-        headers = {"Accept": "application/json", "User-Agent": _UA}
+        headers = {"Accept": "application/json", "User-Agent": USER_AGENT}
         if auth and self._token:
             headers["Authorization"] = f"Bearer {self._token}"
         for attempt in range(_MAX_ATTEMPTS):

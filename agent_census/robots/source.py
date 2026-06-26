@@ -13,10 +13,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from .. import USER_AGENT
 from ..errors import ConfigError
 
 _FETCH_TIMEOUT = 10
-_FETCH_UA = "agent-census (+https://github.com/mnot/agent-census)"
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,7 +50,7 @@ def from_file(path: Path) -> RobotsDoc:
 
 def from_network(url: str) -> RobotsDoc:
     """Fetch robots.txt over the network (opt-in)."""
-    request = urllib.request.Request(url, headers={"User-Agent": _FETCH_UA})
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=_FETCH_TIMEOUT) as response:  # noqa: S310
             raw = response.read()

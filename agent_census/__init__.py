@@ -1,5 +1,8 @@
 __version__ = "0.0.1"
 __author__ = "Mark Nottingham <mnot@mnot.net>"
+
+# Sent on every outbound HTTP request (range feeds, robots.txt, the audit APIs).
+USER_AGENT = f"agent-census/{__version__} (+https://pypi.org/project/agent-census)"
 __copyright__ = """\
 Copyright (c) Mark Nottingham
 

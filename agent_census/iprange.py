@@ -20,6 +20,8 @@ import urllib.request
 from collections.abc import Iterable
 from pathlib import Path
 
+from . import USER_AGENT
+
 Network = ipaddress.IPv4Network | ipaddress.IPv6Network
 Interval = tuple[int, int]  # (first address, last address) as ints, one IP version
 Intervals = tuple[list[Interval], list[Interval]]  # (v4, v6)
@@ -160,7 +162,7 @@ def _warn(message: str) -> None:
 
 
 def _http_get(url: str) -> str | None:
-    request = urllib.request.Request(url, headers={"User-Agent": "agent-census"})
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=_FETCH_TIMEOUT) as response:  # noqa: S310
             return str(response.read().decode("utf-8", "replace"))

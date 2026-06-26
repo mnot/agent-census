@@ -165,7 +165,7 @@ def test_headless_browser_is_tagged() -> None:
     assert "headless-browser" in classify_client(feats).tags
 
 
-def test_no_browser_cache_is_tagged() -> None:
+def test_lacks_cache_is_tagged() -> None:
     # Re-fetches the same handful of paths many times, never a 304 -> holds no cache.
     feats = ClientFeatures(
         request_count=300,
@@ -179,7 +179,7 @@ def test_no_browser_cache_is_tagged() -> None:
     )
     assert feats.holds_no_cache
     result = classify_client(feats)
-    assert "no-browser-cache" in result.tags
+    assert "lacks-cache" in result.tags
     # The REDbot tool-driver shape: browser UA, but no cache and no purpose -> automation.
     assert result.primary is Kind.AUTOMATION
 

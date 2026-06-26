@@ -106,8 +106,8 @@ _TAG_HELP: dict[str, str] = {
     "post-heavy": "Most requests are POSTs — form/submission traffic, e.g. comment or login spam.",
     "has-cache": "Received 304 Not Modified responses — makes conditional requests "
     "and holds a real cache, the mark of a browser or a polite poller.",
-    "no-browser-cache": "Re-fetches the same URLs (or makes many requests) yet never "
-    "receives a 304 — keeps no cache, so not a real browser despite the look of one.",
+    "lacks-cache": "Re-fetches the same URLs (or makes many requests) yet never receives "
+    "a 304 — makes no use of HTTP caching / revalidation, unlike a browser or polite poller.",
     "singleton": "Made exactly one request — too little on its own to characterise, "
     "so the kind leans on its UA and origin alone.",
     "headless-browser": "User-Agent names a headless / automation-driven browser engine "

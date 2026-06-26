@@ -50,7 +50,7 @@ DEFAULT_UNKNOWN_THRESHOLD = 0.45
 # self-declared bot, a headless engine) or behaviourally proven (re-fetching without
 # ever caching) -- never mere absence of human signal. A datacenter origin is a
 # further tell, handled separately (it isn't a tag the classifiers emit).
-_AUTOMATION_TELLS = frozenset({"headless-browser", "no-browser-cache", "generic-ua", "bot-ua"})
+_AUTOMATION_TELLS = frozenset({"headless-browser", "lacks-cache", "generic-ua", "bot-ua"})
 
 
 def _pick(by_label: dict[Kind, float]) -> Kind:

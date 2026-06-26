@@ -135,7 +135,7 @@ def _fingerprint_tags(features: ClientFeatures) -> set[str]:
     if features.status_counts.get(304, 0) > 0:
         tags.add("has-cache")
     elif features.holds_no_cache:
-        tags.add("no-browser-cache")
+        tags.add("lacks-cache")
 
     # A headless / automation-driven browser engine: renders (so it can load
     # assets) but the UA names the harness. A machine tell regardless of behaviour.

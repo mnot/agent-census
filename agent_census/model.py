@@ -21,7 +21,7 @@ class Kind(str, Enum):
     fuss. ``UNKNOWN`` is the honest fallback the combiner uses when no signal is
     strong enough — it is never argued for by a classifier. ``AUTOMATION`` is a
     narrower fallback for a would-be-unknown client that still shows a positive
-    machine tell (a headless engine, a no-browser-cache re-fetch pattern, a generic
+    machine tell (a headless engine, a cache-lacking re-fetch pattern, a generic
     HTTP-library UA, or a hosting / datacenter origin): clearly not a person, purpose
     unidentified. A single-request client is not its own kind -- "made one request"
     is a volume fact carried by the ``singleton`` *tag*, on whatever kind it lands.

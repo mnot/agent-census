@@ -511,7 +511,7 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
     if asn_resolver is not None:
         _warn_maxmind_skew(asn_resolver, result, "AS attributions")
 
-    flags: CountryFlags = {}
+    flags = CountryFlags()
     if args.mm_country_db:
         country_resolver = open_country_db(args.mm_country_db)
         try:

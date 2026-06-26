@@ -50,30 +50,52 @@ class AsnResolver:
         self.reader.close()
 
 
+@dataclass(frozen=True)
+class CountryHit:
+    """A country lookup result: the ISO code, the English name, and a location-meaningless flag.
+
+    ``suppressed`` is set when the IP's traits mark it anycast, an anonymising
+    proxy, or a satellite provider -- cases where a single origin country is
+    meaningless. Those traits live only in the City / Enterprise / Anonymous-IP
+    tiers; a free Country database carries no ``traits`` block, so ``suppressed``
+    is simply always ``False`` there.
+    """
+
+    iso_code: str | None = None
+    name: str | None = None
+    suppressed: bool = False
+
+
+_SUPPRESS_TRAITS = ("is_anycast", "is_anonymous_proxy", "is_satellite_provider")
+
+
 @dataclass
 class CountryResolver:
-    """Resolves an IP to its ``(iso_code, country_name)`` from a MaxMind database."""
+    """Resolves an IP to its :class:`CountryHit` from a MaxMind database."""
 
     reader: maxminddb.Reader
     build_epoch: int | None = None  # the DB's build time, for the staleness warning
 
-    def lookup(self, ip: str) -> tuple[str | None, str | None]:
-        """The ``(ISO code, name)`` for ``ip``; ``(None, None)`` if absent or not a real IP."""
+    def lookup(self, ip: str) -> CountryHit:
+        """The :class:`CountryHit` for ``ip``; an empty hit if absent or not a real IP."""
         try:
             record = self.reader.get(ip)
         except ValueError:  # not a valid address (e.g. a folded synthetic key)
-            return None, None
+            return CountryHit()
         if not isinstance(record, dict):
-            return None, None
+            return CountryHit()
         country = record.get("country")
         if not isinstance(country, dict):
-            return None, None
+            return CountryHit()
         code = country.get("iso_code")
         names = country.get("names")
         name = names.get("en") if isinstance(names, dict) else None
-        return (
-            code if isinstance(code, str) and code else None,
-            name if isinstance(name, str) and name else None,
+        traits = record.get("traits")
+        suppressed = isinstance(traits, dict) and any(traits.get(t) for t in _SUPPRESS_TRAITS)
+        return CountryHit(
+            iso_code=code if isinstance(code, str) and code else None,
+            name=name if isinstance(name, str) and name else None,
+            suppressed=bool(suppressed),
         )
 
     def close(self) -> None:

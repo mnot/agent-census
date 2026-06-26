@@ -26,7 +26,7 @@ from .format import (
     top_evidence,
     truncate,
 )
-from .geo import CountryFlags
+from .geo import CountryFlag, CountryFlags
 
 
 def _robots_summary(rollup: KindRollup) -> str:
@@ -148,8 +148,8 @@ def _network_table(result: AnalysisResult) -> list[str]:
 
 
 def _flag(profile: ClientProfile, flags: CountryFlags) -> str:
-    """A leading ``'🇩🇪 '`` for a flagged client, else ``''``."""
-    entry = flags.get(profile.client_id)
+    """A leading ``'🇩🇪 '`` for a flagged client (its actor-level flag), else ``''``."""
+    entry: CountryFlag | None = flags.for_actor(profile.client_id)
     return f"{entry[0]} " if entry else ""
 
 
@@ -180,7 +180,7 @@ def _kind_section(
     top: int,
     flags: CountryFlags | None = None,
 ) -> list[str]:
-    flags = flags or {}
+    flags = flags or CountryFlags()
     actors = group_actors(group)
     typical = typical_conduct(group)
     lines = [
@@ -229,7 +229,7 @@ def render_report(
     country_flags: CountryFlags | None = None,
 ) -> str:
     """Render the full Markdown report for an analysis run."""
-    flags = country_flags or {}
+    flags = country_flags or CountryFlags()
     groups = by_kind(result.profiles)
     lines = _header(result, source, robots_note, elapsed)
     lines += _summary_table(result)

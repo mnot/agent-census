@@ -96,8 +96,10 @@ agent-census analyze access.log --mm-asn-db ./GeoLite2-ASN.mmdb
 database](https://dev.maxmind.com/geoip/docs/databases/country/) to show a small flag next to
 the highest-traffic non-human clients we *haven't* tied to a specific operator — an unknown
 scraper or an impersonator, where the origin country adds signal (a verified, IP/rDNS-identified
-crawler gets none). In HTML the flag carries the country name as a tooltip. Also remembered
-between runs:
+crawler gets none). For a client spanning many IPs the flag is its **traffic-majority** country;
+a client with no country above 70% of its traffic shows a neutral 🌐 instead. In HTML the flag
+carries the country name as a tooltip and each address gets its own flag on expansion. Also
+remembered between runs:
 
 ```
 agent-census analyze access.log --mm-country-db ./GeoLite2-Country.mmdb

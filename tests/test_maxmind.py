@@ -10,7 +10,7 @@ import pytest
 
 from agent_census import identity, pipeline
 from agent_census.cli import _warn_maxmind_skew
-from agent_census.maxmind import AsnResolver, CountryResolver
+from agent_census.maxmind import AsnResolver, CountryHit, CountryResolver
 from agent_census.parsing import resolve
 from agent_census.parsing.apache import PRESETS
 
@@ -59,17 +59,27 @@ def _country(table: dict[str, object], **kw: object) -> CountryResolver:
 
 def test_country_lookup_extracts_code_and_name() -> None:
     r = _country({_IP: {"country": {"iso_code": "DE", "names": {"en": "Germany"}}}})
-    assert r.lookup(_IP) == ("DE", "Germany")
+    assert r.lookup(_IP) == CountryHit("DE", "Germany")
 
 
 def test_country_lookup_handles_miss_partial_and_bad_ip() -> None:
-    assert _country({}).lookup(_IP) == (None, None)  # not in DB
+    assert _country({}).lookup(_IP) == CountryHit()  # not in DB
     # Code present but no English name -> name degrades to None.
-    assert _country({_IP: {"country": {"iso_code": "FR"}}}).lookup(_IP) == ("FR", None)
+    assert _country({_IP: {"country": {"iso_code": "FR"}}}).lookup(_IP) == CountryHit("FR", None)
     # A record without a country block at all.
-    assert _country({_IP: {"continent": {"code": "EU"}}}).lookup(_IP) == (None, None)
+    assert _country({_IP: {"continent": {"code": "EU"}}}).lookup(_IP) == CountryHit()
     # An invalid address makes the reader raise; we swallow it.
-    assert _country({}, raise_on=_IP).lookup(_IP) == (None, None)
+    assert _country({}, raise_on=_IP).lookup(_IP) == CountryHit()
+
+
+def test_country_lookup_suppresses_anycast_and_proxy_traits() -> None:
+    base = {"country": {"iso_code": "US", "names": {"en": "United States"}}}
+    for trait in ("is_anycast", "is_anonymous_proxy", "is_satellite_provider"):
+        hit = _country({_IP: {**base, "traits": {trait: True}}}).lookup(_IP)
+        assert hit == CountryHit("US", "United States", suppressed=True), trait
+    # Traits present but all false -> not suppressed.
+    hit = _country({_IP: {**base, "traits": {"is_anycast": False}}}).lookup(_IP)
+    assert hit.suppressed is False
 
 
 def _one_line(tmp_path: Path, line: str, fmt: str, resolver: AsnResolver | None) -> object:

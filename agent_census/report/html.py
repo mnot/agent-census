@@ -608,7 +608,7 @@ def _client_row(
     )
 
 
-def _member_tr(profile: ClientProfile) -> str:
+def _member_tr(profile: ClientProfile, flag: str = "") -> str:
     """A collapsed member as a real table row: IP/AS in Client, its own req/bytes."""
     prefix, _, _ = client_id_parts(profile)
     asn = as_display(profile.features.as_org, profile.features.as_number)
@@ -616,19 +616,19 @@ def _member_tr(profile: ClientProfile) -> str:
     return (
         f"<tr class='amem'><td class='cid copy' data-copy='{_esc(profile.client_id.ip)}' "
         "title='Click to copy this id for: inspect --client'>"
-        f"<span class='mono'>{_esc(prefix)}</span>{asn_html}</td>"
+        f"{flag}<span class='mono'>{_esc(prefix)}</span>{asn_html}</td>"
         f"<td class='num'>{profile.features.request_count:,}</td>"
         f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
         "<td></td><td></td><td></td></tr>"
     )
 
 
-def _ip_member_tr(ip: str) -> str:
+def _ip_member_tr(ip: str, flag: str = "") -> str:
     """A clustered member IP as a row (address only; folded entries keep no per-IP stats)."""
     return (
         f"<tr class='amem'><td class='cid copy' data-copy='{_esc(ip)}' "
         "title='Click to copy this id for: inspect --client'>"
-        f"<span class='mono'>{_esc(ip)}</span></td>"
+        f"{flag}<span class='mono'>{_esc(ip)}</span></td>"
         "<td></td><td></td><td></td><td></td><td></td></tr>"
     )
 
@@ -637,6 +637,7 @@ def _folded_tbody(
     profile: ClientProfile,
     *,
     flag: str = "",
+    flags: CountryFlags | None = None,
     filterable: bool = False,
     suppress: frozenset[str] = frozenset(),
 ) -> str:
@@ -661,7 +662,8 @@ def _folded_tbody(
         f"<td>{_tags_html(cls.tags - suppress)}</td>"
         f"<td>{_esc(truncate(top_evidence(profile)))}</td></tr>"
     )
-    rows = "".join(_ip_member_tr(ip) for ip in members)
+    cf = flags or CountryFlags()
+    rows = "".join(_ip_member_tr(ip, _flag_html(cf.for_ip(ip))) for ip in members)
     return f"<tbody class='actor'>{summary}{rows}</tbody>"
 
 
@@ -678,10 +680,13 @@ def _actor_tbody(
     hidden until the summary row is clicked (toggled by the page script). ``suppress``
     drops the kind's baseline conduct tags (shown in the header instead).
     """
-    flag = _flag_html((flags or {}).get(actor.lead.client_id))
+    cf = flags or CountryFlags()
+    flag = _flag_html(cf.for_actor(actor.lead.client_id))
     if not actor.collapsed:
         if len(actor.lead.member_ips) >= 2:
-            return _folded_tbody(actor.lead, flag=flag, filterable=filterable, suppress=suppress)
+            return _folded_tbody(
+                actor.lead, flag=flag, flags=cf, filterable=filterable, suppress=suppress
+            )
         return (
             f"<tbody>"
             f"{_client_row(actor.lead, flag=flag, filterable=filterable, suppress=suppress)}"
@@ -707,7 +712,7 @@ def _actor_tbody(
         f"<td class='num'>{cls.confidence:.0%}</td>"
         f"<td>{_tags_html(cls.tags - suppress)}</td><td>{evidence}</td></tr>"
     )
-    members = "".join(_member_tr(m) for m in actor.members)
+    members = "".join(_member_tr(m, _flag_html(cf.for_member(m.client_id))) for m in actor.members)
     return f"<tbody class='actor'>{summary}{members}</tbody>"
 
 
@@ -718,7 +723,7 @@ def _kind_section(
     top: int,
     flags: CountryFlags | None = None,
 ) -> str:
-    flags = flags or {}
+    flags = flags or CountryFlags()
     actors = group_actors(group)
     typical = typical_conduct(group)
     title = f"{_kind_badge(kind)} {rollup.clients:,} clients · {rollup.requests:,} requests"
@@ -769,7 +774,7 @@ def render_report_html(
     country_flags: CountryFlags | None = None,
 ) -> str:
     """Render the full analysis report as a standalone HTML page."""
-    flags = country_flags or {}
+    flags = country_flags or CountryFlags()
     groups = by_kind(result.profiles)
     heading = "Agent Census" + (f" — {result.site}" if result.site else "")
     parts = [

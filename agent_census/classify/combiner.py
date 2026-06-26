@@ -164,6 +164,7 @@ def _looks_like_datacenter_scraper(features: ClientFeatures) -> bool:
         and (uas.is_library(features.user_agent) or features.ua_empty)
         and features.vuln_path_hits == 0
         and features.traversal_hits == 0
+        and features.evasion_hits == 0
     )
 
 

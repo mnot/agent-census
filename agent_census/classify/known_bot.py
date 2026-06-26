@@ -29,7 +29,12 @@ class KnownBotClassifier(Classifier):
         if features.fetched_robots_txt:
             confidence += 0.08
             evidence.append("fetched /robots.txt")
-        if features.vuln_path_hits == 0 and features.traversal_hits == 0:
+        no_probing = (
+            features.vuln_path_hits == 0
+            and features.traversal_hits == 0
+            and features.evasion_hits == 0
+        )
+        if no_probing:
             confidence += 0.05
             evidence.append("no vulnerability probing observed")
         return [self._signal(confidence, evidence)]

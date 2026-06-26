@@ -174,7 +174,7 @@ def _conduct_tags(features: ClientFeatures) -> set[str]:
     # vuln-path hits are gated on a ratio: a broad crawler that grazes a few
     # attack-shaped URLs over tens of thousands of requests isn't a scanner, while
     # a focused probe run is mostly probes (and a lone pure probe is ratio 1.0).
-    if features.traversal_hits > 0 or features.vuln_path_ratio >= 0.05:
+    if features.traversal_hits > 0 or features.evasion_hits > 0 or features.vuln_path_ratio >= 0.05:
         tags.add("probing")
     if features.ratio_404 > 0.6 and features.distinct_404_paths >= 15:
         tags.add("404-storm")

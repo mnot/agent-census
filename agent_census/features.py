@@ -32,6 +32,10 @@ _PAGE_EXT = frozenset("html htm xhtml php asp aspx jsp shtml cfm".split())
 # Path markers for directory traversal / injection attempts.
 _TRAVERSAL_MARKERS = ("../", "..%2f", "%2e%2e", "..\\", "%00", "/etc/passwd", "/proc/self")
 
+# Double / overlong encoding -- a deliberate WAF-evasion tell, not just traversal.
+# There is no legitimate reason to double-encode a path, so this is weighted higher.
+_EVASION_MARKERS = ("%252e", "%252f", "%255c", "%c0%ae", "%c0%af", "%u002e")
+
 _EXOTIC_METHODS = frozenset("PUT DELETE PROPFIND PROPPATCH CONNECT TRACE PATCH MKCOL".split())
 
 _COLOAD_WINDOW_SECONDS = 10.0
@@ -41,6 +45,7 @@ _COLOAD_WINDOW_SECONDS = 10.0
 _VULN_PATTERNS = tuple(p.lower() for p in load_list("vuln_paths"))
 _VULN_RE = re.compile("|".join(re.escape(p) for p in _VULN_PATTERNS)) if _VULN_PATTERNS else None
 _TRAVERSAL_RE = re.compile("|".join(re.escape(m) for m in _TRAVERSAL_MARKERS))
+_EVASION_RE = re.compile("|".join(re.escape(m) for m in _EVASION_MARKERS))
 
 # Predicate the robots stage injects to flag a path the client may not fetch.
 DisallowedCheck = Callable[[str], bool]
@@ -215,7 +220,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
 
     __slots__ = (
         "_disallowed_check", "count", "total_bytes", "status_counts", "count_404",
-        "paths_404", "vuln_hits", "vuln_sample", "traversal_hits", "methods",
+        "paths_404", "vuln_hits", "vuln_sample", "traversal_hits", "evasion_hits", "methods",
         "distinct_paths", "static_count", "fetched_robots", "user_agent", "as_org",
         "as_number", "first_seen",
         "last_seen", "_has_prev", "_prev_top", "breadth_changes",
@@ -235,6 +240,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         self.count_404 = 0
         self.vuln_hits = 0
         self.traversal_hits = 0
+        self.evasion_hits = 0
         self.static_count = 0
         self.fetched_robots = False
         self.user_agent: str | None = None
@@ -311,6 +317,8 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         haystack = low + (entry.query or "").lower()
         if _TRAVERSAL_RE.search(haystack):
             self.traversal_hits += 1
+        if _EVASION_RE.search(haystack):
+            self.evasion_hits += 1
 
         if entry.method:
             if self.methods is None:
@@ -451,6 +459,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         self.count_404 += other.count_404
         self.vuln_hits += other.vuln_hits
         self.traversal_hits += other.traversal_hits
+        self.evasion_hits += other.evasion_hits
         self.static_count += other.static_count
         self.breadth_changes += other.breadth_changes
         self.breadth_pairs += other.breadth_pairs
@@ -550,6 +559,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
             vuln_path_ratio=_ratio(self.vuln_hits, self.count),
             sample_vuln_paths=tuple(self.vuln_sample or ()),
             traversal_hits=self.traversal_hits,
+            evasion_hits=self.evasion_hits,
             inter_arrival_mean=timing["mean"],
             inter_arrival_median=timing["median"],
             inter_arrival_p95=timing["p95"],

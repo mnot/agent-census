@@ -138,7 +138,7 @@ class BrowserClassifier(Classifier):
         # threshold rather than let asset co-loading carry it to a confident
         # verdict. (Ignoring robots.txt is NOT penalised -- it does not bind a
         # human browsing by hand.)
-        if features.traversal_hits > 0 or features.vuln_path_hits >= 2:
+        if features.traversal_hits > 0 or features.evasion_hits > 0 or features.vuln_path_hits >= 2:
             confidence = min(confidence, 0.3)
             disqualified = True
             evidence.append("but probes attack paths — not human browsing")

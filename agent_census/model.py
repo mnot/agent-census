@@ -145,6 +145,7 @@ class ClientFeatures:  # pylint: disable=too-many-instance-attributes
     vuln_path_ratio: float = 0.0
     sample_vuln_paths: tuple[str, ...] = ()
     traversal_hits: int = 0
+    evasion_hits: int = 0  # double / overlong encoding -- deliberate WAF evasion
 
     # timing / rate (None when too few requests to measure intervals)
     inter_arrival_mean: float | None = None

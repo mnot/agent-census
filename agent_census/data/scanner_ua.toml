@@ -6,4 +6,8 @@ scanner_ua = [
     "CensysInspect", "InternetMeasurement", "l9scan", "BlackVeil-Security-Scanner",
     "SecurityScanner", "AliyunSecBot", "TLM-Audit-Scanner", "CMS-Checker",
     "docs-cortex.paloaltonetworks",
+    "acunetix", "nessus", "openvas", "netsparker", "qualysguard", "arachni",
+    "wfuzz", "feroxbuster", "gobuster", "dirbuster", "commix", "wapiti",
+    "whatweb", "joomscan", "droopescan", "xsstrike", "dotdotpwn",
+    "l9explore", "l9tcpid",
 ]

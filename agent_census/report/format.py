@@ -239,7 +239,7 @@ def feature_rows(feats: ClientFeatures) -> list[tuple[str, str]]:
         (
             "vuln-path hits",
             f"{feats.vuln_path_hits} ({pct(feats.vuln_path_ratio)}); "
-            f"traversal {feats.traversal_hits}",
+            f"traversal {feats.traversal_hits}; evasion {feats.evasion_hits}",
         ),
         ("distinct paths", f"{feats.distinct_paths} (coverage {pct(feats.coverage)})"),
         ("feed requests", f"{feats.feed_requests} ({pct(feats.feed_ratio)})"),

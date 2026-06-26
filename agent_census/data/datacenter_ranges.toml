@@ -36,25 +36,25 @@ name = "Cloud.ru"
 asns = [208677]
 
 [[source]]
-name = "Amazon AWS"
+name = "Amazon"
 ranges_url = "https://ip-ranges.amazonaws.com/ip-ranges.json"
 format = "aws"
 asns = [16509, 14618, 36263]
 
 [[source]]
-name = "Google Cloud"
+name = "Google"
 ranges_url = "https://www.gstatic.com/ipranges/cloud.json"
 format = "prefixes"
 asns = [15169, 396982, 19527, 43515, 139070, 139190]
 
 [[source]]
-name = "Cloudflare (IPv4)"
+name = "Cloudflare v4"
 ranges_url = "https://www.cloudflare.com/ips-v4"
 format = "text"
 asns = [13335]
 
 [[source]]
-name = "Cloudflare (IPv6)"
+name = "Cloudflare v6"
 ranges_url = "https://www.cloudflare.com/ips-v6"
 format = "text"
 asns = [13335]
@@ -70,7 +70,7 @@ name = "Rackspace"
 asns = [44009, 15395, 39921, 198220]
 
 [[source]]
-name = "Linode / Akamai"
+name = "Linode"
 ranges_url = "https://geoip.linode.com"
 format = "csv"  # RFC 8805 geofeed; first column is the prefix
 asns = [63949, 20940, 24319]
@@ -82,13 +82,13 @@ format = "subnets"
 asns = [20473]  # The Constant Company
 
 [[source]]
-name = "Oracle Cloud"
+name = "Oracle"
 ranges_url = "https://docs.oracle.com/iaas/tools/public_ip_ranges.json"
 format = "oracle"
 asns = [31898, 6142, 11049, 11506, 14544, 20037, 46558, 54253]
 
 [[source]]
-name = "Yandex Cloud"
+name = "Yandex"
 ranges_url = "https://tech.cdn.yandex.net/prefixes/yc.json"
 
 [[source]]
@@ -104,13 +104,13 @@ asns = [8075, 3598, 8068, 8069, 17144, 30520, 46182, 54396, 63314]
 # fallback above does not cover Azure. Add a current Service Tags URL by hand if
 # you need Azure coverage:
 [[source]]
-name = "Microsoft Azure"
+name = "Azure"
 asns = [12076]
 # ranges_url = "https://download.microsoft.com/.../ServiceTags_Public_YYYYMMDD.json"
 # format = "azure"
 
 [[source]]
-name = "OneHostPlanet"
+name = "1HostPlanet"
 asns = [209155]
 
 [[source]]
@@ -118,7 +118,7 @@ name = "Scaleway"
 asns = [202023, 12876, 29447]
 
 [[source]]
-name = "Huawei Cloud"
+name = "Huawei"
 asns = [136907, 55990, 151610]
 
 [[source]]
@@ -134,7 +134,7 @@ name = "HostGlobal"
 asns = [202306]
 
 [[source]]
-name = "Tencent Cloud"
+name = "Tencent"
 asns = [139341, 132203, 137876, 45090]
 
 [[source]]
@@ -142,11 +142,11 @@ name = "Interserver"
 asns = [19318]
 
 [[source]]
-name = "Cherry Servers"
+name = "CherryServers"
 asns = [216444, 204770, 16125]
 
 [[source]]
-name = "netcup / Anexia"
+name = "netcup"
 asns = [197540, 42473, 51453]
 
 [[source]]
@@ -154,7 +154,7 @@ name = "Datacamp"  # CDN77 / DataCamp hosting + CDN
 asns = [60068, 212238]
 
 [[source]]
-name = "Neue Medien Muennich"
+name = "NM Muennich"
 asns = [34788]
 
 [[source]]
@@ -166,7 +166,7 @@ name = "Akamai"
 asns = [36183, 12222, 17204, 35994]
 
 [[source]]
-name = "ColoCrossing / HostPapa"
+name = "ColoCrossing"
 asns = [36352, 11989, 23273, 40092]
 
 [[source]]
@@ -206,11 +206,11 @@ name = "Clouvider"
 asns = [62240]
 
 [[source]]
-name = "Stark Industries Solutions"
+name = "Stark"
 asns = [44477]
 
 [[source]]
-name = "Limestone Networks"
+name = "Limestone"
 asns = [46475]
 
 [[source]]

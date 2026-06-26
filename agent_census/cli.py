@@ -8,6 +8,7 @@ import sys
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import __version__, identity, iprange, pipeline, userconfig
@@ -15,6 +16,7 @@ from .audit import run as run_audit
 from .classify import DEFAULT_UNKNOWN_THRESHOLD
 from .errors import AgentCensusError
 from .identity import ClientKeyStrategy
+from .maxmind import AsnResolver, open_asn_db
 from .netverify import BotVerifier
 from .parsing import available, resolve
 from .parsing.apache import PRESETS
@@ -144,6 +146,16 @@ def _add_shared(parser: argparse.ArgumentParser) -> None:
         help="fetch providers' published IP ranges for datacenter / egress "
         "detection (default: on, cached weekly; --no-fetch-ranges stays offline "
         "on the bundled inline ranges)",
+    )
+
+    asn_group = parser.add_argument_group("ASN lookup (optional)")
+    asn_group.add_argument(
+        "--mm-asn-db",
+        type=Path,
+        metavar="PATH",
+        help="MaxMind-format ASN database (.mmdb) used to resolve each client's "
+        "origin AS from its IP. Wins over an AS the log already carries (the "
+        "database can be fresher). Remembered between runs.",
     )
 
     out_group = parser.add_argument_group("output")
@@ -398,10 +410,41 @@ def _apply_persisted_settings(args: argparse.Namespace) -> None:
         elif "robots_url" in cfg:
             args.robots_url = cfg["robots_url"]
 
+    if args.mm_asn_db is not None:
+        cfg["mm_asn_db"], updated = str(args.mm_asn_db), True
+    elif "mm_asn_db" in cfg:
+        args.mm_asn_db = Path(cfg["mm_asn_db"])
+
     if updated:
         userconfig.save(cfg)
     if args.identity is None:
         args.identity = "ip_ua"  # the built-in default when nothing is set or saved
+
+
+_MAXMIND_SKEW_DAYS = 90  # warn if the DB was built this far outside the log's span
+
+
+def _warn_maxmind_skew(resolver: AsnResolver, result: AnalysisResult) -> None:
+    """Warn loudly when the MaxMind DB was built well outside the log's time span."""
+    if resolver.build_epoch is None:
+        return
+    seen = [t for p in result.profiles for t in (p.features.first_seen, p.features.last_seen) if t]
+    if not seen:
+        return
+    built = datetime.fromtimestamp(resolver.build_epoch, tz=timezone.utc)
+    low, high = min(seen), max(seen)
+    if built < low:
+        gap, when = (low - built).days, "before"
+    elif built > high:
+        gap, when = (built - high).days, "after"
+    else:
+        return
+    if gap > _MAXMIND_SKEW_DAYS:
+        print(
+            f"agent-census: warning: the MaxMind database was built {gap} days {when} the "
+            "log period; its AS attributions may not match the log's era.",
+            file=sys.stderr,
+        )
 
 
 def _run_pipeline(args: argparse.Namespace) -> _RunContext:
@@ -416,20 +459,28 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
     if args.fetch_ranges:
         iprange.enable_remote()
     quiescent = args.quiescent_hours * 3600 if args.quiescent_hours > 0 else None
+    asn_resolver = open_asn_db(args.mm_asn_db) if args.mm_asn_db else None
 
     start = time.monotonic()
-    result = pipeline.analyze(
-        args.logfiles,
-        parser,
-        strategy,
-        robots=rules,
-        verifier=verifier,
-        unknown_threshold=args.unknown_threshold,
-        keep_signals=args.command in ("inspect", "calibrate"),
-        quiescent_seconds=quiescent,
-        max_per_kind=args.max_per_kind,
-        vhosts=args.vhost,
-    )
+    try:
+        result = pipeline.analyze(
+            args.logfiles,
+            parser,
+            strategy,
+            robots=rules,
+            verifier=verifier,
+            unknown_threshold=args.unknown_threshold,
+            keep_signals=args.command in ("inspect", "calibrate"),
+            quiescent_seconds=quiescent,
+            max_per_kind=args.max_per_kind,
+            vhosts=args.vhost,
+            asn_resolver=asn_resolver,
+        )
+    finally:
+        if asn_resolver is not None:
+            asn_resolver.close()
+    if asn_resolver is not None:
+        _warn_maxmind_skew(asn_resolver, result)
     elapsed = time.monotonic() - start
     return _RunContext(
         parser=parser, strategy=strategy, result=result, robots_note=robots_note, elapsed=elapsed

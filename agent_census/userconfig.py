@@ -22,6 +22,7 @@ PERSISTED = (
     "robots_file",
     "robots_url",
     "cf_api_token",
+    "mm_asn_db",
 )
 
 

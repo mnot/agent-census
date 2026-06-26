@@ -32,6 +32,7 @@ from .hosting import (
     subnet_of,
 )
 from .identity import ClientKeyStrategy
+from .maxmind import AsnResolver
 from .model import (
     BotVerification,
     ClientFeatures,
@@ -380,6 +381,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
     retired_cap: int = DEFAULT_RETIRED_CAP,
     max_per_kind: int = DEFAULT_MAX_PER_KIND,
     vhosts: Sequence[str] | None = None,
+    asn_resolver: AsnResolver | None = None,
 ) -> AnalysisResult:
     """Stream one or more log files into per-client profiles.
 
@@ -461,10 +463,19 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         features = acc.finalize(ua_count_for_ip=ua_count)
         if force_asn is not None:
             features = replace(features, as_number=force_asn)
+        if asn_resolver is not None:
+            # The MaxMind DB wins when it has an answer -- it can be fresher than an
+            # old log. Synthetic folded keys (a subnet/egress/ASN-collapsed client)
+            # aren't real IPs, so the resolver returns nothing and leaves them be.
+            db_asn, db_org = asn_resolver.lookup(key.ip)
+            if db_asn is not None:
+                features = replace(
+                    features, as_number=str(db_asn), as_org=db_org or features.as_org
+                )
         if not features.as_number:
-            # The log didn't carry the AS number; recover it from the IP via a
-            # crawler ASN's published prefixes (so ASN recognition, attribution,
-            # and the tag work without %{MM_ASN}e). Folded keys aren't real IPs.
+            # No logged or DB AS; recover it from the IP via a crawler ASN's published
+            # prefixes (so ASN recognition, attribution, and the tag work without
+            # %{MM_ASN}e). Folded keys aren't real IPs.
             asn = asn_for_ip(key.ip)
             if asn is not None:
                 features = replace(features, as_number=str(asn))

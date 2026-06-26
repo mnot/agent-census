@@ -15,6 +15,10 @@ classifiers = [
 ]
 dependencies = [
     'tomli; python_version < "3.11"',
+    # Reads MaxMind-format ASN databases for logs that don't carry an AS number.
+    # The reader is bundled; the .mmdb file is BYO (MaxMind's licence forbids us
+    # redistributing GeoLite2, and it goes stale).
+    "maxminddb>=2",
 ]
 
 [project.optional-dependencies]

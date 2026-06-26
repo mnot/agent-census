@@ -1,7 +1,13 @@
-"""The ASN verification tier: `asns` corroborates or impeaches a declared crawler."""
+"""The ASN verification tier: `asns` corroborates or impeaches a declared crawler.
+
+The tier is exercised with a synthetic ``asns`` injected onto AhrefsBot's spec
+(via ``_declared_spec``) so the tests check the *feature*, not whichever ASNs the
+curated data files happen to list at the moment.
+"""
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import pytest
@@ -13,8 +19,24 @@ from agent_census.parsing import resolve
 from agent_census.parsing.apache import PRESETS
 from agent_census.pipeline import _resolve_asn_verification
 
-_AHREFS = "Mozilla/5.0 (compatible; AhrefsBot/7.0; +http://ahrefs.com/robot/)"  # asns = [140577]
+_AHREFS = "Mozilla/5.0 (compatible; AhrefsBot/7.0; +http://ahrefs.com/robot/)"
+_ASNS = (140577,)  # the synthetic verification ASNs we pin onto AhrefsBot for the tests
 _ASN_FMT = '%h %l %u %t "%r" %>s %b "%{Referer}i" "%{User-Agent}i" "%{MM_ASN}e"'
+
+
+@pytest.fixture(autouse=True)
+def _ahrefs_has_asns(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin a known ``asns`` onto AhrefsBot's spec, independent of the data files."""
+    real = pipeline._declared_spec
+
+    def fake(ua: str | None) -> tuple[str, object] | None:
+        spec = real(ua)
+        if spec is not None and "AhrefsBot" in (ua or ""):
+            token, crawler = spec
+            return token, dataclasses.replace(crawler, asns=_ASNS)
+        return spec
+
+    monkeypatch.setattr(pipeline, "_declared_spec", fake)
 
 
 def _status(as_number: str | None, prior: BotVerification | None = None) -> str | None:
@@ -42,16 +64,14 @@ def test_non_crawler_ua_is_untouched() -> None:
 
 
 def test_only_asn_primary_agents_are_recognised_by_as() -> None:
-    # Sberbank (asn_primary) is recognised *by* its AS; Ahrefs/Semrush (plain asns)
-    # are not -- their AS is verification, looked up via the token spec instead.
+    # Sberbank (asn_primary) is recognised *by* its AS; a plain ua_substring agent
+    # like AhrefsBot is recognised by UA (its AS, if any, is only verification).
     ai_labels = {label for _asn, label in load_asn_agents("ai_crawler")}
     assert "Sberbank" in ai_labels
     assert all(label != "AhrefsBot" for _asn, label in load_asn_agents("seo_marketing"))
-    spec = dict(load_tokens("seo_marketing"))[_AHREFS_TOKEN]
-    assert spec.asns == (140577,)
+    assert "AhrefsBot" in dict(load_tokens("seo_marketing"))  # recognised by UA token
 
 
-_AHREFS_TOKEN = "AhrefsBot"
 DATA = Path(__file__).parent / "data"
 
 

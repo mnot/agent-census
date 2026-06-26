@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import __version__, identity, iprange, pipeline, userconfig
+from .audit import run as run_audit
 from .classify import DEFAULT_UNKNOWN_THRESHOLD
 from .errors import AgentCensusError
 from .identity import ClientKeyStrategy
@@ -268,7 +269,41 @@ def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argumen
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_shared(inspect)
-    sub_parsers = {"analyze": analyze, "calibrate": calibrate, "inspect": inspect}
+
+    audit = sub.add_parser(
+        "audit",
+        help="check the datacentre ASN list against Cloudflare Radar + PeeringDB",
+        description="Validate the (provider, ASN) associations in the bundled "
+        "datacenter_ranges list -- flag mismatches and dead ASNs, suggest sibling "
+        "ASNs -- or, with --asn, assess candidate ASNs (e.g. from `calibrate`). "
+        "Needs a Cloudflare Radar API token (--token or $CF_API_TOKEN); uses an "
+        "automated-vs-human traffic split as a datacentre signal.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    audit.add_argument(
+        "--asn",
+        metavar="N,N,…",
+        help="assess these candidate ASNs instead of the bundled file "
+        "('AS123' or '123', comma/space separated)",
+    )
+    audit.add_argument(
+        "--token",
+        help="Cloudflare Radar API token; saved to config for next time. Else "
+        "$CF_API_TOKEN / $CLOUDFLARE_API_TOKEN, else the saved token",
+    )
+    audit.add_argument(
+        "--no-peeringdb", action="store_true", help="skip the PeeringDB network-type lookup"
+    )
+    audit.add_argument(
+        "--refresh", action="store_true", help="ignore the cached API responses and re-fetch"
+    )
+    audit.add_argument(
+        "--verbose",
+        action="store_true",
+        help="also list every entry with its details, not just the concerns",
+    )
+
+    sub_parsers = {"analyze": analyze, "calibrate": calibrate, "inspect": inspect, "audit": audit}
     inspect_sel = inspect.add_argument_group("selection")
     inspect_sel.add_argument(
         "--client", metavar="ID", help="match clients by IP or display substring"
@@ -437,6 +472,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = subcommands[raw[0]].parse_intermixed_args(raw[1:])
     args.command = raw[0]
     try:
+        if args.command == "audit":
+            return run_audit(
+                asn=args.asn,
+                token=args.token,
+                no_peeringdb=args.no_peeringdb,
+                refresh=args.refresh,
+                verbose=args.verbose,
+            )
         _apply_persisted_settings(args)
         if args.command == "calibrate":
             args.max_per_kind = 0  # the digest needs every client, not the top-N tail

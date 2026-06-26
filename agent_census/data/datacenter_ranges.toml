@@ -25,7 +25,7 @@
 
 [[source]]
 name = "Hetzner"
-asns = [24940, 212317, 213230]
+asns = [24940, 212317, 213230, 215859]
 
 [[source]]
 name = "OVH"
@@ -39,13 +39,13 @@ asns = [208677]
 name = "Amazon AWS"
 ranges_url = "https://ip-ranges.amazonaws.com/ip-ranges.json"
 format = "aws"
-asns = [16509, 14618]  # EC2 (16509) + AWS (14618)
+asns = [16509, 14618, 36263]
 
 [[source]]
 name = "Google Cloud"
 ranges_url = "https://www.gstatic.com/ipranges/cloud.json"
 format = "prefixes"
-asns = [15169, 396982]  # Google (15169) + Google Cloud (396982)
+asns = [15169, 396982, 19527, 43515, 139070, 139190]
 
 [[source]]
 name = "Cloudflare (IPv4)"
@@ -67,13 +67,13 @@ asns = [14061]
 
 [[source]]
 name = "Rackspace"
-asns = [44009, 15395, 39921]
+asns = [44009, 15395, 39921, 198220]
 
 [[source]]
-name = "Linode"
+name = "Linode / Akamai"
 ranges_url = "https://geoip.linode.com"
 format = "csv"  # RFC 8805 geofeed; first column is the prefix
-asns = [63949]  # Akamai/Linode
+asns = [63949, 20940, 24319]
 
 [[source]]
 name = "Vultr"
@@ -85,23 +85,19 @@ asns = [20473]  # The Constant Company
 name = "Oracle Cloud"
 ranges_url = "https://docs.oracle.com/iaas/tools/public_ip_ranges.json"
 format = "oracle"
-asns = [31898]
+asns = [31898, 6142, 11049, 11506, 14544, 20037, 46558, 54253]
 
 [[source]]
 name = "Yandex Cloud"
 ranges_url = "https://tech.cdn.yandex.net/prefixes/yc.json"
 
-# Contabo (AS51167) -- https://ipinfo.io/AS51167 . No machine-readable feed at
-# ipinfo; this pulls the same announced prefixes from RIPEstat (auto-updating).
 [[source]]
 name = "Contabo"
-ranges_url = "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS51167"
-format = "ripestat"
-asns = [51167, 141995]  # 141995 is Contabo Asia
+asns = [51167, 141995, 40021]
 
 [[source]]
 name = "Microsoft"
-asns = [8075]
+asns = [8075, 3598, 8068, 8069, 17144, 30520, 46182, 54396, 63314]
 
 # Microsoft Azure publishes its ranges as a weekly "Service Tags" download whose
 # URL embeds a rotating date, so there is no stable URL to pin here; the inline
@@ -127,7 +123,7 @@ asns = [136907, 55990, 151610]
 
 [[source]]
 name = "Alibaba"
-asns = [45102, 55990]
+asns = [45102, 37963]
 
 [[source]]
 name = "Dreamhost"
@@ -147,18 +143,18 @@ asns = [19318]
 
 [[source]]
 name = "Cherry Servers"
-asns = [216444, 204770]  # 204770 (formerly labelled CloudVPS) is Cherry Servers
+asns = [216444, 204770, 16125]
 
 [[source]]
-name = "netcup"
-asns = [197540]
+name = "netcup / Anexia"
+asns = [197540, 42473, 51453]
 
 [[source]]
 name = "Datacamp"  # CDN77 / DataCamp hosting + CDN
 asns = [60068, 212238]
 
 [[source]]
-name = "all-inkl.com"  # Neue Medien Muennich GmbH
+name = "Neue Medien Muennich"
 asns = [34788]
 
 [[source]]
@@ -167,11 +163,11 @@ asns = [54113]
 
 [[source]]
 name = "Akamai"
-asns = [36183]
+asns = [36183, 12222, 17204, 35994]
 
 [[source]]
-name = "ColoCrossing"
-asns = [36352]
+name = "ColoCrossing / HostPapa"
+asns = [36352, 11989, 23273, 40092]
 
 [[source]]
 name = "Unified Layer"  # Bluehost / HostGator / Newfold
@@ -199,7 +195,7 @@ asns = [51852]
 
 [[source]]
 name = "HostRoyale"
-asns = [203020, 207990, 39486]
+asns = [203020, 207990, 39486, 44144]
 
 [[source]]
 name = "PonyNet"  # FranTech / BuyVM
@@ -227,19 +223,19 @@ asns = [208046]
 
 [[source]]
 name = "WorldStream"
-asns = [49981]
+asns = [49981, 16278, 28836]
 
 [[source]]
 name = "web2objects"
 asns = [62874]
 
 [[source]]
-name = "IPXO"
+name = "F.N.S."
 asns = [206092]
 
 [[source]]
 name = "code200"  # Oxylabs-affiliated proxy / scraping infrastructure
-asns = [205659, 209709]
+asns = [205659, 209709, 203061, 205964]
 
 [[source]]
 name = "Infraly"
@@ -262,5 +258,5 @@ name = "Webair"
 asns = [27257, 20264, 36057, 393710, 396528]
 
 [[source]]
-name = "Harmony Hosting"
+name = "Fiberway"
 asns = [49434]

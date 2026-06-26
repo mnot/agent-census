@@ -14,7 +14,15 @@ from pathlib import Path
 
 # CLI dest names that persist between runs. log_format / log_format_preset are
 # alternatives: setting one clears the other (see cli._apply_persisted_settings).
-PERSISTED = ("log_format", "log_format_preset", "identity", "robots_file", "robots_url")
+# cf_api_token is a secret, so the file is written 0600 (see save()).
+PERSISTED = (
+    "log_format",
+    "log_format_preset",
+    "identity",
+    "robots_file",
+    "robots_url",
+    "cf_api_token",
+)
 
 
 def config_path() -> Path:
@@ -38,5 +46,6 @@ def save(settings: dict[str, str]) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+        path.chmod(0o600)  # the file may hold an API token -- keep it owner-only
     except OSError:
         pass

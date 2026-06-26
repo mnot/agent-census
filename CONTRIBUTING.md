@@ -24,7 +24,6 @@ The confidence weights and the unknown-threshold are hand-tuned starting points;
 calibrating them against real, labelled logs is one of the more valuable things
 a contributor can do.
 
-
 ## Coding Conventions
 
 We use [isort](https://pypi.org/project/isort/) and [black](https://pypi.org/project/black/) for Python formatting, which can be run with `make tidy`.
@@ -58,3 +57,32 @@ The best way to submit a change is through a pull request. A few things to keep 
 * Every new feature should have a test covering it.
 
 If you're not sure how to dig in, feel free to ask for help, or sketch out an idea in an issue first.
+
+
+## Auditing Data
+
+`agent-census audit` audits the packaged data -- currently, the datacentre/ASN
+associations. It cross-checks every listed `(provider, ASN)` pair against three
+external sources:
+
+* **Cloudflare Radar** -- source for an AS's organisation name
+  and its sibling ASNs, and (via the bot-class endpoint) an automated-vs-human
+  traffic split. That split is the *datacentre signal*: a real datacentre's
+  egress is overwhelmingly automated, so a listing well below the threshold is
+  suspect -- it may be an eyeball ISP, or an egress / VPN network. Needs a free
+  Radar API token, passed with `--token` or `$CF_API_TOKEN` (it's then persisted
+  to your config).
+* **RIPEstat** (`as-names`) -- the RIR-registered holder, used as a second opinion
+  on the name. The registry handle often keeps the brand we listed even after the
+  org has been renamed to its new parent (e.g. `AKAMAI-LINODE-AP - Akamai
+  Connected Cloud`), so it's good at telling a genuine mislabelling from a
+  rebrand.
+* **PeeringDB** -- a weak network-type hint (`NSP`, `Content`, ...).
+
+All responses are cached by URL for a week (atomic write), so re-running the
+audit -- or iterating on its output -- doesn't re-hit the APIs.
+
+Pass one or more ASNs with `--asn` to get the same assessment for arbitrary
+candidates (handy for triaging the unrecognised networks that
+`agent-census calibrate` turns up).
+

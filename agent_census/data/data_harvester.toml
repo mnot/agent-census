@@ -9,7 +9,7 @@
 
 [[agent]]
 # https://turnitin.com/robot/crawlerinfo.html
-ua_substring = "TurnitinBot"
+ua_substring = "Turnitin"  # sometimes it omits "bot"
 ranges = ["199.47.80.0/21"]
 
 [[agent]]

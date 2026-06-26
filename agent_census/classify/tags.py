@@ -129,11 +129,18 @@ def _fingerprint_tags(features: ClientFeatures) -> set[str]:
         elif features.referer_following_ratio < 0.1:
             tags.add("cold")
 
-    # Caching: a 304 proves a real cache. Its absence is content/server-dependent
-    # (uncacheable or no-store content, a server without validators), not reliably
-    # "no cache" -- so this dimension is one-sided: a positive only.
+    # Caching: a 304 proves a real cache. Its absence alone is content/server-
+    # dependent, but re-fetching the same URLs (or high volume) without ever
+    # earning a 304 does prove no cache -- see ClientFeatures.holds_no_cache.
     if features.status_counts.get(304, 0) > 0:
         tags.add("has-cache")
+    elif features.holds_no_cache:
+        tags.add("no-browser-cache")
+
+    # A headless / automation-driven browser engine: renders (so it can load
+    # assets) but the UA names the harness. A machine tell regardless of behaviour.
+    if uas.is_headless(features.user_agent):
+        tags.add("headless-browser")
 
     # User-Agent shape, when one is present -- one mutually-exclusive tag. For a
     # browser the version age is folded in (current/stale/ancient-browser-ua);

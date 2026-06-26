@@ -133,6 +133,54 @@ def test_self_declared_bot_harvesting_is_a_crawler() -> None:
     assert result.primary is Kind.CRAWLER
 
 
+def test_modest_self_declared_bot_clears_unknown() -> None:
+    # ThinkBot-style: a self-declared bot following links from a datacenter, but
+    # only a couple of distinct paths. It must clear the unknown floor as a crawler.
+    feats = ClientFeatures(
+        request_count=13,
+        distinct_paths=2,
+        coverage=2 / 13,
+        asset_coload_ratio=0.0,
+        ua_looks_like_browser=False,
+        ua_declares_bot=True,
+        ua_empty=False,
+        referer_following_ratio=0.56,
+        ratio_2xx=0.8,
+        user_agent="Mozilla/5.0 (compatible; ThinkBot/0.5.8; +http://example.com/bot)",
+    )
+    assert classify_client(feats, datacenter=True).primary is Kind.CRAWLER
+
+
+def test_headless_browser_is_tagged() -> None:
+    feats = ClientFeatures(
+        request_count=50,
+        page_count=10,
+        asset_coload_ratio=0.9,
+        ua_looks_like_browser=False,  # 'headless' makes declares_bot true, so not a browser
+        ua_declares_bot=True,
+        ua_empty=False,
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) HeadlessChrome/149.0.0.0 Safari/537.36",
+    )
+    assert "headless-browser" in classify_client(feats).tags
+
+
+def test_no_browser_cache_is_tagged() -> None:
+    # Re-fetches the same handful of paths many times, never a 304 -> holds no cache.
+    feats = ClientFeatures(
+        request_count=300,
+        distinct_paths=10,
+        coverage=10 / 300,
+        status_counts={200: 300},
+        ua_looks_like_browser=True,
+        ua_empty=False,
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+    )
+    assert feats.holds_no_cache
+    assert "no-browser-cache" in classify_client(feats).tags
+
+
 def test_crawler_recognised_by_origin_asn() -> None:
     # AS35237 (Sberbank) crawls behind spoofed browser UAs; recognised by ASN,
     # classified ai_crawler and tagged asn-attributed.

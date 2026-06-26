@@ -113,18 +113,12 @@ class BrowserClassifier(Classifier):
             disqualified = True
             evidence.append("fetched /robots.txt — a crawler's habit, not a browser's")
 
-        # A browser revalidates what it re-requests (earning 304s) and serves
-        # cached assets without hitting the server at all -- so at any real volume
-        # a genuine browser leaves some 304s behind, or simply makes few requests.
-        # A client that re-fetches the same URLs, or just makes a large number of
-        # requests, yet never receives a single 304 holds no cache: not browser
-        # behaviour. Only meaningful once paths are measured, and a 304 can only
-        # arise from a re-request, so distinct-once fetching at low volume is spared.
+        # A client that holds no browser cache (re-fetches the same URLs, or makes
+        # a large number of requests, yet never earns a 304) is not browsing -- see
+        # ClientFeatures.holds_no_cache.
         revisits = features.request_count - features.distinct_paths
-        no_304 = features.status_counts.get(304, 0) == 0
         cold_refetch = revisits >= 20
-        high_volume = features.request_count >= 500
-        if evidence and no_304 and features.distinct_paths > 0 and (cold_refetch or high_volume):
+        if evidence and features.holds_no_cache:
             dominant = (cold_refetch and revisits >= features.request_count * 0.5) or (
                 features.request_count >= 2000
             )

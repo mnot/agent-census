@@ -193,6 +193,21 @@ class ClientFeatures:  # pylint: disable=too-many-instance-attributes
     as_org: str | None = None
     as_number: str | None = None
 
+    @property
+    def holds_no_cache(self) -> bool:
+        """True when re-fetch volume proves the client keeps no browser cache.
+
+        A real browser revalidates what it re-requests (earning 304s) or serves
+        assets from cache without hitting the server. A client that re-fetches the
+        same URLs -- or simply makes many requests -- yet never receives a single
+        304 holds no cache: not browser behaviour. One-sided on purpose: a 304 can
+        only arise from a re-request, so distinct-once fetching at low volume is
+        spared (it could legitimately be uncacheable content).
+        """
+        revisits = self.request_count - self.distinct_paths
+        no_304 = self.status_counts.get(304, 0) == 0
+        return no_304 and self.distinct_paths > 0 and (revisits >= 20 or self.request_count >= 500)
+
 
 @dataclass(frozen=True, slots=True)
 class Signal:

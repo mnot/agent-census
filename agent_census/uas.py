@@ -68,6 +68,19 @@ def declares_bot(ua: str | None) -> bool:
     return bool(_BOT_RE.search(ua) or _BOT_CONTACT_RE.search(ua))
 
 
+# Browser engines driven by automation frameworks. They render like a real browser
+# (so they load assets), but the UA names the harness -- a deliberate tell.
+_HEADLESS_RE = re.compile(r"headless|phantomjs|slimerjs|electron|puppeteer|playwright", re.I)
+
+
+@lru_cache(maxsize=16384)
+def is_headless(ua: str | None) -> bool:
+    """True when the UA names a headless / automation-driven browser engine."""
+    if is_empty(ua) or ua is None:
+        return False
+    return bool(_HEADLESS_RE.search(ua))
+
+
 # Anonymous HTTP clients: a library/tool name with no product identity of its own.
 _LIBRARY_RE = re.compile(
     r"python-requests|httpx|aiohttp|scrapy|libwww|java/|go-http|okhttp|node-fetch|axios|curl|wget",

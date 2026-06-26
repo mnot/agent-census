@@ -206,11 +206,15 @@ name = "Clouvider"
 asns = [62240]
 
 [[source]]
-name = "Stark Industries Solutions"  # bulletproof host, heavily used for scanning/attacks
+name = "Stark Industries Solutions"
 asns = [44477]
 
 [[source]]
-name = "Packethub"  # sells plain hosting and VPN-exit infra; treat as datacenter
+name = "Limestone Networks"
+asns = [46475]
+
+[[source]]
+name = "Packethub"
 asns = [141039, 147049, 207137, 136787]
 
 [[source]]
@@ -234,7 +238,7 @@ name = "F.N.S."
 asns = [206092]
 
 [[source]]
-name = "code200"  # Oxylabs-affiliated proxy / scraping infrastructure
+name = "code200"
 asns = [205659, 209709, 203061, 205964]
 
 [[source]]

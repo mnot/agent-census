@@ -8,7 +8,7 @@ vuln_paths = [
     "/id_rsa", "/credentials", "/config.php", "/configuration.php",
     "/wp-config.php", "/database.yml", "/.DS_Store",
     "/.git-credentials", "/.npmrc", "/.s3cfg", "/.pgpass", "/.netrc", "/.my.cnf",
-    "/.dockerenv", "/.kube/", "/.terraform/", "/credentials.json", "/secrets.json",
+    "/.dockerenv", "/.kube/", "/.terraform/", "/secrets.json",
     "/secrets.yml", "/app/etc/local.xml", "/sites/default/settings.php",
     # WordPress / CMS probes
     "/wp-login.php", "/wp-admin", "/wp-content", "/xmlrpc.php", "/administrator/",

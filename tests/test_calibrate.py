@@ -118,13 +118,14 @@ def test_digest_surfaces_every_section() -> None:
             page_count=40,
             asset_coload=0.0,
         ),
-        # singleton
+        # singleton (one request -> unknown, tagged singleton; the digest's singleton
+        # section keys on request_count, not the kind)
         _profile(
             "5.5.5.5",
             "oneshot/1",
             requests=1,
-            kind=Kind.SINGLETON,
-            tags=frozenset({"generic-ua"}),
+            kind=Kind.UNKNOWN,
+            tags=frozenset({"generic-ua", "singleton"}),
         ),
         # unknown cluster
         _profile(

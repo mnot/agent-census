@@ -108,6 +108,8 @@ _TAG_HELP: dict[str, str] = {
     "and holds a real cache, the mark of a browser or a polite poller.",
     "no-browser-cache": "Re-fetches the same URLs (or makes many requests) yet never "
     "receives a 304 — keeps no cache, so not a real browser despite the look of one.",
+    "singleton": "Made exactly one request — too little on its own to characterise, "
+    "so the kind leans on its UA and origin alone.",
     "headless-browser": "User-Agent names a headless / automation-driven browser engine "
     "(HeadlessChrome, PhantomJS, Puppeteer…) — a real engine, but machine-driven.",
     "uses-HEAD": "Issues HEAD requests for more than an incidental share of its traffic "

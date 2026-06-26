@@ -203,6 +203,8 @@ def _fact_tags(
 ) -> set[str]:
     """Established facts about the client's identity and origin (no behaviour)."""
     tags: set[str] = set()
+    if features.request_count == 1:
+        tags.add("singleton")  # made exactly one request -- a volume fact, any kind
     if datacenter:
         tags.add("datacenter")
     if features.ua_empty:

@@ -250,7 +250,8 @@ def test_max_per_kind_caps_detail_but_keeps_summary_exact(tmp_path: Path) -> Non
     result = pipeline.analyze(log, parser, strategy, max_per_kind=5)
     kept = [p for p in result.profiles if p.client_id.ip.startswith("10.0.0.")]
     assert len(kept) == 5  # detail bounded
-    rollup = result.rollups[Kind.SINGLETON]
+    # One request each, no machine tell, not a datacenter -> unknown (tagged singleton).
+    rollup = result.rollups[Kind.UNKNOWN]
     assert rollup.clients == 40  # but the rollup counts every client
     assert rollup.requests == 40  # and exact request total
     # the kept five are the highest-volume (here, highest byte ids tie on requests)

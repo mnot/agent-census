@@ -22,9 +22,9 @@ class Kind(str, Enum):
     strong enough — it is never argued for by a classifier. ``AUTOMATION`` is a
     narrower fallback for a would-be-unknown client that still shows a positive
     machine tell (a headless engine, a no-browser-cache re-fetch pattern, a generic
-    HTTP-library UA): clearly not a person, purpose unidentified. ``SINGLETON`` is a
-    narrower fallback again, for a would-be-unknown client that made only one
-    request: too little activity to characterize, bucketed by volume.
+    HTTP-library UA, or a hosting / datacenter origin): clearly not a person, purpose
+    unidentified. A single-request client is not its own kind -- "made one request"
+    is a volume fact carried by the ``singleton`` *tag*, on whatever kind it lands.
     """
 
     BROWSER = "browser"
@@ -44,7 +44,6 @@ class Kind(str, Enum):
     IMPERSONATOR = "impersonator"
     SPOOFED_BROWSER = "spoofed_browser"
     AUTOMATION = "automation"
-    SINGLETON = "singleton"
     UNKNOWN = "unknown"
 
 

@@ -12,7 +12,7 @@ from ..pipeline import OTHER_HOSTING, RESIDENTIAL_NETWORK, KindRollup
 from .format import CONDUCT_TAGS
 
 # Order kinds appear in reports: a rough good -> bad gradient, with the
-# can't-say buckets (singleton, unknown) at the very end.
+# can't-say bucket (unknown) at the very end.
 KIND_ORDER: tuple[Kind, ...] = (
     Kind.BROWSER,
     Kind.APP,
@@ -31,7 +31,6 @@ KIND_ORDER: tuple[Kind, ...] = (
     Kind.SPOOFED_BROWSER,
     Kind.IMPERSONATOR,
     Kind.AUTOMATION,
-    Kind.SINGLETON,
     Kind.UNKNOWN,
 )
 
@@ -57,7 +56,6 @@ KIND_BLURB: dict[Kind, str] = {
     Kind.SPAM_BOT: "Form/comment spam and credential-stuffing bots.",
     Kind.FEED_READER: "RSS/Atom feed pollers.",
     Kind.MONITOR: "Uptime / monitoring checks on a fixed schedule.",
-    Kind.SINGLETON: "One-request clients with no other signal to characterize them.",
     Kind.UNKNOWN: "Clients no classifier could characterize -- and with no machine tell to "
     "mark them even as automation.",
 }

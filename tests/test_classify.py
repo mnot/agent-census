@@ -463,11 +463,22 @@ def test_threshold_boundary_survives_float_error() -> None:
     assert result.confidence == 0.45
 
 
-def test_combiner_singleton_for_one_request_would_be_unknown() -> None:
-    # A single-request client with no strong signal is bucketed as a singleton.
+def test_one_request_with_no_signal_is_unknown_tagged_singleton() -> None:
+    # A single-request client with no strong signal and no machine tell is unknown,
+    # carrying the `singleton` tag -- "one request" is a volume fact, not a kind.
     signals = [Signal(Kind.BROWSER, 0.3, ("weak",), "browser")]
     result = combine(signals, ClientFeatures(request_count=1), unknown_threshold=0.45)
-    assert result.primary is Kind.SINGLETON
+    assert result.primary is Kind.UNKNOWN
+    assert "singleton" in result.tags
+
+
+def test_one_request_from_datacenter_is_automation_tagged_singleton() -> None:
+    signals = [Signal(Kind.BROWSER, 0.3, ("weak",), "browser")]
+    result = combine(
+        signals, ClientFeatures(request_count=1), datacenter=True, unknown_threshold=0.45
+    )
+    assert result.primary is Kind.AUTOMATION
+    assert "singleton" in result.tags
 
 
 def test_combiner_one_request_keeps_confident_kind() -> None:

@@ -428,19 +428,25 @@ def _sources_drawn_blank(report: AsnReport) -> str:
 
 
 def _assessment(report: AsnReport) -> str:
-    """A plain-language verdict on what kind of network the ASN is."""
+    """A plain-language verdict on what kind of network the ASN is.
+
+    The verdict leads on Radar's automated-vs-human split; PeeringDB's self-declared
+    network type (when present) is appended as an independent hint. RIPE offers no
+    type, only a holder name, so it doesn't feature here.
+    """
     if not report.radar_known:
         hints = _other_sources(report)
         if hints:
             return f"unknown to Radar, but {hints} -- allocated but unrouted?"
         return f"unknown to {_sources_drawn_blank(report)} -- can't assess (dead / unrouted?)"
+    pdb = f"; PeeringDB calls it {report.pdb_type}" if report.pdb_type else ""
     if report.bot_pct is None:
-        return "no traffic data -- can't assess"
+        return f"no Radar traffic data{pdb}" if pdb else "no traffic data -- can't assess"
     if report.bot_pct >= _BOT_DATACENTRE:
-        return "datacentre / hosting (traffic is almost all automated)"
+        return f"datacentre / hosting (traffic is almost all automated){pdb}"
     if report.bot_pct >= _BOT_MIXED:
-        return "mixed -- hosting with human/VPN traffic, or a mixed network"
-    return "eyeball ISP, not a datacentre (mostly human; or an egress / VPN network)"
+        return f"mixed -- hosting with human/VPN traffic, or a mixed network{pdb}"
+    return f"eyeball ISP, not a datacentre (mostly human; or an egress / VPN network){pdb}"
 
 
 def _asn_bullet(

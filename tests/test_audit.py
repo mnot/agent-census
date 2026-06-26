@@ -116,6 +116,16 @@ def test_assessment_bands() -> None:
     assert "no traffic data" in _assessment(_report(bot_pct=None))
 
 
+def test_assessment_appends_peeringdb_type_hint() -> None:
+    # PeeringDB's self-declared type rides along as a hint, without changing the lead.
+    dc = _assessment(_report(bot_pct=99.0, pdb_type="Content"))
+    assert dc.startswith("datacentre") and dc.endswith("PeeringDB calls it Content")
+    # Even with no Radar traffic data, PeeringDB can still say something useful.
+    assert _assessment(_report(bot_pct=None, pdb_type="Enterprise")) == (
+        "no Radar traffic data; PeeringDB calls it Enterprise"
+    )
+
+
 def test_asn_bullet_includes_assessment_subbullet() -> None:
     bullet = _asn_bullet(
         _report(radar_org="X", bot_pct=99.0), [], assessment="datacentre / hosting"

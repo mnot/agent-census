@@ -24,6 +24,13 @@ def test_analyze_defaults_to_html(tmp_path: Path) -> None:
     assert out.read_text(encoding="utf-8").startswith("<!doctype html>")
 
 
+def test_analyse_is_an_alias_for_analyze(tmp_path: Path) -> None:
+    out = tmp_path / "report.html"
+    rc = main(["analyse", LOG, *OFFLINE, "-o", str(out)])
+    assert rc == 0
+    assert out.read_text(encoding="utf-8").startswith("<!doctype html>")
+
+
 def test_options_intermixed_with_logfiles(tmp_path: Path) -> None:
     out = tmp_path / "r.md"
     # An option sits BETWEEN the two log files — the shape that used to fail.

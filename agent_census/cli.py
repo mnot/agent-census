@@ -235,6 +235,7 @@ def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argumen
 
     analyze = sub.add_parser(
         "analyze",
+        aliases=["analyse"],
         help="produce a census of all clients, grouped by kind",
         description="Produce a census of all clients hitting the site, grouped by kind.",
         epilog=_ANALYZE_EXAMPLES,
@@ -315,7 +316,13 @@ def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argumen
         help="also list every entry with its details, not just the concerns",
     )
 
-    sub_parsers = {"analyze": analyze, "calibrate": calibrate, "inspect": inspect, "audit": audit}
+    sub_parsers = {
+        "analyze": analyze,
+        "analyse": analyze,  # British / Australian spelling alias
+        "calibrate": calibrate,
+        "inspect": inspect,
+        "audit": audit,
+    }
     inspect_sel = inspect.add_argument_group("selection")
     inspect_sel.add_argument(
         "--client", metavar="ID", help="match clients by IP or display substring"
@@ -521,7 +528,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     # Per-command parsing so options can be freely intermixed with the log files
     # (argparse's plain parse_args can't do that with an nargs="+" positional).
     args = subcommands[raw[0]].parse_intermixed_args(raw[1:])
-    args.command = raw[0]
+    args.command = "analyze" if raw[0] == "analyse" else raw[0]
     try:
         if args.command == "audit":
             return run_audit(

@@ -172,10 +172,10 @@ def test_filter_haystack_includes_as_name() -> None:
 
 
 def test_tags_have_hover_descriptions() -> None:
-    # The 203.0.113.66 zgrab scanner is tagged 'probing'; it should carry a tooltip.
+    # The 203.0.113.66 zgrab scanner is tagged 'probe-paths'; it should carry a tooltip.
     html = render_report_html(_run(), source="sample")
     assert "<span class=\"tag\"" in html
-    assert 'title="Requested known-vulnerable paths' in html
+    assert 'title="Requested known-vulnerable' in html
 
 
 def test_esc_quotes() -> None:

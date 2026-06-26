@@ -165,12 +165,17 @@ def _fingerprint_tags(features: ClientFeatures) -> set[str]:
 def _conduct_tags(features: ClientFeatures) -> set[str]:
     """Noteworthy behaviour, flagged only when present (no negative pole)."""
     tags: set[str] = set()
-    # Path-traversal / injection markers are unambiguous, so any is enough. Plain
-    # vuln-path hits are gated on a ratio: a broad crawler that grazes a few
-    # attack-shaped URLs over tens of thousands of requests isn't a scanner, while
-    # a focused probe run is mostly probes (and a lone pure probe is ratio 1.0).
-    if features.traversal_hits > 0 or features.evasion_hits > 0 or features.vuln_path_ratio >= 0.05:
-        tags.add("probing")
+    # Hostile request shapes, split by what was actually seen. Probe-path hits are
+    # gated (a raw burst, or a meaningful share of traffic) so a broad crawler that
+    # grazes a few attack-shaped URLs over tens of thousands of requests isn't
+    # mistaken for a scan. Traversal / injection and encoding-evasion markers have
+    # no legitimate use, so a single one is enough.
+    if features.vuln_path_hits >= 3 or features.vuln_path_ratio >= 0.05:
+        tags.add("probe-paths")
+    if features.traversal_hits > 0:
+        tags.add("traversal")
+    if features.evasion_hits > 0:
+        tags.add("encoding-evasion")
     if features.ratio_404 > 0.6 and features.distinct_404_paths >= 15:
         tags.add("404-storm")
     if features.exotic_method_count > 0:

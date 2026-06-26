@@ -676,7 +676,7 @@ def test_combiner_tie_breaks_by_priority() -> None:
 
 
 def test_probing_declared_crawler_is_tagged_not_impersonator() -> None:
-    # Declares Googlebot and probes vuln paths: keeps its kind, gets a 'probing'
+    # Declares Googlebot and probes vuln paths: keeps its kind, gets a 'probe-paths'
     # tag. Probing is misbehaviour, not a forged identity (that's DNS's call).
     feats = ClientFeatures(
         request_count=5,
@@ -687,7 +687,7 @@ def test_probing_declared_crawler_is_tagged_not_impersonator() -> None:
     signals = [Signal(Kind.SEARCH_ENGINE, 0.8, ("declares Googlebot",), "search_engine")]
     result = combine(signals, feats)
     assert result.primary is Kind.SEARCH_ENGINE
-    assert "probing" in result.tags
+    assert "probe-paths" in result.tags
     assert result.primary is not Kind.IMPERSONATOR
 
 

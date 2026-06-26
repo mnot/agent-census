@@ -189,9 +189,9 @@ def test_cli_calibrate_runs_end_to_end(tmp_path: Path) -> None:
     text = out.read_text(encoding="utf-8")
     assert text.startswith("# Calibration digest — sample_access.log")
     # known fixtures: the python-requests client draws scraper vs crawler, the
-    # zgrab scanner is tagged probing, Googlebot declares but isn't verified here.
+    # zgrab scanner is tagged probe-paths, Googlebot declares but isn't verified here.
     assert "## Conflicting signals" in text and "python-requests" in text
-    assert "probing" in text
+    assert "probe-paths" in text
 
 
 def test_regex_gap_section_lists_only_unreadable_versions() -> None:

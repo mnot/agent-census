@@ -93,7 +93,9 @@ _TAG_ORDER = {
             "follows-links",
             "cold",
             "has-cache",
-            "probing",
+            "probe-paths",
+            "traversal",
+            "encoding-evasion",
             "404-storm",
             "exotic-method",
             "uses-HEAD",
@@ -123,7 +125,16 @@ def ordered_tags(tags: frozenset[str] | set[str]) -> list[str]:
 # near-universal within a kind it's summarised in the section header ("typically:
 # …") and dropped from the rows, so per-row conduct shows only the exceptions.
 CONDUCT_TAGS = frozenset(
-    {"probing", "404-storm", "exotic-method", "uses-HEAD", "post-heavy", "forged-referer"}
+    {
+        "probe-paths",
+        "traversal",
+        "encoding-evasion",
+        "404-storm",
+        "exotic-method",
+        "uses-HEAD",
+        "post-heavy",
+        "forged-referer",
+    }
 )
 
 

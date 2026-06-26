@@ -69,7 +69,9 @@ _TAG_COLORS: dict[str, str] = {
     "rdns-unverified": "#b45309",  # declared crawler we couldn't confirm -> caution amber
     "impersonator": "#dc2626",
     "ignores-robots": "#d97706",
-    "probing": "#dc2626",  # requested attack paths -> red
+    "probe-paths": "#dc2626",  # requested known-vulnerable paths -> red
+    "traversal": "#dc2626",  # path-traversal / injection markers -> red
+    "encoding-evasion": "#b91c1c",  # deliberate encoding evasion -> deep red
     "404-storm": "#d97706",
     "ancient-browser-ua": "#dc2626",  # years-stale browser version -> almost certainly spoofed
     "impossible-browser-ua": "#dc2626",  # version newer than exists -> forged UA
@@ -140,7 +142,12 @@ _TAG_HELP: dict[str, str] = {
     "origin AS corroborated it — neither confirmed nor caught as an impersonator.",
     "asn-attributed": "Identity is the origin AS itself -- an asn_primary network that "
     "crawls behind spoofed User-Agents, recognised by AS number rather than by its UA.",
-    "probing": "Requested known-vulnerable paths or used directory-traversal patterns.",
+    "probe-paths": "Requested known-vulnerable / probe paths (.env, /wp-login.php, .git/config…) "
+    "— a burst of them, or a meaningful share of its traffic.",
+    "traversal": "Used path-traversal or injection markers in the request path (../, injection "
+    "patterns) — no legitimate use.",
+    "encoding-evasion": "Used double or overlong percent-encoding — a deliberate attempt to slip "
+    "past filters / a WAF.",
     "exotic-method": "Used uncommon HTTP methods (PUT/DELETE/PROPFIND/CONNECT…) — typical of "
     "scanners and WebDAV probes, not browsers.",
     "404-storm": "A high share of 404s spread across many distinct paths — scanning for "

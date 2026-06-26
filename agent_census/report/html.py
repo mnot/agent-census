@@ -63,6 +63,7 @@ _KIND_COLORS: dict[Kind, str] = {
 # Tags that deserve a non-neutral colour.
 _TAG_COLORS: dict[str, str] = {
     "verified": "#16a34a",  # confirmed identity -> strong green
+    "asn-associated": "#059669",  # origin AS corroborates the declared crawler -> green
     "impersonator": "#dc2626",
     "ignores-robots": "#d97706",
     "probing": "#dc2626",  # requested attack paths -> red
@@ -122,9 +123,12 @@ _TAG_HELP: dict[str, str] = {
     "ignores-robots": "Requested paths disallowed by the applicable robots.txt group.",
     "verified": "Reverse/forward DNS or a published IP range confirmed the declared "
     "crawler identity.",
+    "asn-associated": "User-Agent names a known crawler and its origin AS is one that "
+    "crawler is configured to use -- corroboration, a lighter check than DNS / IP-range "
+    "verification (which take precedence when available).",
     "declares-known-bot": "User-Agent names a known crawler (identity verified separately).",
-    "asn-attributed": "Recognised by its origin AS number, configured as a known crawler "
-    "network, rather than by its User-Agent.",
+    "asn-attributed": "Identity is the origin AS itself -- an asn_primary network that "
+    "crawls behind spoofed User-Agents, recognised by AS number rather than by its UA.",
     "probing": "Requested known-vulnerable paths or used directory-traversal patterns.",
     "exotic-method": "Used uncommon HTTP methods (PUT/DELETE/PROPFIND/CONNECT…) — typical of "
     "scanners and WebDAV probes, not browsers.",

@@ -139,6 +139,42 @@ def _verifiable(spec: CrawlerSpec) -> bool:
     return bool(spec.domains or spec.ranges or spec.ranges_url)
 
 
+def _resolve_asn_verification(
+    verification: BotVerification | None, features: ClientFeatures
+) -> BotVerification | None:
+    """Apply the offline ASN verification tier, below ranges/rDNS in precedence.
+
+    A declared crawler whose logged origin AS is in its agent's ``asns`` is
+    corroborated (``ASN_ASSOCIATED``); one whose logged AS is *not* in the list is
+    an impersonator. Consulted only when the network tiers didn't decide (no
+    ranges/rDNS, or they were inconclusive) and the log carries an AS number --
+    absence of an AS number is never read as impersonation.
+    """
+    if verification is not None and verification.status in (
+        VerificationStatus.VERIFIED,
+        VerificationStatus.IMPERSONATOR,
+    ):
+        return verification  # a definitive ranges/rDNS verdict takes precedence
+    declared = _declared_spec(features.user_agent)
+    if declared is None:
+        return verification
+    token, spec = declared
+    if not spec.asns:
+        return verification
+    asn = uas.parse_asn(features.as_number)
+    if asn is None:
+        return verification  # nothing to check against; leave it unverified
+    if asn in spec.asns:
+        return BotVerification(
+            VerificationStatus.ASN_ASSOCIATED,
+            evidence=(f"origin AS{asn} is a network that {token} crawls from",),
+        )
+    return BotVerification(
+        VerificationStatus.IMPERSONATOR,
+        evidence=(f"User-Agent claims {token}, but origin AS{asn} is not one it crawls from",),
+    )
+
+
 class BotVerifier(Protocol):
     """Verifies declared crawlers (implemented by :class:`agent_census.netverify.BotVerifier`)."""
 
@@ -472,6 +508,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         in_datacenter = (
             datacenter if datacenter is not None else network_category == _NET_DATACENTER
         )
+        verification = _resolve_asn_verification(verification, features)
         classification = classify_client(
             features,
             compliance=compliance,

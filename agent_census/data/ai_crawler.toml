@@ -131,6 +131,7 @@ ua_substring ="AIWebIndex"
 # See also: https://www.reuters.com/technology/artificial-intelligence/after-deepseek-leap-forward-russias-sberbank-plans-joint-ai-research-with-china-2025-02-06/
 [[agent]]
 name = "Sberbank"
+asn_primary = true  # the AS *is* the identity: fold the whole AS, classify by it
 asns = [35237]
 # Fallback when the log lacks the AS number
 ranges_url = "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS35237"

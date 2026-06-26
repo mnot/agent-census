@@ -97,6 +97,7 @@ _AGENT_SCHEMA = {
     "ranges_url": "str",
     "format": "str",
     "asns": "int[]",
+    "asn_primary": "bool",
     "rdns_fallback": "bool",
 }
 _SOURCE_SCHEMA = {
@@ -136,6 +137,11 @@ class CrawlerSpec:
     ranges: tuple[str, ...] = ()
     ranges_url: str | None = None
     fmt: str = "prefixes"  # how to parse ranges_url (see iprange.extract_cidrs)
+    # AS numbers the operator is expected to crawl from. The lowest-precedence
+    # verification tier: used only when ranges/rDNS are absent or inconclusive. A
+    # UA match from one of these AS numbers corroborates the identity; a UA match
+    # from a different (logged) AS is impersonation.
+    asns: tuple[int, ...] = ()
     # When an agent declares both ranges and domains, both must verify by default
     # (either failing is impersonation). Set this for operators whose reverse DNS
     # isn't reliable: ranges become primary and the domains are only a fallback
@@ -206,8 +212,13 @@ KNOWN_AGENT_CATEGORIES = (
 
 
 def _require_agent(entry: dict[str, Any]) -> str:
-    if not (entry.get("ua_substring") or entry.get("asns")):
-        return "an agent needs a 'ua_substring' or 'asns'"
+    primary = bool(entry.get("asn_primary"))
+    if primary and not entry.get("asns"):
+        return "'asn_primary' needs an 'asns' list (the AS is the identity)"
+    # Plain `asns` is verification for a UA-named agent, so it needs a ua_substring;
+    # only an asn_primary agent may stand on its AS alone.
+    if not entry.get("ua_substring") and not primary:
+        return "an agent needs a 'ua_substring' (or 'asn_primary' with 'asns')"
     return ""
 
 
@@ -239,6 +250,7 @@ def load_tokens(category: str) -> tuple[tuple[str, CrawlerSpec], ...]:
             ranges=tuple(entry.get("ranges", [])),
             ranges_url=entry.get("ranges_url"),
             fmt=entry.get("format", "prefixes"),
+            asns=tuple(entry.get("asns", [])),
             rdns_fallback=bool(entry.get("rdns_fallback", False)),
         )
         pairs.append((ua, spec))
@@ -247,13 +259,17 @@ def load_tokens(category: str) -> tuple[tuple[str, CrawlerSpec], ...]:
 
 @lru_cache(maxsize=None)
 def load_asn_agents(category: str) -> tuple[tuple[int, str], ...]:
-    """Return ``(asn, label)`` for agents in ``<category>.toml`` recognised by ASN.
+    """Return ``(asn, label)`` for ``asn_primary`` agents in ``<category>.toml``.
 
-    An agent recognised by origin AS number carries an ``asns`` list and a
-    ``name`` (its display label) instead of a ``ua_substring``.
+    Only ``asn_primary`` agents are recognised *by* their AS number (the AS is the
+    identity): all their traffic folds into one entry, classified from the AS
+    regardless of User-Agent. A plain ``asns`` list is verification for a
+    ua_substring-named agent (see :class:`CrawlerSpec`) and is not returned here.
     """
     out: list[tuple[int, str]] = []
     for entry in _agents(category):
+        if not entry.get("asn_primary"):
+            continue
         label = entry.get("name") or entry.get("ua_substring") or category
         for asn in entry.get("asns", []):
             out.append((int(asn), label))
@@ -262,17 +278,19 @@ def load_asn_agents(category: str) -> tuple[tuple[int, str], ...]:
 
 @lru_cache(maxsize=None)
 def load_asn_range_feeds() -> tuple[tuple[int, str, str], ...]:
-    """``(asn, ranges_url, format)`` for ASN agents that publish a prefix feed.
+    """``(asn, ranges_url, format)`` for ``asn_primary`` agents that publish a feed.
 
-    Lets an ASN-recognised crawler be matched by IP when the log doesn't carry the
+    Lets an AS-identified crawler be matched by IP when the log doesn't carry the
     client's AS number: its AS's announced prefixes are fetched and the IP checked
     against them. Keyed by the agent's first ``asns`` entry (all map to one label).
+    Only ``asn_primary`` agents qualify -- recovering a verification agent's AS from
+    its own range feed would defeat the ranges-take-precedence-over-ASN rule.
     """
     feeds: list[tuple[int, str, str]] = []
     for category in KNOWN_AGENT_CATEGORIES:
         for entry in _agents(category):
             url, asns = entry.get("ranges_url"), entry.get("asns")
-            if url and asns:
+            if url and asns and entry.get("asn_primary"):
                 feeds.append((int(asns[0]), url, entry.get("format", "prefixes")))
     return tuple(feeds)
 

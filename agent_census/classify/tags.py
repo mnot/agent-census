@@ -203,9 +203,12 @@ def _fact_tags(
     if features.fetched_robots_txt:
         tags.add("checked-robots")
     if uas.match_asn_any(features.as_number):
-        tags.add("asn-attributed")  # recognised by origin AS, not its User-Agent
+        tags.add("asn-attributed")  # identity *is* the origin AS, not the User-Agent
     if verification is not None and verification.status is VerificationStatus.VERIFIED:
         tags.add("verified")
+    if verification is not None and verification.status is VerificationStatus.ASN_ASSOCIATED:
+        # UA names a crawler and its origin AS is one that crawler uses -- corroborated.
+        tags.add("asn-associated")
     if _declares_known_crawler(features):
         tags.add("declares-known-bot")
     # Only the actionable robots case is tagged; respecting it is the quiet norm.

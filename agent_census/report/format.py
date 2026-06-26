@@ -102,6 +102,7 @@ _TAG_ORDER = {
             "datacenter",
             "asn-attributed",
             "verified",
+            "asn-associated",
             "declares-known-bot",
             "no-user-agent",
             "checked-robots",

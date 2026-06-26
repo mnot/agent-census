@@ -97,8 +97,14 @@ def test_validate_rejects_bad_type() -> None:
 
 
 def test_validate_rejects_missing_required() -> None:
-    with pytest.raises(ConfigError, match="ua_substring' or 'asns'"):
+    # No ua_substring and not asn_primary -> nothing to identify the agent by.
+    with pytest.raises(ConfigError, match="needs a 'ua_substring'"):
         _validate_records("x.toml", "agent", [{"domains": ["a"]}], _AGENT_SCHEMA, _require_agent)
+    # asn_primary without an asns list has no identity either.
+    with pytest.raises(ConfigError, match="'asn_primary' needs an 'asns'"):
+        _validate_records(
+            "x.toml", "agent", [{"asn_primary": True}], _AGENT_SCHEMA, _require_agent
+        )
 
 
 def test_validate_rejects_non_table_entry() -> None:

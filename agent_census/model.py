@@ -246,7 +246,8 @@ class VerificationStatus(str, Enum):
     """Result of reverse/forward DNS verification of a declared crawler."""
 
     VERIFIED = "verified"  # rDNS + forward confirm an expected crawler domain
-    IMPERSONATOR = "impersonator"  # claims a crawler UA but DNS disagrees
+    ASN_ASSOCIATED = "asn_associated"  # origin AS matches the declared crawler's network
+    IMPERSONATOR = "impersonator"  # claims a crawler UA but DNS / AS disagrees
     UNVERIFIED = "unverified"  # lookup inconclusive / network failure
     NOT_APPLICABLE = "not_applicable"  # UA does not declare a verifiable crawler
 

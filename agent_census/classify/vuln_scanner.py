@@ -59,6 +59,12 @@ class VulnScannerClassifier(Classifier):
             confidence += 0.15
             evidence.append(f"{features.traversal_hits} path-traversal / injection marker(s)")
 
+        if features.evasion_hits > 0:
+            # Double / overlong encoding has no legitimate use -- weight it above
+            # plain traversal.
+            confidence += 0.25
+            evidence.append(f"{features.evasion_hits} encoding-evasion marker(s)")
+
         if features.exotic_method_count > 0:
             confidence += 0.1
             evidence.append(f"{features.exotic_method_count} unusual-method request(s)")

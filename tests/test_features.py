@@ -106,6 +106,17 @@ def test_vuln_and_traversal_signals() -> None:
     assert feats.traversal_hits >= 1
 
 
+def test_encoding_evasion_signal() -> None:
+    # Double-encoded traversal (WAF-bypass) is counted as evasion, not plain
+    # traversal: %252e%252e does not contain the single-encoded %2e%2e marker.
+    entries = [
+        entry("/", status=404, query="file=%252e%252e%252fetc%252fpasswd", offset=0),
+    ]
+    feats = extract_features(entries)
+    assert feats.evasion_hits >= 1
+    assert feats.traversal_hits == 0
+
+
 def test_regular_timing_low_cv() -> None:
     entries = [entry("/", offset=i * 60) for i in range(6)]
     feats = extract_features(entries)

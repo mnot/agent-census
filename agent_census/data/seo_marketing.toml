@@ -25,12 +25,14 @@ ua_substring = "DotBot"
 [[agent]]
 # https://dataforseo.com/dataforseo-bot
 ua_substring = "DataForSeoBot"
+domains = ["dataforseo.com"]
 
 [[agent]]
 # https://www.zoominfo.com/legal/zoominfobot
 ua_substring = "ZoominfoBot"
 
 [[agent]]
+# https://awario.com/bots.html
 ua_substring = "AwarioBot"
 
 [[agent]]

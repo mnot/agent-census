@@ -91,6 +91,12 @@ domains = ["qwant.com"]
 ranges_url = "https://help.qwant.com/wp-content/uploads/sites/latest/qwantbot.json"
 
 [[agent]]
+# https://kagi.com/bot
+ua_substring = "Kagibot"
+domains = ["kagibot.org"]
+ranges = ["216.18.205.234", "35.212.27.76", "104.254.65.50", "209.151.156.194"]
+
+[[agent]]
 # https://www.mojeek.com/bot.html
 ua_substring = "MojeekBot"
 domains = ["mojeek.com"]

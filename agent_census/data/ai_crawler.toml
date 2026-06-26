@@ -80,11 +80,9 @@ ua_substring = "TikTokSpider"
 
 [[agent]]
 ua_substring = "cohere-ai"
-domains = ["cohere.com"]
 
 [[agent]]
 ua_substring = "cohere-training-data-crawler"
-domains = ["cohere.com"]
 
 [[agent]]
 ua_substring = "ImagesiftBot"
@@ -110,16 +108,10 @@ ua_substring = "Meta-externalfetcher"
 domains = ["facebook.com"]
 
 [[agent]]
-ua_substring = "kagibot"
-domains = ["kagi.com"]
-
-[[agent]]
 ua_substring = "kagi-fetcher"
-domains = ["kagi.com"]
 
 [[agent]]
 ua_substring = "LinkupBot"
-domains = ["linkup.so"]
 
 [[agent]]
 ua_substring = "Timpibot"

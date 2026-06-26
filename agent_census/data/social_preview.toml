@@ -13,7 +13,7 @@ domains = ["twitter.com", "twttr.com"]
 
 [[agent]]
 ua_substring = "LinkedInBot"
-domains = ["linkedin.com"]
+domains = ["fwd.linkedin.com"]
 
 [[agent]]
 # https://api.slack.com/robots
@@ -33,6 +33,7 @@ ua_substring = "WhatsApp"
 
 [[agent]]
 ua_substring = "TelegramBot"
+domains = ["telegram.org"]
 
 [[agent]]
 # https://help.pinterest.com/en/business/article/pinterestbot
@@ -41,7 +42,6 @@ domains = ["pinterest.com", "pinterestcrawler.com"]
 
 [[agent]]
 ua_substring = "redditbot"
-domains = ["reddit.com"]
 
 [[agent]]
 # https://docs.embed.ly/reference/faq

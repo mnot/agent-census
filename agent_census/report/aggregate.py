@@ -38,7 +38,8 @@ KIND_ORDER: tuple[Kind, ...] = (
 KIND_BLURB: dict[Kind, str] = {
     Kind.BROWSER: "Interactive browsers loading pages and their sub-resources.",
     Kind.APP: "Native mobile / desktop apps requesting via a platform networking stack.",
-    Kind.CRAWLER: "Bots walking the site by following links at a steady pace.",
+    Kind.CRAWLER: "Bots fetching pages without browser sub-resource loading -- a "
+    "self-declared crawler UA, or systematic link-following / broad coverage.",
     Kind.SEARCH_ENGINE: "Declared search-engine crawlers indexing the site.",
     Kind.ARCHIVER: "Web-archiving / preservation crawlers (Internet Archive / Wayback Machine).",
     Kind.SOCIAL_PREVIEW: "Link-unfurl fetchers building share previews.",
@@ -46,7 +47,8 @@ KIND_BLURB: dict[Kind, str] = {
     Kind.SEO_MARKETING: "SEO / marketing / brand-monitoring crawlers.",
     Kind.DATA_HARVESTER: "Crawlers ingesting content into a private corpus or dataset "
     "(plagiarism indexes, data brokers) -- not public search, preservation, or AI training.",
-    Kind.IMPERSONATOR: "Clients faking a declared crawler identity (DNS / IP-range mismatch).",
+    Kind.IMPERSONATOR: "Clients faking a declared crawler identity -- the origin's reverse "
+    "DNS, IP range, or AS number doesn't match the crawler it names.",
     Kind.SCRAPER: "Content harvesters hitting pages cold, without following links.",
     Kind.VULN_SCANNER: "Clients probing for known-vulnerable paths and misconfigurations.",
     Kind.SPOOFED_BROWSER: "Datacenter clients wearing a browser UA without browser behaviour.",
@@ -56,7 +58,8 @@ KIND_BLURB: dict[Kind, str] = {
     Kind.FEED_READER: "RSS/Atom feed pollers.",
     Kind.MONITOR: "Uptime / monitoring checks on a fixed schedule.",
     Kind.SINGLETON: "One-request clients with no other signal to characterize them.",
-    Kind.UNKNOWN: "Clients that no classifier could characterize with confidence.",
+    Kind.UNKNOWN: "Clients no classifier could characterize -- and with no machine tell to "
+    "mark them even as automation.",
 }
 
 

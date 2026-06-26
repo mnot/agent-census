@@ -49,14 +49,14 @@ def _declares_known_crawler(features: ClientFeatures) -> bool:
 def impersonation(verification: BotVerification | None) -> tuple[bool, tuple[str, ...]]:
     """Decide whether the client is impersonating a declared identity.
 
-    Impersonation is a forged *identity*: only DNS / IP-range verification saying
-    the address isn't really that crawler counts. Misbehaviour such as ignoring
-    robots.txt or probing for vulnerabilities is tagged, not treated as identity
-    theft -- a real crawler can still behave badly.
+    Impersonation is a forged *identity*: a verification verdict that the origin
+    isn't really that crawler -- its reverse DNS, IP range, or AS number disagrees.
+    Misbehaviour such as ignoring robots.txt or probing for vulnerabilities is
+    tagged, not treated as identity theft -- a real crawler can still behave badly.
     """
     if verification is not None and verification.status is VerificationStatus.IMPERSONATOR:
         return True, verification.evidence or (
-            "DNS / IP range does not confirm the declared crawler",
+            "origin does not confirm the declared crawler (DNS / IP range / AS)",
         )
     return False, ()
 

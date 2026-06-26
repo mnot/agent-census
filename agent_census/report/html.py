@@ -66,6 +66,7 @@ _KIND_COLORS: dict[Kind, str] = {
 _TAG_COLORS: dict[str, str] = {
     "verified": "#16a34a",  # confirmed identity -> strong green
     "asn-associated": "#059669",  # origin AS corroborates the declared crawler -> green
+    "rdns-unverified": "#b45309",  # declared crawler we couldn't confirm -> caution amber
     "impersonator": "#dc2626",
     "ignores-robots": "#d97706",
     "probing": "#dc2626",  # requested attack paths -> red
@@ -135,6 +136,8 @@ _TAG_HELP: dict[str, str] = {
     "crawler is configured to use -- corroboration, a lighter check than DNS / IP-range "
     "verification (which take precedence when available).",
     "declares-known-bot": "User-Agent names a known crawler (identity verified separately).",
+    "rdns-unverified": "Declared a verifiable crawler, but reverse DNS was inconclusive and no "
+    "origin AS corroborated it — neither confirmed nor caught as an impersonator.",
     "asn-attributed": "Identity is the origin AS itself -- an asn_primary network that "
     "crawls behind spoofed User-Agents, recognised by AS number rather than by its UA.",
     "probing": "Requested known-vulnerable paths or used directory-traversal patterns.",

@@ -726,6 +726,18 @@ def test_verified_tag_from_verification() -> None:
     assert result.primary is Kind.SEARCH_ENGINE
 
 
+def test_rdns_unverified_tag_when_check_was_inconclusive() -> None:
+    # Declared a verifiable crawler, but rDNS came back inconclusive (no ASN either):
+    # surfaced as a tag, the kind/verdict otherwise unchanged.
+    feats = ClientFeatures(request_count=5, user_agent="Googlebot/2.1")
+    verification = BotVerification(VerificationStatus.UNVERIFIED)
+    signals = [Signal(Kind.SEARCH_ENGINE, 0.8, ("declares Googlebot",), "search_engine")]
+    result = combine(signals, feats, verification=verification)
+    assert "rdns-unverified" in result.tags
+    assert "verified" not in result.tags
+    assert result.primary is Kind.SEARCH_ENGINE
+
+
 def test_has_cache_tag_on_304() -> None:
     cached = ClientFeatures(request_count=5, status_counts={200: 4, 304: 1})
     signals = [Signal(Kind.BROWSER, 0.6, ("browses",), "browser")]

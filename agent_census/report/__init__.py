@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .calibrate import render_calibration
+from .geo import CountryFlags, country_flags
 from .html import render_inspect_html, render_report_html
 from .inspect import render_inspect, select_profiles
 from .markdown import render_report
@@ -14,4 +15,6 @@ __all__ = [
     "render_inspect_html",
     "render_calibration",
     "select_profiles",
+    "country_flags",
+    "CountryFlags",
 ]

@@ -10,7 +10,7 @@ import pytest
 
 from agent_census import identity, pipeline
 from agent_census.cli import _warn_maxmind_skew
-from agent_census.maxmind import AsnResolver
+from agent_census.maxmind import AsnResolver, CountryResolver
 from agent_census.parsing import resolve
 from agent_census.parsing.apache import PRESETS
 
@@ -51,6 +51,25 @@ def test_lookup_handles_miss_partial_and_bad_ip() -> None:
     assert _resolver({_IP: {"autonomous_system_organization": "Ex"}}).lookup(_IP) == (None, "Ex")
     # An invalid address makes the reader raise; we swallow it.
     assert _resolver({}, raise_on=_IP).lookup(_IP) == (None, None)
+
+
+def _country(table: dict[str, object], **kw: object) -> CountryResolver:
+    return CountryResolver(_FakeReader(table, **kw))  # type: ignore[arg-type]
+
+
+def test_country_lookup_extracts_code_and_name() -> None:
+    r = _country({_IP: {"country": {"iso_code": "DE", "names": {"en": "Germany"}}}})
+    assert r.lookup(_IP) == ("DE", "Germany")
+
+
+def test_country_lookup_handles_miss_partial_and_bad_ip() -> None:
+    assert _country({}).lookup(_IP) == (None, None)  # not in DB
+    # Code present but no English name -> name degrades to None.
+    assert _country({_IP: {"country": {"iso_code": "FR"}}}).lookup(_IP) == ("FR", None)
+    # A record without a country block at all.
+    assert _country({_IP: {"continent": {"code": "EU"}}}).lookup(_IP) == (None, None)
+    # An invalid address makes the reader raise; we swallow it.
+    assert _country({}, raise_on=_IP).lookup(_IP) == (None, None)
 
 
 def _one_line(tmp_path: Path, line: str, fmt: str, resolver: AsnResolver | None) -> object:
@@ -99,7 +118,7 @@ def test_skew_warning_fires_when_db_is_far_off(capsys: pytest.CaptureFixture[str
     built_late = log_time + timedelta(days=300)
     r = _resolver({}, )
     r.build_epoch = int(built_late.timestamp())
-    _warn_maxmind_skew(r, _skew_result(log_time))  # type: ignore[arg-type]
+    _warn_maxmind_skew(r, _skew_result(log_time), "AS attributions")  # type: ignore[arg-type]
     err = capsys.readouterr().err
     assert "MaxMind database was built" in err and "after" in err
 
@@ -108,5 +127,5 @@ def test_no_skew_warning_within_window(capsys: pytest.CaptureFixture[str]) -> No
     log_time = datetime(2023, 1, 1, tzinfo=timezone.utc)
     r = _resolver({})
     r.build_epoch = int((log_time + timedelta(days=30)).timestamp())
-    _warn_maxmind_skew(r, _skew_result(log_time))  # type: ignore[arg-type]
+    _warn_maxmind_skew(r, _skew_result(log_time), "AS attributions")  # type: ignore[arg-type]
     assert capsys.readouterr().err == ""

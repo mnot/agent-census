@@ -92,6 +92,17 @@ The database is consulted first (it can be fresher than the log) and is remember
 agent-census analyze access.log --mm-asn-db ./GeoLite2-ASN.mmdb
 ```
 
+**Country flags**: point `--mm-country-db` at a [MaxMind country (or city)
+database](https://dev.maxmind.com/geoip/docs/databases/country/) to show a small flag next to
+the highest-traffic non-human clients we *haven't* tied to a specific operator — an unknown
+scraper or an impersonator, where the origin country adds signal (a verified, IP/rDNS-identified
+crawler gets none). In HTML the flag carries the country name as a tooltip. Also remembered
+between runs:
+
+```
+agent-census analyze access.log --mm-country-db ./GeoLite2-Country.mmdb
+```
+
 ### Remembered settings
 
 Some options are sticky, so you needn't retype them. `--log-format` /

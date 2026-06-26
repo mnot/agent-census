@@ -264,3 +264,23 @@ asns = [27257, 20264, 36057, 393710, 396528]
 [[source]]
 name = "Fiberway"
 asns = [49434]
+
+[[source]]
+name = "RouterHosting"
+asns = [14956]
+
+[[source]]
+name = "DataWagon"
+asns = [27176]
+
+[[source]]
+name = "HERE"
+asns = [1248]
+
+[[source]]
+name = "GoDaddy"
+asns = [398101, 30083, 26496, 397516, 397519, 397522, 398104, 398109]
+
+[[source]]
+name = "Park web"
+asns = [51248]

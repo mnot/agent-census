@@ -527,17 +527,20 @@ def test_declared_crawler_folds_per_subnet_when_unverified(tmp_path: Path) -> No
 
 
 def test_crawler_recognised_by_asn_range_without_logged_asn(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, synthetic_asn_crawler: object
 ) -> None:
-    # No MM_ASN in the log: recognise the Sberbank crawler by matching the IP
-    # against AS35237's published prefixes (stubbed here).
+    # No MM_ASN in the log: recognise an asn_primary crawler by matching the IP
+    # against its AS's published prefixes (the synthetic feed, stubbed here).
     from agent_census import egress, hosting, iprange
     from agent_census.iprange import network_intervals
 
+    cr = synthetic_asn_crawler
     monkeypatch.setattr(
         hosting,
         "fetch_range_intervals",
-        lambda url, fmt, name=None: network_intervals(("203.0.113.0/24",)) if "AS35237" in url else ([], []),
+        lambda url, fmt, name=None: (
+            network_intervals(("203.0.113.0/24",)) if url == cr.url else ([], [])  # type: ignore[attr-defined]
+        ),
     )
     monkeypatch.setattr(egress, "lookup", lambda ip: None)  # don't fetch real egress lists
     iprange.enable_remote()
@@ -551,9 +554,9 @@ def test_crawler_recognised_by_asn_range_without_logged_asn(
     parser = resolve("apache", {"format": PRESETS["combined"]})  # combined has no MM_ASN
     result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
 
-    assert "Sberbank" in result.network_rollups
+    assert cr.label in result.network_rollups  # type: ignore[attr-defined]
     crawlers = [p for p in result.profiles if p.classification.primary is Kind.AI_CRAWLER]
-    assert crawlers and all(p.network == "Sberbank" for p in crawlers)
+    assert crawlers and all(p.network == cr.label for p in crawlers)  # type: ignore[attr-defined]
     assert "asn-attributed" in crawlers[0].classification.tags
 
 

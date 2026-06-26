@@ -56,13 +56,13 @@ def test_asn_recognised_agents_loaded() -> None:
     assert all(ua for ua, _spec in load_tokens("ai_crawler"))
 
 
-def test_asn_range_feeds_loaded() -> None:
+def test_asn_range_feeds_loaded(synthetic_asn_crawler: object) -> None:
     from agent_census.dataload import load_asn_range_feeds
 
+    cr = synthetic_asn_crawler
     feeds = {asn: (url, fmt) for asn, url, fmt in load_asn_range_feeds()}
-    assert 35237 in feeds
-    url, fmt = feeds[35237]
-    assert "AS35237" in url and fmt == "ripestat"
+    assert cr.asn in feeds  # type: ignore[attr-defined]
+    assert feeds[cr.asn] == (cr.url, "ripestat")  # type: ignore[attr-defined]
 
 
 def test_range_source_asns_parse_as_ints() -> None:

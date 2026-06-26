@@ -150,7 +150,7 @@ def time_range(
 
 
 # How many distinct datacenter providers get their own column before the rest
-# are folded into an "Other hosting" column.
+# are folded into an "Other datacenter" column.
 MAX_DATACENTER_COLUMNS = 6
 
 

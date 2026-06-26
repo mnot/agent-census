@@ -403,6 +403,11 @@ def _pdb_note(report: AsnReport) -> str:
     return "PeeringDB: not listed"
 
 
+def _pdb_hint(report: AsnReport) -> str:
+    """An inline network-type hint from PeeringDB to ride alongside Radar's split."""
+    return f"; PeeringDB calls it {report.pdb_type}" if report.pdb_type else ""
+
+
 def _other_sources(report: AsnReport) -> str:
     """What RIPE and PeeringDB say about an ASN, for when Radar draws a blank."""
     hints = []
@@ -439,7 +444,7 @@ def _assessment(report: AsnReport) -> str:
         if hints:
             return f"unknown to Radar, but {hints} -- allocated but unrouted?"
         return f"unknown to {_sources_drawn_blank(report)} -- can't assess (dead / unrouted?)"
-    pdb = f"; PeeringDB calls it {report.pdb_type}" if report.pdb_type else ""
+    pdb = _pdb_hint(report)
     if report.bot_pct is None:
         return f"no Radar traffic data{pdb}" if pdb else "no traffic data -- can't assess"
     if report.bot_pct >= _BOT_DATACENTRE:
@@ -510,7 +515,10 @@ def _concerns(
         out.append((_WRONG_NAME, 0.0, msg))
     if flag_traffic_mix and report.bot_pct is not None and report.bot_pct < _BOT_MIXED:
         # sort the section least-automated (most suspect) first
-        msg = f"AS{report.asn} ({label}): only {report.bot_pct:.0f}% automated according to Radar"
+        msg = (
+            f"AS{report.asn} ({label}): only {report.bot_pct:.0f}% automated "
+            f"according to Radar{_pdb_hint(report)}"
+        )
         out.append((_TRAFFIC_MIX, report.bot_pct, msg))
     return out
 
@@ -611,9 +619,11 @@ def _audit_section(  # pylint: disable=too-many-locals
             for heading, sort_key, message in _concerns(report, name, flag_traffic_mix=datacentre):
                 by_heading.setdefault(heading, []).append((sort_key, message))
             if not datacentre and report.bot_pct is not None:
-                automation.append(
-                    (report.bot_pct, f"AS{asn} ({name}): {report.bot_pct:.0f}% automated per Radar")
+                line = (
+                    f"AS{asn} ({name}): {report.bot_pct:.0f}% automated "
+                    f"per Radar{_pdb_hint(report)}"
                 )
+                automation.append((report.bot_pct, line))
             for sib_asn, sib_name, sib_bot in siblings:
                 if sib_asn in suggested_seen:  # don't suggest the same sibling twice
                     continue

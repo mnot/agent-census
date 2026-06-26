@@ -225,6 +225,14 @@ def test_concerns_traffic_mix_can_be_suppressed_for_egress() -> None:
     assert all(h != "Traffic mix" for h, _k, _m in _concerns(report, "StrongVPN", flag_traffic_mix=False))
 
 
+def test_traffic_mix_line_carries_peeringdb_hint() -> None:
+    (_h, _k, msg), = [
+        t for t in _concerns(_report(radar_org="X", bot_pct=10.0, pdb_type="Cable/DSL/ISP"), "X")
+        if t[0] == "Traffic mix"
+    ]
+    assert msg.endswith("according to Radar; PeeringDB calls it Cable/DSL/ISP")
+
+
 def test_render_concerns_emits_extra_sections() -> None:
     rendered = "\n".join(
         _render_concerns(

@@ -240,3 +240,27 @@ asns = [206092]
 [[source]]
 name = "code200"  # Oxylabs-affiliated proxy / scraping infrastructure
 asns = [205659, 209709]
+
+[[source]]
+name = "Infraly"
+asns = [400529]
+
+[[source]]
+name = "Dedik"
+asns = [209413]
+
+[[source]]
+name = "Serv3r.net"
+asns = [400130]
+
+[[source]]
+name = "Latitude.sh"
+asns = [262287]
+
+[[source]]
+name = "Webair"
+asns = [27257, 20264, 36057, 393710, 396528]
+
+[[source]]
+name = "Harmony Hosting"
+asns = [49434]

@@ -43,9 +43,12 @@ examples:
   agent-census analyze access.log \\
       --log-format '%h %l %u %t "%r" %>s %b "%{Referer}i" "%{User-Agent}i"'
 
-  # HTML report with robots.txt compliance (crawler verification is on by default)
-  agent-census analyze access.log* --html -o census.html \\
+  # write the HTML report (the default) to a file, with robots.txt compliance
+  agent-census analyze access.log* -o census.html \\
       --robots-file /srv/http/site/robots.txt
+
+  # Markdown instead of HTML, to stdout
+  agent-census analyze access.log --md
 
   # skip the network lookups crawler verification does
   agent-census analyze access.log --no-verify-bots
@@ -144,7 +147,9 @@ def _add_shared(parser: argparse.ArgumentParser) -> None:
 
     out_group = parser.add_argument_group("output")
     out_group.add_argument(
-        "--html", action="store_true", help="emit a self-contained HTML page instead of Markdown"
+        "--md",
+        action="store_true",
+        help="emit Markdown instead of the default self-contained HTML page",
     )
     out_group.add_argument(
         "-o", "--output", type=Path, metavar="PATH", help="write output here instead of stdout"
@@ -189,13 +194,13 @@ Client kinds:
   scraper       spoofed_browser  spam_bot      vuln_scanner   impersonator
   singleton     unknown
 
-Output is Markdown (default) or a self-contained HTML page.
+Output is a self-contained HTML page (default), or Markdown with --md.
 """
 
 _TOP_EPILOG = """\
 quick start:
-  agent-census analyze /var/log/apache2/access.log
-  agent-census analyze access.log* --html -o census.html
+  agent-census analyze /var/log/apache2/access.log -o census.html
+  agent-census analyze access.log --md
   agent-census analyze access.log --robots-file ./robots.txt
   agent-census inspect access.log --kind vuln_scanner
   agent-census calibrate access.log -o calibration.md
@@ -401,9 +406,9 @@ def _inspect_text(ctx: _RunContext, args: argparse.Namespace) -> str:
     selected = select_profiles(ctx.result, client=args.client, kind=args.kind, network=args.network)
     entries = collect_entries(args.logfiles, ctx.parser, ctx.strategy, selected, vhosts=args.vhost)
     selected = [dataclasses.replace(p, entries=entries.get(p.client_id, ())) for p in selected]
-    if args.html:
-        return render_inspect_html(selected, limit=args.limit, full=args.full)
-    return render_inspect(selected, limit=args.limit, full=args.full)
+    if args.md:
+        return render_inspect(selected, limit=args.limit, full=args.full)
+    return render_inspect_html(selected, limit=args.limit, full=args.full)
 
 
 def _source_label(args: argparse.Namespace) -> str:
@@ -444,8 +449,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
                 result = dataclasses.replace(result, profiles=kept)
             source = _source_label(args)
-            if args.html:
-                text = render_report_html(
+            if args.md:
+                text = render_report(
                     result,
                     source=source,
                     top=args.top,
@@ -453,7 +458,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     elapsed=ctx.elapsed,
                 )
             else:
-                text = render_report(
+                text = render_report_html(
                     result,
                     source=source,
                     top=args.top,

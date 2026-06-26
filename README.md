@@ -61,10 +61,12 @@ To **check `robots.txt` compliance**, use `--robots-file` to supply a local file
 agent-census analyze access.log --robots-file ./robots.txt
 ```
 
-Output is Markdown by default. Pass `--html` for HTML output:
+Output is a self-contained HTML page by default; redirect it with `-o`, or pass
+`--md` for Markdown:
 
 ```
-agent-census analyze access.log --html -o census.html
+agent-census analyze access.log -o census.html
+agent-census analyze access.log --md
 ```
 
 `--vhost SUBSTRING` analyses only the lines served for a matching host:

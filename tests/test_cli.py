@@ -17,11 +17,11 @@ ROBOTS = str(DATA / "robots.txt")
 OFFLINE = ("--no-verify-bots", "--no-fetch-ranges")
 
 
-def test_analyze_writes_output(tmp_path: Path) -> None:
-    out = tmp_path / "report.md"
+def test_analyze_defaults_to_html(tmp_path: Path) -> None:
+    out = tmp_path / "report.html"
     rc = main(["analyze", LOG, *OFFLINE, "-o", str(out)])
     assert rc == 0
-    assert "# Agent Census" in out.read_text(encoding="utf-8")
+    assert out.read_text(encoding="utf-8").startswith("<!doctype html>")
 
 
 def test_options_intermixed_with_logfiles(tmp_path: Path) -> None:
@@ -35,6 +35,7 @@ def test_options_intermixed_with_logfiles(tmp_path: Path) -> None:
             "combined",
             LOG,
             *OFFLINE,
+            "--md",
             "-o",
             str(out),
         ]
@@ -44,11 +45,11 @@ def test_options_intermixed_with_logfiles(tmp_path: Path) -> None:
     assert "84 parsed" in out.read_text(encoding="utf-8")
 
 
-def test_html_flag(tmp_path: Path) -> None:
-    out = tmp_path / "r.html"
-    rc = main(["analyze", LOG, *OFFLINE, "--html", "-o", str(out)])
+def test_md_flag(tmp_path: Path) -> None:
+    out = tmp_path / "r.md"
+    rc = main(["analyze", LOG, *OFFLINE, "--md", "-o", str(out)])
     assert rc == 0
-    assert out.read_text(encoding="utf-8").startswith("<!doctype html>")
+    assert "# Agent Census" in out.read_text(encoding="utf-8")
 
 
 def test_analyze_cloudflare_preset(tmp_path: Path) -> None:
@@ -61,7 +62,9 @@ def test_analyze_cloudflare_preset(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     out = tmp_path / "r.md"
-    rc = main(["analyze", str(log), "--log-format-preset", "cloudflare", *OFFLINE, "-o", str(out)])
+    rc = main(
+        ["analyze", str(log), "--log-format-preset", "cloudflare", *OFFLINE, "--md", "-o", str(out)]
+    )
     assert rc == 0
     assert "1 parsed" in out.read_text(encoding="utf-8")
 
@@ -76,7 +79,7 @@ def test_vhost_flag_filters_and_reports(tmp_path: Path) -> None:
     out = tmp_path / "r.md"
     rc = main(
         ["analyze", str(log), "--log-format-preset", "vhost_combined", "--vhost", "a.example",
-         *OFFLINE, "-o", str(out)]
+         *OFFLINE, "--md", "-o", str(out)]
     )
     assert rc == 0
     text = out.read_text(encoding="utf-8")
@@ -86,7 +89,7 @@ def test_vhost_flag_filters_and_reports(tmp_path: Path) -> None:
     both = tmp_path / "both.md"
     rc = main(
         ["analyze", str(log), "--log-format-preset", "vhost_combined",
-         "--vhost", "a.example", "--vhost", "b.example", *OFFLINE, "-o", str(both)]
+         "--vhost", "a.example", "--vhost", "b.example", *OFFLINE, "--md", "-o", str(both)]
     )
     assert rc == 0
     assert "2 parsed" in both.read_text(encoding="utf-8")
@@ -95,7 +98,8 @@ def test_vhost_flag_filters_and_reports(tmp_path: Path) -> None:
 def test_inspect_by_kind(tmp_path: Path) -> None:
     out = tmp_path / "i.md"
     rc = main(
-        ["inspect", LOG, *OFFLINE, "--robots-file", ROBOTS, "--kind", "vuln_scanner", "-o", str(out)]
+        ["inspect", LOG, *OFFLINE, "--md", "--robots-file", ROBOTS, "--kind", "vuln_scanner",
+         "-o", str(out)]
     )
     assert rc == 0
     text = out.read_text(encoding="utf-8")
@@ -109,7 +113,7 @@ def test_inspect_by_network_and_kind(tmp_path: Path) -> None:
     # vuln_scanner sits in the residential bucket; AWS should match nothing.
     hit = tmp_path / "hit.md"
     rc = main(
-        ["inspect", LOG, *OFFLINE, "--kind", "vuln_scanner", "--network", "residential",
+        ["inspect", LOG, *OFFLINE, "--md", "--kind", "vuln_scanner", "--network", "residential",
          "-o", str(hit)]
     )
     assert rc == 0
@@ -117,7 +121,10 @@ def test_inspect_by_network_and_kind(tmp_path: Path) -> None:
     assert "Why this classification" in text and "**Network:** Residential" in text
 
     miss = tmp_path / "miss.md"
-    rc = main(["inspect", LOG, *OFFLINE, "--kind", "vuln_scanner", "--network", "aws", "-o", str(miss)])
+    rc = main(
+        ["inspect", LOG, *OFFLINE, "--md", "--kind", "vuln_scanner", "--network", "aws",
+         "-o", str(miss)]
+    )
     assert rc == 0
     assert "No matching clients" in miss.read_text(encoding="utf-8")
 
@@ -178,7 +185,7 @@ def test_report_shows_filenames_not_full_paths(tmp_path: Path) -> None:
     robots = sub / "robots.txt"
     robots.write_text("User-agent: *\nDisallow: /x/\n", encoding="utf-8")
     out = tmp_path / "r.md"
-    main(["analyze", str(log), *OFFLINE, "--robots-file", str(robots), "-o", str(out)])
+    main(["analyze", str(log), *OFFLINE, "--md", "--robots-file", str(robots), "-o", str(out)])
     text = out.read_text(encoding="utf-8")
 
     assert "private-dir" not in text  # no directory path leaks into the report

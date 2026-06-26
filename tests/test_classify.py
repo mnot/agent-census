@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import pytest
+
 from agent_census.classify import classify_client
 from agent_census.classify.browser import BrowserClassifier
 from agent_census.classify.combiner import combine
+from agent_census.classify.crawler import CrawlerClassifier
 from agent_census.classify.feed_reader import FeedReaderClassifier
 from agent_census.classify.vuln_scanner import VulnScannerClassifier
 from agent_census.model import (
@@ -216,6 +219,33 @@ def test_automation_loses_to_an_identified_purpose() -> None:
     result = classify_client(feats)
     assert result.primary is not Kind.AUTOMATION  # a real purpose (crawler) outranks the tell
     assert "headless-browser" in result.tags  # the tell is still recorded
+
+
+def test_recognised_crawler_is_not_downgraded_to_generic_crawler(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A recognised crawler that also crawls broadly (high coverage, follows links, no
+    # assets) must keep its specific kind -- the generic crawler classifier's
+    # behavioural score must not outrank the recognition. AhrefsSiteAudit was landing
+    # in `crawler` (1.00) over `seo_marketing` (0.83) before the deferral gate.
+    from agent_census import uas
+
+    feats = ClientFeatures(
+        request_count=1492,
+        distinct_paths=1200,
+        coverage=0.8,
+        asset_coload_ratio=0.0,
+        referer_following_ratio=0.9,
+        ratio_2xx=0.95,
+        ua_declares_bot=True,
+        ua_empty=False,
+        user_agent="Mozilla/5.0 (compatible; SomeKnownBot/1.0; +http://example.com/bot)",
+    )
+    # Unrecognised: the generic crawler classifier owns it.
+    assert classify_client(feats).primary is Kind.CRAWLER
+    # Recognised in a specific category: crawler must defer (here, faked recognition).
+    monkeypatch.setattr(uas, "names_known_crawler", lambda ua: True)
+    assert not CrawlerClassifier().evaluate(feats)
 
 
 def test_crawler_recognised_by_origin_asn() -> None:

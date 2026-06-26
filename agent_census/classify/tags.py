@@ -13,8 +13,6 @@ tag; a genuine crawler can misbehave without forging its identity.
 
 from __future__ import annotations
 
-from functools import lru_cache
-
 from .. import uas
 from ..model import (
     BotVerification,
@@ -26,24 +24,10 @@ from ..model import (
 from .feed_reader import ua_is_feed_reader
 
 _UA_ROTATION_THRESHOLD = 4
-# Declared-crawler data categories, checked individually so per-UA results cache.
-_CRAWLER_CATEGORIES = (
-    "search_engine",
-    "social_preview",
-    "archiver",
-    "ai_crawler",
-    "seo_marketing",
-    "data_harvester",
-)
-
-
-@lru_cache(maxsize=16384)
-def _ua_names_crawler(ua: str | None) -> bool:
-    return any(uas.match_category(ua, category) for category in _CRAWLER_CATEGORIES)
 
 
 def _declares_known_crawler(features: ClientFeatures) -> bool:
-    return _ua_names_crawler(features.user_agent)
+    return uas.names_known_crawler(features.user_agent)
 
 
 def impersonation(verification: BotVerification | None) -> tuple[bool, tuple[str, ...]]:
@@ -74,7 +58,7 @@ def identifies_as_known_agent(features: ClientFeatures) -> bool:
     """
     return (
         features.ua_declares_bot
-        or _ua_names_crawler(features.user_agent)
+        or uas.names_known_crawler(features.user_agent)
         or ua_is_feed_reader(features.user_agent)
         or uas.match_asn_any(features.as_number) is not None
     )

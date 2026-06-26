@@ -142,6 +142,24 @@ def parse_asn(value: str | None) -> int | None:
         return None
 
 
+# Declared-crawler data categories: a UA recognised in any of these belongs to that
+# category's classifier (search engine, AI crawler, …), not the generic crawler one.
+KNOWN_CRAWLER_CATEGORIES = (
+    "search_engine",
+    "social_preview",
+    "archiver",
+    "ai_crawler",
+    "seo_marketing",
+    "data_harvester",
+)
+
+
+@lru_cache(maxsize=16384)
+def names_known_crawler(ua: str | None) -> bool:
+    """True if the UA names a crawler we recognise in a specific category."""
+    return any(match_category(ua, category) is not None for category in KNOWN_CRAWLER_CATEGORIES)
+
+
 @lru_cache(maxsize=None)
 def _asn_index(category: str) -> dict[int, str]:
     return dict(load_asn_agents(category))

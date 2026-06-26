@@ -7,6 +7,7 @@ than hitting URLs cold.
 
 from __future__ import annotations
 
+from .. import uas
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
 
@@ -16,6 +17,11 @@ class CrawlerClassifier(Classifier):
     name = "crawler"
 
     def evaluate(self, features: ClientFeatures) -> list[Signal]:
+        # A UA recognised as a specific crawler (search engine, SEO, AI, …) belongs to
+        # that category's classifier; the generic crawler must not compete with it
+        # (its behavioural score could otherwise outrank the specific recognition).
+        if uas.names_known_crawler(features.user_agent):
+            return []
         confidence = 0.0
         evidence: list[str] = []
 

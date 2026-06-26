@@ -58,6 +58,7 @@ _KIND_COLORS: dict[Kind, str] = {
     Kind.SPAM_BOT: "#db2777",
     Kind.FEED_READER: "#65a30d",
     Kind.MONITOR: "#0d9488",
+    Kind.AUTOMATION: "#78716c",
     Kind.UNKNOWN: "#6b7280",
 }
 
@@ -105,6 +106,10 @@ _TAG_HELP: dict[str, str] = {
     "post-heavy": "Most requests are POSTs — form/submission traffic, e.g. comment or login spam.",
     "has-cache": "Received 304 Not Modified responses — makes conditional requests "
     "and holds a real cache, the mark of a browser or a polite poller.",
+    "no-browser-cache": "Re-fetches the same URLs (or makes many requests) yet never "
+    "receives a 304 — keeps no cache, so not a real browser despite the look of one.",
+    "headless-browser": "User-Agent names a headless / automation-driven browser engine "
+    "(HeadlessChrome, PhantomJS, Puppeteer…) — a real engine, but machine-driven.",
     "uses-HEAD": "Issues HEAD requests for more than an incidental share of its traffic "
     "— browsers fetch with GET, so this points to a monitor, link-checker, or other bot.",
     "current-browser-ua": "Browser User-Agent whose version is current for when the client "

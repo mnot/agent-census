@@ -19,9 +19,12 @@ class Kind(str, Enum):
 
     Inherits from ``str`` so values render readably and sort/serialize without
     fuss. ``UNKNOWN`` is the honest fallback the combiner uses when no signal is
-    strong enough — it is never argued for by a classifier. ``SINGLETON`` is a
-    narrower fallback for a would-be-unknown client that made only one request:
-    too little activity to characterize, bucketed by volume rather than purpose.
+    strong enough — it is never argued for by a classifier. ``AUTOMATION`` is a
+    narrower fallback for a would-be-unknown client that still shows a positive
+    machine tell (a headless engine, a no-browser-cache re-fetch pattern, a generic
+    HTTP-library UA): clearly not a person, purpose unidentified. ``SINGLETON`` is a
+    narrower fallback again, for a would-be-unknown client that made only one
+    request: too little activity to characterize, bucketed by volume.
     """
 
     BROWSER = "browser"
@@ -40,6 +43,7 @@ class Kind(str, Enum):
     SPAM_BOT = "spam_bot"
     IMPERSONATOR = "impersonator"
     SPOOFED_BROWSER = "spoofed_browser"
+    AUTOMATION = "automation"
     SINGLETON = "singleton"
     UNKNOWN = "unknown"
 

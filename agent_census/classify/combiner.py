@@ -37,12 +37,19 @@ _PRIORITY: tuple[Kind, ...] = (
     Kind.SCRAPER,
     Kind.CRAWLER,
     Kind.SPOOFED_BROWSER,
+    Kind.AUTOMATION,
     Kind.SINGLETON,
     Kind.UNKNOWN,
 )
 _RANK = {kind: i for i, kind in enumerate(_PRIORITY)}
 
 DEFAULT_UNKNOWN_THRESHOLD = 0.45
+
+# Positive "this is a machine" tells (tags). A would-be-unknown client carrying one
+# is automation of an unidentified kind, not a true unknown. Kept to tells that are
+# definitional (a library UA, a headless engine) or behaviourally proven (re-fetching
+# without ever caching) -- never mere absence of human signal.
+_AUTOMATION_TELLS = frozenset({"headless-browser", "no-browser-cache", "generic-ua"})
 
 
 def _pick(by_label: dict[Kind, float]) -> Kind:
@@ -102,46 +109,7 @@ def combine(
         )
 
     if not by_label or max(by_label.values()) < unknown_threshold:
-        # A would-be-unknown client wearing a browser UA from a hosting IP, with
-        # no browser behaviour, is automation in disguise -- name it as such.
-        if datacenter and looks_like_fake_browser(features):
-            return Classification(
-                primary=Kind.SPOOFED_BROWSER,
-                confidence=0.6,
-                tags=frozenset(tags),
-                evidence=("browser User-Agent from a datacenter IP, without browser behaviour",),
-                all_signals=stored,
-            )
-        # A generic HTTP library (or no UA) fetching several pages from hosting
-        # infrastructure is harvesting content -- a scraper -- even when no single
-        # signal cleared the bar. The datacenter origin is what tips it: the same
-        # library from a residential IP could be an app or a one-off script.
-        if datacenter and _looks_like_datacenter_scraper(features):
-            return Classification(
-                primary=Kind.SCRAPER,
-                confidence=0.5,
-                tags=frozenset(tags),
-                evidence=("generic HTTP client harvesting pages from a datacenter IP",),
-                all_signals=stored,
-            )
-        # A would-be-unknown client with a single request gets its own bucket:
-        # one hit is too little to characterize, so we file it by volume.
-        if features.request_count == 1:
-            return Classification(
-                primary=Kind.SINGLETON,
-                confidence=1.0,
-                tags=frozenset(tags),
-                evidence=("single request — too little activity to characterize",),
-                all_signals=stored,
-            )
-        confidence = max(by_label.values()) if by_label else 0.0
-        return Classification(
-            primary=Kind.UNKNOWN,
-            confidence=confidence,
-            tags=frozenset(tags),
-            evidence=_top_evidence(tuple(signals)),
-            all_signals=stored,
-        )
+        return _below_threshold(features, tags, tuple(signals), stored, datacenter, by_label)
 
     primary = _pick(by_label)
     if primary is Kind.FEED_READER and _fetches_non_feeds(features):
@@ -152,6 +120,56 @@ def combine(
         confidence=by_label[primary],
         tags=frozenset(tags),
         evidence=evidence,
+        all_signals=stored,
+    )
+
+
+def _below_threshold(
+    features: ClientFeatures,
+    tags: set[str],
+    signals: tuple[Signal, ...],
+    stored: tuple[Signal, ...],
+    datacenter: bool,
+    by_label: dict[Kind, float],
+) -> Classification:
+    """Pick a fallback when no classifier cleared the bar, narrowing UNKNOWN where we can."""
+
+    def verdict(primary: Kind, confidence: float, evidence: str) -> Classification:
+        return Classification(
+            primary=primary,
+            confidence=confidence,
+            tags=frozenset(tags),
+            evidence=(evidence,),
+            all_signals=stored,
+        )
+
+    # A browser UA from a hosting IP with no browser behaviour is automation in disguise.
+    if datacenter and looks_like_fake_browser(features):
+        return verdict(
+            Kind.SPOOFED_BROWSER,
+            0.6,
+            "browser User-Agent from a datacenter IP, without browser behaviour",
+        )
+    # A generic HTTP library (or no UA) fetching several pages from hosting infrastructure
+    # is harvesting content -- a scraper. The datacenter origin is what tips it.
+    if datacenter and _looks_like_datacenter_scraper(features):
+        return verdict(
+            Kind.SCRAPER, 0.5, "generic HTTP client harvesting pages from a datacenter IP"
+        )
+    # One request is too little to characterize: bucket it by volume.
+    if features.request_count == 1:
+        return verdict(Kind.SINGLETON, 1.0, "single request — too little activity to characterize")
+    # A positive machine tell with no purpose behind it: automation, kind unidentified.
+    if tags & _AUTOMATION_TELLS:
+        return verdict(
+            Kind.AUTOMATION, 0.5, "a machine tell is present, but no purpose could be identified"
+        )
+    confidence = max(by_label.values()) if by_label else 0.0
+    return Classification(
+        primary=Kind.UNKNOWN,
+        confidence=confidence,
+        tags=frozenset(tags),
+        evidence=_top_evidence(signals),
         all_signals=stored,
     )
 

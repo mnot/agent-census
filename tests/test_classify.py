@@ -178,7 +178,44 @@ def test_no_browser_cache_is_tagged() -> None:
         "(KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
     )
     assert feats.holds_no_cache
-    assert "no-browser-cache" in classify_client(feats).tags
+    result = classify_client(feats)
+    assert "no-browser-cache" in result.tags
+    # The REDbot tool-driver shape: browser UA, but no cache and no purpose -> automation.
+    assert result.primary is Kind.AUTOMATION
+
+
+def test_headless_with_no_purpose_is_automation() -> None:
+    feats = ClientFeatures(
+        request_count=40,
+        page_count=8,
+        asset_coload_ratio=0.9,  # a real headless engine does render sub-resources
+        ua_looks_like_browser=False,
+        ua_declares_bot=True,
+        ua_empty=False,
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) HeadlessChrome/149.0.0.0 Safari/537.36",
+    )
+    assert classify_client(feats).primary is Kind.AUTOMATION
+
+
+def test_automation_loses_to_an_identified_purpose() -> None:
+    # A headless client that walks the site is a crawler, not automation: the
+    # machine tell only decides when no purpose classifier clears the bar.
+    feats = ClientFeatures(
+        request_count=50,
+        distinct_paths=50,
+        coverage=1.0,
+        asset_coload_ratio=0.0,
+        referer_following_ratio=0.9,
+        ratio_2xx=0.9,
+        ua_looks_like_browser=False,
+        ua_declares_bot=True,
+        ua_empty=False,
+        user_agent="HeadlessChrome/149.0.0.0 Safari/537.36",
+    )
+    result = classify_client(feats)
+    assert result.primary is not Kind.AUTOMATION  # a real purpose (crawler) outranks the tell
+    assert "headless-browser" in result.tags  # the tell is still recorded
 
 
 def test_crawler_recognised_by_origin_asn() -> None:

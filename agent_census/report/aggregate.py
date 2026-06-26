@@ -30,6 +30,7 @@ KIND_ORDER: tuple[Kind, ...] = (
     Kind.VULN_SCANNER,
     Kind.SPOOFED_BROWSER,
     Kind.IMPERSONATOR,
+    Kind.AUTOMATION,
     Kind.SINGLETON,
     Kind.UNKNOWN,
 )
@@ -49,6 +50,8 @@ KIND_BLURB: dict[Kind, str] = {
     Kind.SCRAPER: "Content harvesters hitting pages cold, without following links.",
     Kind.VULN_SCANNER: "Clients probing for known-vulnerable paths and misconfigurations.",
     Kind.SPOOFED_BROWSER: "Datacenter clients wearing a browser UA without browser behaviour.",
+    Kind.AUTOMATION: "Clearly automated clients (headless engine, no browser cache, or a "
+    "library UA) whose specific purpose couldn't be identified.",
     Kind.SPAM_BOT: "Form/comment spam and credential-stuffing bots.",
     Kind.FEED_READER: "RSS/Atom feed pollers.",
     Kind.MONITOR: "Uptime / monitoring checks on a fixed schedule.",

@@ -1,6 +1,6 @@
 """The ``agent-census audit`` subcommand: keep the datacentre ASN list honest.
 
-Cross-checks the ``(provider, ASN)`` associations in ``datacenter_ranges.toml``
+Cross-checks the ``(provider, ASN)`` associations in ``networks/datacenter_ranges.toml``
 against Cloudflare Radar (authoritative AS org names + sibling ASNs + an
 automated-vs-human traffic split as a hosting signal), the RIPEstat registry (the
 RIR-registered holder, a second opinion on the name) and PeeringDB (a network-type

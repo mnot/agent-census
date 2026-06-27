@@ -33,14 +33,15 @@ _TUNING_SCHEMA = {
 }
 _T = load_tuning("feed_reader", _TUNING_SCHEMA)
 
-# Generic feed terms plus the specific reader product names from feed_readers.toml,
+# Generic feed terms plus the specific reader product names from signatures/feed_readers.toml,
 # folded into one compiled alternation. A single C-level search beats scanning the
 # product list per call -- which matters on high-cardinality logs where the cache
 # below thrashes and most calls miss (this was the hottest spot in profiling).
 # The generic terms are short, so they're anchored to word boundaries to avoid
 # matching inside unrelated words ("atom" in "Anatomy"/"atomic", "rss" in a
 # random token); the product names stay plain substrings. Both lists are data:
-# the terms in data/ua_signatures.toml, the product names in data/feed_readers.toml.
+# the terms in data/signatures/ua_signatures.toml, the product names in
+# data/signatures/feed_readers.toml.
 _FEED_TERMS = load_ua_signatures().feed_terms
 _FEED_UA = re.compile(
     "|".join(

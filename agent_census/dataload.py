@@ -1,8 +1,12 @@
-"""Load the bundled reference data (one TOML file per category in ``data/``).
+"""Load the bundled reference data (one TOML file per category under ``data/``).
 
-Flat lists (``scanner_ua`` / ``feed_readers``) hold an array under a key matching
-the file name; ``vuln_paths`` splits into two keyed arrays (see
-:func:`load_vuln_paths`). Declared-crawler files (``search_engine`` …)
+The files are grouped into subdirectories by role: ``signatures/`` for the string
+match-lists (UA tokens and request paths), ``networks/`` for IP-range stanzas,
+``agents/`` for declared crawlers, and ``tuning/`` for the numeric knobs.
+
+Flat lists (``signatures/scanner_ua`` / ``signatures/feed_readers``) hold an array
+under a key matching the file name; ``signatures/vuln_paths`` splits into two keyed
+arrays (see :func:`load_vuln_paths`). Declared-crawler files (``search_engine`` …)
 hold an ``[[agent]]`` array of tables, each with a ``ua_substring`` and optional
 ``domains`` / ``ranges`` / ``ranges_url``. Everything is cached per run.
 """
@@ -269,7 +273,7 @@ class BrowserRelease:
 class UaSignatures:
     """Syntactic User-Agent markers, grouped by what they recognise.
 
-    Each tuple is a list of case-insensitive tokens from ``ua_signatures.toml``. The
+    Each tuple is a list of case-insensitive tokens from ``signatures/ua_signatures.toml``. The
     matchers in :mod:`agent_census.uas` compile these into the regexes that decide
     whether a UA looks like a browser, declares itself a bot, names a headless
     engine, is a bare HTTP library, or names a feed reader.
@@ -287,7 +291,7 @@ class UaSignatures:
 
 @dataclass(frozen=True, slots=True)
 class RequestSignatures:
-    """Request-line markers (path / query / method) from ``request_signatures.toml``.
+    """Request-line markers (path / query / method) from ``signatures/request_signatures.toml``.
 
     Consumed by feature extraction to count static assets, page fetches, probing
     attempts, uncommon methods, and feed polls. Plain token lists; the regex/set
@@ -312,25 +316,27 @@ def _load(name: str, subdir: str = "") -> dict[str, Any]:
 
 @lru_cache(maxsize=None)
 def load_list(name: str) -> tuple[str, ...]:
-    """Return the flat array from ``<name>.toml`` (keyed by ``name``).
+    """Return the flat array from ``signatures/<name>.toml`` (keyed by ``name``).
 
-    The array must be present and non-empty: an empty list would compile to a
-    match-everything regex at the call sites, so a missing/empty list is a
-    ``ConfigError`` rather than a silently over-broad matcher.
+    These are the corroborating substring lists (scanner / monitor / app-client /
+    feed-reader UA tokens, spam-submission paths); they all live under
+    ``data/signatures/``. The array must be present and non-empty: an empty list
+    would compile to a match-everything regex at the call sites, so a missing/empty
+    list is a ``ConfigError`` rather than a silently over-broad matcher.
     """
-    data = _load(name)
-    _check_top_level(f"{name}.toml", data, {name})
+    data = _load(name, "signatures")
+    _check_top_level(f"signatures/{name}.toml", data, {name})
     value = data.get(name, [])
     if not _type_ok(value, "str[]"):
-        raise ConfigError(f"{name}.toml: '{name}' must be a list of strings")
+        raise ConfigError(f"signatures/{name}.toml: '{name}' must be a list of strings")
     if not value:
-        raise ConfigError(f"{name}.toml: '{name}' must not be empty")
+        raise ConfigError(f"signatures/{name}.toml: '{name}' must not be empty")
     return tuple(value)
 
 
 @lru_cache(maxsize=None)
 def load_vuln_paths() -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """Return ``(always_probe, probe_if_absent)`` from ``vuln_paths.toml``.
+    """Return ``(always_probe, probe_if_absent)`` from ``signatures/vuln_paths.toml``.
 
     ``always_probe`` substrings are hostile regardless of the response status
     (secret files, RCE, traversal). ``probe_if_absent`` substrings are real paths
@@ -343,15 +349,15 @@ def load_vuln_paths() -> tuple[tuple[str, ...], tuple[str, ...]]:
     ``ConfigError`` rather than silently disabling (or over-broadening) that class
     of probe detection.
     """
-    data = _load("vuln_paths")
-    _check_top_level("vuln_paths.toml", data, {"always_probe", "probe_if_absent"})
+    data = _load("vuln_paths", "signatures")
+    _check_top_level("signatures/vuln_paths.toml", data, {"always_probe", "probe_if_absent"})
     out: list[tuple[str, ...]] = []
     for key in ("always_probe", "probe_if_absent"):
         value = data.get(key, [])
         if not _type_ok(value, "str[]"):
-            raise ConfigError(f"vuln_paths.toml: '{key}' must be a list of strings")
+            raise ConfigError(f"signatures/vuln_paths.toml: '{key}' must be a list of strings")
         if not value:
-            raise ConfigError(f"vuln_paths.toml: '{key}' must not be empty")
+            raise ConfigError(f"signatures/vuln_paths.toml: '{key}' must not be empty")
         out.append(tuple(value))
     return out[0], out[1]
 
@@ -454,11 +460,11 @@ def load_asn_range_feeds() -> tuple[tuple[int, str, str], ...]:
 
 @lru_cache(maxsize=None)
 def load_range_sources(name: str) -> tuple[RangeSource, ...]:
-    """Return the ``[[source]]`` range stanzas from ``<name>.toml``."""
-    data = _load(name)
-    _check_top_level(f"{name}.toml", data, {"source"})
+    """Return the ``[[source]]`` range stanzas from ``networks/<name>.toml``."""
+    data = _load(name, "networks")
+    _check_top_level(f"networks/{name}.toml", data, {"source"})
     entries = _validate_records(
-        f"{name}.toml", "source", data.get("source", []), _SOURCE_SCHEMA, _bad_format
+        f"networks/{name}.toml", "source", data.get("source", []), _SOURCE_SCHEMA, _bad_format
     )
     sources: list[RangeSource] = []
     for entry in entries:
@@ -476,11 +482,15 @@ def load_range_sources(name: str) -> tuple[RangeSource, ...]:
 
 @lru_cache(maxsize=None)
 def load_egress_networks() -> tuple[EgressNetwork, ...]:
-    """Return the ``[[network]]`` stanzas from ``egress_networks.toml``."""
-    data = _load("egress_networks")
-    _check_top_level("egress_networks.toml", data, {"network"})
+    """Return the ``[[network]]`` stanzas from ``networks/egress_networks.toml``."""
+    data = _load("egress_networks", "networks")
+    _check_top_level("networks/egress_networks.toml", data, {"network"})
     entries = _validate_records(
-        "egress_networks.toml", "network", data.get("network", []), _NETWORK_SCHEMA, _bad_format
+        "networks/egress_networks.toml",
+        "network",
+        data.get("network", []),
+        _NETWORK_SCHEMA,
+        _bad_format,
     )
     networks: list[EgressNetwork] = []
     for entry in entries:
@@ -528,8 +538,10 @@ _UA_SIGNATURE_SCHEMA: dict[str, set[str]] = {
 
 @lru_cache(maxsize=None)
 def load_ua_signatures() -> UaSignatures:
-    """Return the grouped UA-string token lists from ``ua_signatures.toml``."""
-    groups = _grouped_lists("ua_signatures.toml", _load("ua_signatures"), _UA_SIGNATURE_SCHEMA)
+    """Return the grouped UA-string token lists from ``signatures/ua_signatures.toml``."""
+    groups = _grouped_lists(
+        "signatures/ua_signatures.toml", _load("ua_signatures", "signatures"), _UA_SIGNATURE_SCHEMA
+    )
     return UaSignatures(
         browser_engines=groups[("browser", "layout_engines")],
         automation_substrings=groups[("automation", "substrings")],
@@ -553,9 +565,11 @@ _REQUEST_SIGNATURE_SCHEMA: dict[str, set[str]] = {
 
 @lru_cache(maxsize=None)
 def load_request_signatures() -> RequestSignatures:
-    """Return the grouped request-line token lists from ``request_signatures.toml``."""
+    """Return the grouped request-line token lists from ``signatures/request_signatures.toml``."""
     groups = _grouped_lists(
-        "request_signatures.toml", _load("request_signatures"), _REQUEST_SIGNATURE_SCHEMA
+        "signatures/request_signatures.toml",
+        _load("request_signatures", "signatures"),
+        _REQUEST_SIGNATURE_SCHEMA,
     )
     return RequestSignatures(
         static_extensions=groups[("static_assets", "extensions")],

@@ -84,8 +84,11 @@ def test_kind_section_disclosure_and_filter(tmp_path: Path) -> None:
     assert '<details name="kind-extra">' in html  # shared name -> exclusive accordion
     assert "Show more" in html
     assert "scrollBy" in html  # opening one pins the clicked summary (no page jump)
-    assert 'class="filter"' in html  # filter input revealed in the disclosure
-    assert html.count('class="frow"') == 3  # the 3 extra rows are filterable
+    # One page-level filter sits above the sections (not inside the disclosure)…
+    assert html.count('class="filter"') == 1
+    assert "filter all clients" in html
+    # …and every detailed client row is filterable: 5 shown + 3 in the disclosure.
+    assert html.count('class="frow"') == 8
 
 
 def test_report_html_escapes_user_agent() -> None:

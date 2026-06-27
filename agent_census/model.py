@@ -306,3 +306,10 @@ class ClientProfile:
     # Origin-network bucket this client was attributed to (hosting provider /
     # egress network / residential), matching the cross-tab columns.
     network: str | None = None
+    # True when this row is a display aggregate of many independent clients (a
+    # privacy-relay / VPN egress fold, keyed by network+UA past throwaway IPs),
+    # not a single identified client. Per-client behavioural signals -- request
+    # cadence and the site-relative magnitudes -- are meaningless on it (the
+    # interleaved arrivals and union span are artifacts of folding), so they are
+    # suppressed, and it is never sampled into the reference-browser pool.
+    is_aggregate: bool = False

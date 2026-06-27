@@ -214,6 +214,21 @@ def test_tag_profile_preserves_existing_tags() -> None:
     assert tagged.classification.tags == frozenset({"datacenter", "high-rate"})
 
 
+def test_tag_profile_skips_aggregate() -> None:
+    # A multi-client display fold (a privacy-relay row) is left untouched even when
+    # its folded magnitudes clear the bar: rate/bytes/breadth/duration there are the
+    # union of many independent clients, not one client's, so a tag would be an artifact.
+    cal = _calibrate([10] * 5, PARAMS)
+    profile = ClientProfile(
+        client_id=ClientId(ip="iCloud Private Relay"),
+        entries=(),
+        features=browser(100),  # would earn high-rate as a single client
+        classification=Classification(primary=Kind.BROWSER, confidence=0.5),
+        is_aggregate=True,
+    )
+    assert tag_profile(profile, load_relative_tags(), cal) is profile
+
+
 def test_tag_profile_noop_returns_same_object() -> None:
     cal = _calibrate([10] * 5, PARAMS)
     profile = ClientProfile(

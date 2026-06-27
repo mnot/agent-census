@@ -826,6 +826,22 @@ def test_behavioural_tags_promoted_from_evidence() -> None:
     assert not ({"404-storm", "exotic-method", "metronomic"} & classify_client(plain).tags)
 
 
+def test_aggregate_suppresses_cadence_tag() -> None:
+    # On a multi-client display fold the interleaved arrivals carry no cadence, so
+    # the metronomic/bursty/steady tag is suppressed -- but only that. The other
+    # fingerprint dimensions (here a generic UA) are per-request and still apply.
+    from agent_census.classify.tags import CADENCE_TAGS, derive_tags
+
+    feats = ClientFeatures(
+        request_count=20, ua_empty=False, rate_regularity=0.05, user_agent="python-requests/2.31.0"
+    )
+    assert "metronomic" in derive_tags(feats, None, None)
+    aggregated = derive_tags(feats, None, None, aggregate=True)
+    assert not (CADENCE_TAGS & aggregated)
+    assert "generic-ua" in aggregated  # a non-cadence fingerprint tag is untouched
+    assert "metronomic" not in classify_client(feats, aggregate=True).tags
+
+
 def test_uses_head_tag() -> None:
     signals = [Signal(Kind.MONITOR, 0.6, ("monitors",), "monitor")]
     heading = ClientFeatures(request_count=10, head_ratio=0.5)

@@ -12,7 +12,8 @@ from agent_census.pipeline import RESIDENTIAL_NETWORK
 from agent_census.parsing.apache import PRESETS
 from agent_census.model import Classification, ClientFeatures, ClientId, ClientProfile, Kind
 from agent_census.report import render_inspect_html, render_report_html, select_profiles
-from agent_census.report.html import _client_row, _esc
+from agent_census.classify.relative import _METRIC_TAGS
+from agent_census.report.html import _TAG_HELP, _client_row, _esc
 
 DATA = Path(__file__).parent / "data"
 
@@ -20,6 +21,13 @@ DATA = Path(__file__).parent / "data"
 def _run() -> pipeline.AnalysisResult:
     parser = resolve("apache", {"format": PRESETS["combined"]})
     return pipeline.analyze(DATA / "sample_access.log", parser, identity.get_strategy("ip_ua"))
+
+
+def test_every_relative_tag_has_hover_text() -> None:
+    # The site-relative magnitude tags render through the same title= tooltip as
+    # every other tag; a new metric must not ship without a hover description.
+    missing = [tag for tag in _METRIC_TAGS.values() if tag not in _TAG_HELP]
+    assert not missing, f"tags with no hover description: {missing}"
 
 
 def test_report_html_is_a_full_page() -> None:

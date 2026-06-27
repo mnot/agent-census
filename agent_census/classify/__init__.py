@@ -27,10 +27,15 @@ def classify_client(
     compliance: ComplianceReport | None = None,
     verification: BotVerification | None = None,
     datacenter: bool = False,
+    aggregate: bool = False,
     unknown_threshold: float = DEFAULT_UNKNOWN_THRESHOLD,
     keep_signals: bool = True,
 ) -> Classification:
-    """Run all classifiers over ``features`` and combine into a verdict."""
+    """Run all classifiers over ``features`` and combine into a verdict.
+
+    ``aggregate`` marks a multi-client display fold (a privacy-relay / VPN row),
+    suppressing the per-client cadence tags.
+    """
     signals = run_classifiers(features)
     return combine(
         signals,
@@ -38,6 +43,7 @@ def classify_client(
         compliance=compliance,
         verification=verification,
         datacenter=datacenter,
+        aggregate=aggregate,
         unknown_threshold=unknown_threshold,
         keep_signals=keep_signals,
     )

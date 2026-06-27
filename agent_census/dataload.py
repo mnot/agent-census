@@ -337,6 +337,11 @@ def load_vuln_paths() -> tuple[tuple[str, ...], tuple[str, ...]]:
     on sites running that stack, so a hit counts as probing only when the response
     says the path is absent (404/410); a resolved response means it belongs to this
     site. See the file header for the rationale.
+
+    Both keys must be present and non-empty: like :func:`load_list`, an empty array
+    compiles to a match-everything regex, so a missing/emptied bucket is a
+    ``ConfigError`` rather than silently disabling (or over-broadening) that class
+    of probe detection.
     """
     data = _load("vuln_paths")
     _check_top_level("vuln_paths.toml", data, {"always_probe", "probe_if_absent"})
@@ -345,6 +350,8 @@ def load_vuln_paths() -> tuple[tuple[str, ...], tuple[str, ...]]:
         value = data.get(key, [])
         if not _type_ok(value, "str[]"):
             raise ConfigError(f"vuln_paths.toml: '{key}' must be a list of strings")
+        if not value:
+            raise ConfigError(f"vuln_paths.toml: '{key}' must not be empty")
         out.append(tuple(value))
     return out[0], out[1]
 

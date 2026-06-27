@@ -163,6 +163,20 @@ def test_vuln_paths_split_into_two_buckets() -> None:
     assert not set(always) & set(contextual)
 
 
+def test_load_vuln_paths_rejects_empty_bucket(monkeypatch: pytest.MonkeyPatch) -> None:
+    # An emptied bucket would compile to a match-everything regex (or silently
+    # disable its half of detection), so it must raise rather than load.
+    import agent_census.dataload as dl
+
+    dl.load_vuln_paths.cache_clear()
+    monkeypatch.setattr(
+        dl, "_load", lambda name, subdir="": {"always_probe": ["/.env"], "probe_if_absent": []}
+    )
+    with pytest.raises(ConfigError, match="'probe_if_absent' must not be empty"):
+        dl.load_vuln_paths()
+    dl.load_vuln_paths.cache_clear()
+
+
 def test_asn_recognised_agents_loaded() -> None:
     assert (35237, "Sberbank") in load_asn_agents("ai_crawler")
     # An ASN-only agent (no ua_substring) is skipped by the UA-token loader.
@@ -189,7 +203,8 @@ def test_all_bundled_data_files_validate() -> None:
     # A guard: every shipped data file passes validation (no unknown keys etc.).
     for name in ("scanner_ua", "feed_readers", "monitor_uas", "submit_paths"):
         assert load_list(name)
-    assert load_vuln_paths()
+    always, contextual = load_vuln_paths()
+    assert always and contextual
     for category in KNOWN_AGENT_CATEGORIES:
         load_tokens(category)
         load_asn_agents(category)

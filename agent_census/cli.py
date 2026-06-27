@@ -492,6 +492,12 @@ def _apply_persisted_settings(args: argparse.Namespace) -> None:
 _MAXMIND_SKEW_DAYS = 90  # warn if the DB was built this far outside the log's span
 
 
+def _as_utc(stamp: datetime) -> datetime:
+    """Treat a naive log timestamp (a log format without a zone) as UTC, so it can
+    be compared against the tz-aware MaxMind build epoch without a TypeError."""
+    return stamp if stamp.tzinfo is not None else stamp.replace(tzinfo=timezone.utc)
+
+
 def _warn_maxmind_skew(
     resolver: AsnResolver | CountryResolver, result: AnalysisResult, what: str
 ) -> None:
@@ -502,7 +508,12 @@ def _warn_maxmind_skew(
     """
     if resolver.build_epoch is None:
         return
-    seen = [t for p in result.profiles for t in (p.features.first_seen, p.features.last_seen) if t]
+    seen = [
+        _as_utc(t)
+        for p in result.profiles
+        for t in (p.features.first_seen, p.features.last_seen)
+        if t
+    ]
     if not seen:
         return
     built = datetime.fromtimestamp(resolver.build_epoch, tz=timezone.utc)

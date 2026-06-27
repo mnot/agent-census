@@ -140,6 +140,17 @@ def test_skew_warning_fires_when_db_is_far_off(capsys: pytest.CaptureFixture[str
     assert "MaxMind database was built" in err and "after" in err
 
 
+def test_skew_handles_naive_log_timestamps(capsys: pytest.CaptureFixture[str]) -> None:
+    # A log format without a zone yields naive first/last_seen. Comparing them
+    # against the tz-aware build epoch must not raise; treat them as UTC.
+    naive_log_time = datetime(2023, 1, 1)  # no tzinfo
+    r = _resolver({})
+    r.build_epoch = int(datetime(2023, 1, 1, tzinfo=timezone.utc).timestamp()) + 300 * 86400
+    _warn_maxmind_skew(r, _skew_result(naive_log_time), "AS attributions")  # type: ignore[arg-type]
+    err = capsys.readouterr().err
+    assert "MaxMind database was built" in err and "after" in err
+
+
 def test_no_skew_warning_within_window(capsys: pytest.CaptureFixture[str]) -> None:
     log_time = datetime(2023, 1, 1, tzinfo=timezone.utc)
     r = _resolver({})

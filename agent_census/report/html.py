@@ -377,6 +377,9 @@ def _meta_list(
     if robots_note:
         cls = "warn" if "differ" in robots_note else ""
         items.append(f'<strong>robots.txt:</strong> <span class="{cls}">{_esc(robots_note)}</span>')
+    calibration = result.reference_calibration
+    if calibration is not None and (warning := calibration.warning()):
+        items.append(f'<strong>Calibration:</strong> <span class="warn">{_esc(warning)}</span>')
     if elapsed is not None:
         items.append(f"<em>Analysed in {elapsed:.1f}s</em>")
     return '<ul class="meta">' + "".join(f"<li>{item}</li>" for item in items) + "</ul>"

@@ -13,5 +13,7 @@ remaining files here each have their own shape, documented in their own header c
 - `datacenter_ranges.toml` -- hosting/cloud providers (`[[source]]`).
 - `egress_networks.toml` -- shared-egress relays, VPNs, and proxies (`[[network]]`).
 - `browser_releases.toml` -- browser release cadences, for version-age (`[[family]]`).
+- `relative_tags.toml` -- thresholds for site-relative magnitude tags (`[params]`,
+  `[default]`, `[[kind]]`); calibrated against the site's real browsers.
 - `feed_readers.toml`, `app_clients.toml`, `scanner_ua.toml`, `vuln_paths.toml` --
   flat lists of substrings/paths, keyed by the file name.

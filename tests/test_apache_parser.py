@@ -45,6 +45,20 @@ def test_timestamp_parsed_with_offset() -> None:
     assert entry.timestamp == expected
 
 
+def test_malformed_timezone_keeps_line_with_no_timestamp() -> None:
+    # A bad 5-char offset (digits where the parser expects them, but not numeric)
+    # passes the shape guard; it must yield None (timestamp unset) rather than
+    # raising and dropping the whole otherwise-valid request.
+    line = (
+        '192.0.2.10 - - [10/Oct/2000:13:55:36 +07ab] '
+        '"GET / HTTP/1.1" 200 10 "-" "-"'
+    )
+    outcome = _one(PRESETS["combined"], line)
+    assert outcome.entry is not None  # line kept, not skipped
+    assert outcome.entry.timestamp is None
+    assert outcome.entry.status == 200
+
+
 def test_dash_fields_become_none() -> None:
     line = '203.0.113.5 - - [10/Oct/2000:13:55:36 +0000] "GET / HTTP/1.1" 200 - "-" "-"'
     entry = _one(PRESETS["combined"], line).entry

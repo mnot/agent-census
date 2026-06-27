@@ -726,16 +726,39 @@ def test_verified_tag_from_verification() -> None:
     assert result.primary is Kind.SEARCH_ENGINE
 
 
-def test_rdns_unverified_tag_when_check_was_inconclusive() -> None:
-    # Declared a verifiable crawler, but rDNS came back inconclusive (no ASN either):
-    # surfaced as a tag, the kind/verdict otherwise unchanged.
+def test_unverified_tag_when_network_check_inconclusive() -> None:
+    # Had rdns/range info to check, but it came back inconclusive: surfaced as a tag,
+    # the kind/verdict otherwise unchanged.
     feats = ClientFeatures(request_count=5, user_agent="Googlebot/2.1")
-    verification = BotVerification(VerificationStatus.UNVERIFIED)
+    verification = BotVerification(VerificationStatus.UNVERIFIED, network_checked=True)
     signals = [Signal(Kind.SEARCH_ENGINE, 0.8, ("declares Googlebot",), "search_engine")]
     result = combine(signals, feats, verification=verification)
-    assert "rdns-unverified" in result.tags
+    assert "unverified" in result.tags
     assert "verified" not in result.tags
     assert result.primary is Kind.SEARCH_ENGINE
+
+
+def test_unverified_tag_on_impersonator_with_network_check() -> None:
+    # A definitive rdns/range failure: still the impersonator kind, now also tagged
+    # so the verification failure is visible alongside it.
+    feats = ClientFeatures(request_count=5, user_agent="Mozilla/5.0 (compatible; Googlebot/2.1)")
+    verification = BotVerification(
+        VerificationStatus.IMPERSONATOR, resolved_host="x.evil.example", network_checked=True
+    )
+    signals = [Signal(Kind.SEARCH_ENGINE, 0.8, ("declares Googlebot",), "search_engine")]
+    result = combine(signals, feats, verification=verification)
+    assert result.primary is Kind.IMPERSONATOR  # outcome unchanged
+    assert "unverified" in result.tags
+
+
+def test_no_unverified_tag_when_no_network_info() -> None:
+    # UNVERIFIED with nothing to check against (no rdns/range info, no ASN) -- not the
+    # same as a check that ran and didn't confirm, so it carries no tag.
+    feats = ClientFeatures(request_count=5, user_agent="Googlebot/2.1")
+    verification = BotVerification(VerificationStatus.UNVERIFIED, network_checked=False)
+    signals = [Signal(Kind.SEARCH_ENGINE, 0.8, ("declares Googlebot",), "search_engine")]
+    result = combine(signals, feats, verification=verification)
+    assert "unverified" not in result.tags
 
 
 def test_has_cache_tag_on_304() -> None:

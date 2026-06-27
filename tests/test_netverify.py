@@ -65,6 +65,20 @@ def test_transient_reverse_failure_is_unverified(monkeypatch: pytest.MonkeyPatch
     assert BotVerifier().verify("203.0.113.9", "DnsBot/1.0").status is VerificationStatus.UNVERIFIED
 
 
+def test_network_checked_flag_tracks_whether_a_check_ran(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A network-derived verdict records that a check actually ran (the `unverified` tag
+    # depends on this to tell a failed/inconclusive check from nothing to check against).
+    _patch_spec(monkeypatch, "DnsBot", CrawlerSpec(domains=("example.com",)))
+    monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: ("host.evil.example", False))
+    failed = BotVerifier().verify("203.0.113.9", "DnsBot/1.0")
+    assert failed.status is VerificationStatus.IMPERSONATOR and failed.network_checked
+
+    # An agent with no rdns/range info is UNVERIFIED but no check ran.
+    _patch_spec(monkeypatch, "BareBot", CrawlerSpec())
+    bare = BotVerifier().verify("203.0.113.9", "BareBot/1.0")
+    assert bare.status is VerificationStatus.UNVERIFIED and not bare.network_checked
+
+
 def test_verify_all_dedupes_and_caches(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_spec(monkeypatch, "DnsBot", CrawlerSpec(domains=("example.com",)))
     calls: list[str] = []

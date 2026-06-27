@@ -105,6 +105,7 @@ _TAG_ORDER = {
             "asn-attributed",
             "verified",
             "asn-associated",
+            "unverified",
             "declares-known-bot",
             "no-user-agent",
             "checked-robots",

@@ -279,6 +279,11 @@ class BotVerification:
     resolved_host: str | None = None
     expected_domains: tuple[str, ...] = ()
     evidence: tuple[str, ...] = ()
+    # The agent declared rdns/range info, so a network check was actually run (as
+    # opposed to the asns-only or no-verifiable-info paths). Lets the report mark a
+    # declared crawler that *could* be network-verified but wasn't -- failed or
+    # inconclusive -- distinct from one with nothing to check against.
+    network_checked: bool = False
 
 
 @dataclass(frozen=True, slots=True)

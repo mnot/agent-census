@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from .. import uas
 from ..dataload import load_shared_tuning, load_tuning
+from ..errors import ConfigError
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
 from .tags import identifies_as_known_agent
@@ -40,6 +41,16 @@ _TUNING_SCHEMA = {
 }
 _T = load_tuning("browser", _TUNING_SCHEMA)
 _S = load_shared_tuning()
+
+# The disqualified ceiling only does its job (keeping a disqualified client out of a
+# confident browser verdict) while it sits below the shared unknown threshold. The
+# two live in different files, so enforce the relationship at load rather than trust
+# a prose comment.
+if _T["disqualified_ceiling"] >= _S["unknown_threshold"]:
+    raise ConfigError(
+        "tuning/browser.toml: disqualified_ceiling must be below shared unknown_threshold "
+        f"({_T['disqualified_ceiling']} >= {_S['unknown_threshold']})"
+    )
 
 
 class BrowserClassifier(Classifier):

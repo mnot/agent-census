@@ -131,6 +131,10 @@ def _p95_log(values: list[float]) -> float | None:
     pos = sorted(v for v in values if v > 0)
     if not pos:
         return None
+    # The 0.95 is fixed: it *defines* this branch's "p95(log) x margin" model and is
+    # not the tunable `bounded_percentile` (which is the separate linear percentile
+    # the bounded-ratio branch in _relative_threshold uses). Two distinct knobs that
+    # happen to share a value -- moving one must not move the other.
     return math.exp(_nearest_rank([math.log(v) for v in pos], 0.95))
 
 
@@ -278,8 +282,9 @@ def parse_relative_tags(data: Mapping[str, object]) -> RelativeTagConfig:
 # Bound once here, where the loader is fully defined, for the bare predicates above
 # (is_reference_browser / _gated) that have no params in hand. The load is cached, so
 # this is the same config every other caller sees.
-_MIN_REQUESTS = load_relative_tags().params.min_requests
-_BOUNDED_PERCENTILE = load_relative_tags().params.bounded_percentile
+_PARAMS = load_relative_tags().params
+_MIN_REQUESTS = _PARAMS.min_requests
+_BOUNDED_PERCENTILE = _PARAMS.bounded_percentile
 
 
 # ----------------------------------------------------------------- sampling / tagging

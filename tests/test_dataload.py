@@ -104,6 +104,22 @@ def test_grouped_lists_rejects_non_table_section() -> None:
         )
 
 
+def test_grouped_lists_rejects_empty_list() -> None:
+    # An empty list would compile to a match-everything regex downstream.
+    with pytest.raises(ConfigError, match="must not be empty"):
+        _grouped_lists(
+            "x.toml", {"browser": {"layout_engines": []}}, {"browser": {"layout_engines"}}
+        )
+
+
+def test_load_list_rejects_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    import agent_census.dataload as dl
+
+    monkeypatch.setattr(dl, "_load", lambda name, subdir="": {"empty_thing": []})
+    with pytest.raises(ConfigError, match="must not be empty"):
+        dl.load_list("empty_thing")
+
+
 def test_shared_tuning_load() -> None:
     shared = load_shared_tuning()
     assert shared["unknown_threshold"] == 0.45

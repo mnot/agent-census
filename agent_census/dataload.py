@@ -56,31 +56,40 @@ def _check_top_level(filename: str, data: dict[str, Any], allowed: set[str]) -> 
         )
 
 
+def _check_table(filename: str, table: str, section: object, allowed: set[str]) -> dict[str, Any]:
+    """Confirm ``[table]`` is a table with no keys outside ``allowed``; return it."""
+    if not isinstance(section, dict):
+        raise ConfigError(f"{filename}: [{table}] must be a table")
+    extra = set(section) - allowed
+    if extra:
+        raise ConfigError(
+            f"{filename}: [{table}] unexpected key(s) {', '.join(sorted(extra))} "
+            f"(allowed: {', '.join(sorted(allowed))})"
+        )
+    return section
+
+
 def _grouped_lists(
     filename: str, data: dict[str, Any], schema: dict[str, set[str]]
 ) -> dict[tuple[str, str], tuple[str, ...]]:
     """Validate a file of ``[table]`` sections, each holding named ``str[]`` arrays.
 
-    ``schema`` maps each expected table to the keys it may contain. Returns a
-    ``{(table, key): tuple}`` mapping; a missing array reads as empty. Unexpected
-    tables or keys, non-table sections, and non-``str[]`` values are ``ConfigError``.
+    ``schema`` maps each expected table to the keys it must contain. Returns a
+    ``{(table, key): tuple}`` mapping. Unexpected tables or keys, non-table sections,
+    non-``str[]`` values, and empty/missing arrays are all ``ConfigError`` -- an
+    empty list would silently compile to a match-everything regex downstream, so a
+    file is required to actually carry every list it declares.
     """
     _check_top_level(filename, data, set(schema))
     out: dict[tuple[str, str], tuple[str, ...]] = {}
     for table, keys in schema.items():
-        section = data.get(table, {})
-        if not isinstance(section, dict):
-            raise ConfigError(f"{filename}: [{table}] must be a table")
-        extra = set(section) - keys
-        if extra:
-            raise ConfigError(
-                f"{filename}: [{table}] unexpected key(s) {', '.join(sorted(extra))} "
-                f"(allowed: {', '.join(sorted(keys))})"
-            )
+        section = _check_table(filename, table, data.get(table, {}), keys)
         for key in keys:
             value = section.get(key, [])
             if not _type_ok(value, "str[]"):
                 raise ConfigError(f"{filename}: [{table}] '{key}' must be a list of strings")
+            if not value:
+                raise ConfigError(f"{filename}: [{table}] '{key}' must not be empty")
             out[(table, key)] = tuple(value)
     return out
 
@@ -113,15 +122,7 @@ def load_tuning(name: str, schema: Mapping[str, str]) -> Mapping[str, float]:
             scalars.add(path)
     _check_top_level(filename, data, scalars | set(tables))
     for table, keys in tables.items():
-        section = data.get(table, {})
-        if not isinstance(section, dict):
-            raise ConfigError(f"{filename}: [{table}] must be a table")
-        extra = set(section) - keys
-        if extra:
-            raise ConfigError(
-                f"{filename}: [{table}] unexpected key(s) {', '.join(sorted(extra))} "
-                f"(allowed: {', '.join(sorted(keys))})"
-            )
+        _check_table(filename, table, data.get(table, {}), keys)
     values: dict[str, float] = {}
     for field, path in schema.items():
         table, _, key = path.partition(".")
@@ -310,12 +311,19 @@ def _load(name: str, subdir: str = "") -> dict[str, Any]:
 
 @lru_cache(maxsize=None)
 def load_list(name: str) -> tuple[str, ...]:
-    """Return the flat array from ``<name>.toml`` (keyed by ``name``)."""
+    """Return the flat array from ``<name>.toml`` (keyed by ``name``).
+
+    The array must be present and non-empty: an empty list would compile to a
+    match-everything regex at the call sites, so a missing/empty list is a
+    ``ConfigError`` rather than a silently over-broad matcher.
+    """
     data = _load(name)
     _check_top_level(f"{name}.toml", data, {name})
     value = data.get(name, [])
     if not _type_ok(value, "str[]"):
         raise ConfigError(f"{name}.toml: '{name}' must be a list of strings")
+    if not value:
+        raise ConfigError(f"{name}.toml: '{name}' must not be empty")
     return tuple(value)
 
 

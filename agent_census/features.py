@@ -21,7 +21,7 @@ from datetime import datetime
 from typing import TypeVar
 
 from . import uas
-from .dataload import load_list, load_request_signatures
+from .dataload import load_request_signatures, load_vuln_paths
 from .model import ClientFeatures, LogEntry
 
 # Request-line marker lists live in data/request_signatures.toml; this module turns
@@ -44,8 +44,21 @@ _COLOAD_WINDOW_SECONDS = 10.0
 
 # Loaded once, shared by every accumulator (not stored per instance). Compiled into
 # one alternation each so a request is one regex search, not N substring scans.
-_VULN_PATTERNS = tuple(p.lower() for p in load_list("vuln_paths"))
-_VULN_RE = re.compile("|".join(re.escape(p) for p in _VULN_PATTERNS)) if _VULN_PATTERNS else None
+# Two buckets: "always" paths are a probe whatever the response; "contextual" paths
+# are real on sites running that stack, so they count only on an absent-resource
+# response (the client is guessing at software this site doesn't run).
+_ALWAYS_PATHS, _CONTEXTUAL_PATHS = load_vuln_paths()
+
+
+def _compile_paths(patterns: tuple[str, ...]) -> re.Pattern[str] | None:
+    return re.compile("|".join(re.escape(p.lower()) for p in patterns)) if patterns else None
+
+
+_ALWAYS_RE = _compile_paths(_ALWAYS_PATHS)
+_CONTEXTUAL_RE = _compile_paths(_CONTEXTUAL_PATHS)
+# Statuses that mean "this path isn't here" -- the signal that a contextual hit is a
+# probe. 401/403/2xx/3xx all mean the path exists (just gated), so they don't count.
+_ABSENT_STATUSES = frozenset({404, 410})
 _TRAVERSAL_RE = re.compile("|".join(re.escape(m) for m in _TRAVERSAL_MARKERS))
 _EVASION_RE = re.compile("|".join(re.escape(m) for m in _EVASION_MARKERS))
 
@@ -310,7 +323,13 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
                 self.paths_404.add(path)
 
         low = path.lower()
-        if _VULN_RE is not None and _VULN_RE.search(low):
+        always = _ALWAYS_RE is not None and _ALWAYS_RE.search(low)
+        contextual = (
+            entry.status in _ABSENT_STATUSES
+            and _CONTEXTUAL_RE is not None
+            and _CONTEXTUAL_RE.search(low)
+        )
+        if always or contextual:
             self.vuln_hits += 1
             if self.vuln_sample is None:
                 self.vuln_sample = []

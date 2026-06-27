@@ -22,6 +22,7 @@ from agent_census.dataload import (
     load_tokens,
     load_tuning,
     load_ua_signatures,
+    load_vuln_paths,
 )
 from agent_census.errors import ConfigError
 
@@ -51,7 +52,6 @@ def test_browser_releases_load() -> None:
 
 
 def test_flat_lists_load() -> None:
-    assert "/.env" in load_list("vuln_paths")
     assert "sqlmap" in load_list("scanner_ua")
     assert "NetNewsWire" in load_list("feed_readers")
     assert "uptimerobot" in load_list("monitor_uas")
@@ -154,6 +154,29 @@ def test_load_tuning_rejects_unexpected_table() -> None:
         load_tuning("shared", {"x": "verdict.unknown_threshold"})
 
 
+def test_vuln_paths_split_into_two_buckets() -> None:
+    always, contextual = load_vuln_paths()
+    # Secret-file / RCE targets are always probes; CMS surfaces are contextual.
+    assert "/.env" in always
+    assert "/wp-login.php" in contextual
+    # No substring belongs to both buckets.
+    assert not set(always) & set(contextual)
+
+
+def test_load_vuln_paths_rejects_empty_bucket(monkeypatch: pytest.MonkeyPatch) -> None:
+    # An emptied bucket would compile to a match-everything regex (or silently
+    # disable its half of detection), so it must raise rather than load.
+    import agent_census.dataload as dl
+
+    dl.load_vuln_paths.cache_clear()
+    monkeypatch.setattr(
+        dl, "_load", lambda name, subdir="": {"always_probe": ["/.env"], "probe_if_absent": []}
+    )
+    with pytest.raises(ConfigError, match="'probe_if_absent' must not be empty"):
+        dl.load_vuln_paths()
+    dl.load_vuln_paths.cache_clear()
+
+
 def test_asn_recognised_agents_loaded() -> None:
     assert (35237, "Sberbank") in load_asn_agents("ai_crawler")
     # An ASN-only agent (no ua_substring) is skipped by the UA-token loader.
@@ -178,8 +201,10 @@ def test_range_source_asns_parse_as_ints() -> None:
 
 def test_all_bundled_data_files_validate() -> None:
     # A guard: every shipped data file passes validation (no unknown keys etc.).
-    for name in ("vuln_paths", "scanner_ua", "feed_readers", "monitor_uas", "submit_paths"):
+    for name in ("scanner_ua", "feed_readers", "monitor_uas", "submit_paths"):
         assert load_list(name)
+    always, contextual = load_vuln_paths()
+    assert always and contextual
     for category in KNOWN_AGENT_CATEGORIES:
         load_tokens(category)
         load_asn_agents(category)

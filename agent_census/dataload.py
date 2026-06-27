@@ -1,7 +1,8 @@
 """Load the bundled reference data (one TOML file per category in ``data/``).
 
-Flat lists (``vuln_paths`` / ``scanner_ua`` / ``feed_readers``) hold an array
-under a key matching the file name. Declared-crawler files (``search_engine`` …)
+Flat lists (``scanner_ua`` / ``feed_readers``) hold an array under a key matching
+the file name; ``vuln_paths`` splits into two keyed arrays (see
+:func:`load_vuln_paths`). Declared-crawler files (``search_engine`` …)
 hold an ``[[agent]]`` array of tables, each with a ``ua_substring`` and optional
 ``domains`` / ``ranges`` / ``ranges_url``. Everything is cached per run.
 """
@@ -325,6 +326,34 @@ def load_list(name: str) -> tuple[str, ...]:
     if not value:
         raise ConfigError(f"{name}.toml: '{name}' must not be empty")
     return tuple(value)
+
+
+@lru_cache(maxsize=None)
+def load_vuln_paths() -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Return ``(always_probe, probe_if_absent)`` from ``vuln_paths.toml``.
+
+    ``always_probe`` substrings are hostile regardless of the response status
+    (secret files, RCE, traversal). ``probe_if_absent`` substrings are real paths
+    on sites running that stack, so a hit counts as probing only when the response
+    says the path is absent (404/410); a resolved response means it belongs to this
+    site. See the file header for the rationale.
+
+    Both keys must be present and non-empty: like :func:`load_list`, an empty array
+    compiles to a match-everything regex, so a missing/emptied bucket is a
+    ``ConfigError`` rather than silently disabling (or over-broadening) that class
+    of probe detection.
+    """
+    data = _load("vuln_paths")
+    _check_top_level("vuln_paths.toml", data, {"always_probe", "probe_if_absent"})
+    out: list[tuple[str, ...]] = []
+    for key in ("always_probe", "probe_if_absent"):
+        value = data.get(key, [])
+        if not _type_ok(value, "str[]"):
+            raise ConfigError(f"vuln_paths.toml: '{key}' must be a list of strings")
+        if not value:
+            raise ConfigError(f"vuln_paths.toml: '{key}' must not be empty")
+        out.append(tuple(value))
+    return out[0], out[1]
 
 
 # Crawler/bot categories: one TOML file each, an [[agent]] table per agent.

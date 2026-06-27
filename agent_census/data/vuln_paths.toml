@@ -1,8 +1,23 @@
 # Path substrings that indicate vulnerability / misconfiguration probing.
-# Matched case-insensitively against the request path. Tune for your site;
-# remove any that are legitimate paths on your deployment.
+# Matched case-insensitively against the request path. Two buckets, so the list
+# auto-tunes to the site instead of needing per-deployment editing:
+#
+#   always_probe    -- hostile regardless of the response. Secret/credential
+#                      files, RCE/webshell drops, device-specific exploit
+#                      endpoints, traversal targets: there is no site where a
+#                      normal visitor fetches these, so a hit always counts
+#                      (a 200 just means the secret leaked -- worse, not benign).
+#
+#   probe_if_absent -- real paths on sites that run that stack (WordPress, Joomla,
+#                      phpMyAdmin, Spring Boot, Exchange, ...). A hit counts as a
+#                      probe only when the response says the path isn't here
+#                      (404/410): the client is guessing at software this site
+#                      doesn't run. A resolved response (2xx/3xx/401/403) means
+#                      it's part of this site, so it is not counted -- which is
+#                      how the same list behaves correctly on a WordPress site
+#                      and on one that has never heard of WordPress.
 
-vuln_paths = [
+always_probe = [
     # credential / secret files
     "/.env", "/.git/", "/.svn/", "/.aws/", "/.ssh/", "/.htpasswd", "/.htaccess",
     "/id_rsa", "/credentials", "/config.php", "/configuration.php",
@@ -10,17 +25,22 @@ vuln_paths = [
     "/.git-credentials", "/.npmrc", "/.s3cfg", "/.pgpass", "/.netrc", "/.my.cnf",
     "/.dockerenv", "/.kube/", "/.terraform/", "/secrets.json",
     "/secrets.yml", "/app/etc/local.xml", "/sites/default/settings.php",
-    # WordPress / CMS probes
+    # shells / RCE attempts
+    "/shell", "/cmd.php", "/eval-stdin.php", "/vendor/phpunit",
+    "/boaform", "/HNAP1", "/setup.cgi", "/tmUnblock.cgi", "/currentsetting.htm",
+    # generic injection / traversal markers
+    "/etc/passwd", "/proc/self",
+]
+
+probe_if_absent = [
+    # WordPress / CMS surfaces (real on sites running them)
     "/wp-login.php", "/wp-admin", "/wp-content", "/xmlrpc.php", "/administrator/",
     "/joomla", "/drupal",
     # admin / database tools
     "/phpmyadmin", "/phpMyAdmin", "/pma/", "/myadmin", "/adminer.php", "/dbadmin",
-    # shells / RCE attempts
-    "/shell", "/cmd.php", "/eval-stdin.php", "/vendor/phpunit", "/cgi-bin/",
-    "/boaform", "/HNAP1", "/setup.cgi", "/tmUnblock.cgi", "/currentsetting.htm",
+    # CGI
+    "/cgi-bin/",
     # app framework / actuator endpoints
     "/actuator", "/solr/", "/struts", "/jenkins", "/.well-known/openid",
     "/telerik", "/owa/", "/autodiscover",
-    # generic injection / traversal markers
-    "/etc/passwd", "/proc/self",
 ]

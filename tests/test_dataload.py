@@ -6,18 +6,21 @@ import pytest
 
 from agent_census.dataload import (
     _AGENT_SCHEMA,
+    _SHARED_TUNING,
+    KNOWN_AGENT_CATEGORIES,
     _bad_format,
     _check_top_level,
     _grouped_lists,
     _require_agent,
     _validate_records,
-    KNOWN_AGENT_CATEGORIES,
     load_asn_agents,
     load_egress_networks,
     load_list,
     load_range_sources,
     load_request_signatures,
+    load_shared_tuning,
     load_tokens,
+    load_tuning,
     load_ua_signatures,
 )
 from agent_census.errors import ConfigError
@@ -89,12 +92,50 @@ def test_grouped_lists_rejects_unknown_key() -> None:
 
 def test_grouped_lists_rejects_bad_type() -> None:
     with pytest.raises(ConfigError, match="must be a list of strings"):
-        _grouped_lists("x.toml", {"browser": {"layout_engines": [1]}}, {"browser": {"layout_engines"}})
+        _grouped_lists(
+            "x.toml", {"browser": {"layout_engines": [1]}}, {"browser": {"layout_engines"}}
+        )
 
 
 def test_grouped_lists_rejects_non_table_section() -> None:
     with pytest.raises(ConfigError, match=r"\[browser\] must be a table"):
-        _grouped_lists("x.toml", {"browser": ["not", "a", "table"]}, {"browser": {"layout_engines"}})
+        _grouped_lists(
+            "x.toml", {"browser": ["not", "a", "table"]}, {"browser": {"layout_engines"}}
+        )
+
+
+def test_shared_tuning_load() -> None:
+    shared = load_shared_tuning()
+    assert shared["unknown_threshold"] == 0.45
+    assert shared["browser_coload_min"] == 0.4
+    assert shared["storm_404_distinct_paths_min"] == 15
+
+
+def test_all_tuning_files_validate() -> None:
+    # Importing the classifiers loads (and so validates) every per-classifier tuning
+    # file at module import; a bad file would raise here. This guards the shared one.
+    from agent_census.classify.registry import all_classifiers
+
+    assert all_classifiers()
+    assert load_shared_tuning()
+
+
+def test_load_tuning_widens_int_to_float() -> None:
+    # storm_404_distinct_paths_min is written as 15 (int) but returned as a float.
+    assert load_shared_tuning()["storm_404_distinct_paths_min"] == 15.0
+
+
+def test_load_tuning_rejects_missing_key() -> None:
+    # Full real schema (so every table is accounted for) plus one knob the file lacks.
+    schema = {**_SHARED_TUNING, "extra": "verdict.absent"}
+    with pytest.raises(ConfigError, match="missing 'verdict.absent'"):
+        load_tuning("shared", schema)
+
+
+def test_load_tuning_rejects_unexpected_table() -> None:
+    # A schema that names only [verdict] leaves the file's other tables unexpected.
+    with pytest.raises(ConfigError, match="unexpected top-level key"):
+        load_tuning("shared", {"x": "verdict.unknown_threshold"})
 
 
 def test_asn_recognised_agents_loaded() -> None:
@@ -151,9 +192,7 @@ def test_validate_rejects_missing_required() -> None:
         _validate_records("x.toml", "agent", [{"domains": ["a"]}], _AGENT_SCHEMA, _require_agent)
     # asn_primary without an asns list has no identity either.
     with pytest.raises(ConfigError, match="'asn_primary' needs an 'asns'"):
-        _validate_records(
-            "x.toml", "agent", [{"asn_primary": True}], _AGENT_SCHEMA, _require_agent
-        )
+        _validate_records("x.toml", "agent", [{"asn_primary": True}], _AGENT_SCHEMA, _require_agent)
 
 
 def test_validate_rejects_non_table_entry() -> None:

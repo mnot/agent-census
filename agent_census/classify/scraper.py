@@ -7,9 +7,25 @@ link-following) and often rides a generic HTTP-library or empty User-Agent.
 from __future__ import annotations
 
 from .. import uas
+from ..dataload import load_shared_tuning, load_tuning
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
 from .tags import recognised_specific_agent
+
+# Numeric knobs: this classifier's own in data/tuning/scraper.toml, the co-load and
+# link-following cutoffs in data/tuning/shared.toml.
+_TUNING_SCHEMA = {
+    "broad_distinct_min": "broad.distinct_paths_min",
+    "broad_min_requests": "broad.min_requests",
+    "harvest_weight": "harvest.weight",
+    "cold_weight": "cold.weight",
+    "library_weight": "library.weight",
+    "no_ua_weight": "no_user_agent.weight",
+    "benign_ratio_2xx_min": "benign.ratio_2xx_min",
+    "benign_weight": "benign.weight",
+}
+_T = load_tuning("scraper", _TUNING_SCHEMA)
+_S = load_shared_tuning()
 
 
 class ScraperClassifier(Classifier):
@@ -24,26 +40,37 @@ class ScraperClassifier(Classifier):
         confidence = 0.0
         evidence: list[str] = []
 
-        broad = features.distinct_paths >= 10 and features.request_count >= 15
-        if broad and features.asset_coload_ratio < 0.1 and not features.ua_looks_like_browser:
-            confidence += 0.3
+        broad = (
+            features.distinct_paths >= _T["broad_distinct_min"]
+            and features.request_count >= _T["broad_min_requests"]
+        )
+        if (
+            broad
+            and features.asset_coload_ratio < _S["browser_no_coload_max"]
+            and not features.ua_looks_like_browser
+        ):
+            confidence += _T["harvest_weight"]
             evidence.append(
                 f"harvests many pages ({features.distinct_paths} paths), no sub-resource loading"
             )
 
-        if broad and features.referer_following_ratio < 0.1:
-            confidence += 0.15
+        if broad and features.referer_following_ratio < _S["browser_no_follow_max"]:
+            confidence += _T["cold_weight"]
             evidence.append("accesses URLs cold (no on-site link-following)")
 
         if uas.is_library(features.user_agent):
-            confidence += 0.2
+            confidence += _T["library_weight"]
             evidence.append("User-Agent is a generic HTTP library")
         elif features.ua_empty and broad:
-            confidence += 0.15
+            confidence += _T["no_ua_weight"]
             evidence.append("no User-Agent while harvesting many pages")
 
-        if features.vuln_path_hits == 0 and features.ratio_2xx > 0.6 and confidence > 0:
-            confidence += 0.05
+        if (
+            features.vuln_path_hits == 0
+            and features.ratio_2xx > _T["benign_ratio_2xx_min"]
+            and confidence > 0
+        ):
+            confidence += _T["benign_weight"]
             evidence.append("mostly successful, not probing")
 
         if not evidence:

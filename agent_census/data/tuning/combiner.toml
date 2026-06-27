@@ -1,0 +1,31 @@
+# Signal-combination tuning (see classify/combiner.py). The combiner aggregates each
+# classifier's signals, picks the strongest kind, and -- when nothing clears the bar
+# -- narrows UNKNOWN to a more specific fallback where the evidence allows. The
+# unknown threshold itself is shared (shared.toml verdict.unknown_threshold).
+
+# Confidences are summed from 0.05-step increments, so they're rounded to this many
+# decimals before comparison -- otherwise float error (0.3 + 0.15 = 0.4499999996)
+# could drop a sum that exactly equals the threshold to just below it.
+round_digits = 3
+
+[datacenter]
+# A person rarely browses from hosting infrastructure, so a datacenter "browser"
+# verdict is nudged down by `browser_penalty` -- enough to tip a borderline one, not
+# to overrule a strongly-behaving real browser. A generic-library / UA-less client
+# fetching at least `scraper_min_distinct_paths` distinct paths over
+# `scraper_min_requests` requests from a datacenter IP is read as a scraper.
+browser_penalty = 0.1
+scraper_min_requests = 2
+scraper_min_distinct_paths = 2
+
+[fallback]
+# Confidence assigned to each narrowed-UNKNOWN verdict when no classifier cleared the
+# bar but the origin / behaviour still points somewhere more specific than "unknown".
+spoofed_browser = 0.6
+scraper = 0.5
+automation = 0.5
+
+[impersonator]
+# A client faking a declared identity is decisively an impersonator, whatever else
+# it looks like -- a high fixed confidence.
+confidence = 0.9

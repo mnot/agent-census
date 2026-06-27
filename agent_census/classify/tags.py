@@ -14,6 +14,7 @@ tag; a genuine crawler can misbehave without forging its identity.
 from __future__ import annotations
 
 from .. import uas
+from ..dataload import load_shared_tuning, load_tuning
 from ..model import (
     BotVerification,
     ClientFeatures,
@@ -23,7 +24,21 @@ from ..model import (
 )
 from .feed_reader import ua_is_feed_reader
 
-_UA_ROTATION_THRESHOLD = 4
+# Numeric knobs: the tags' own thresholds in data/tuning/tags.toml, and the ones
+# shared with the classifiers (cadence bands, browser-shape cutoffs, notable-HEAD,
+# fabricated referer, 404 storm) in data/tuning/shared.toml.
+_TUNING_SCHEMA = {
+    "ua_rotation_threshold": "ua_rotation.distinct_ua_min",
+    "cadence_min_requests": "cadence.min_requests",
+    "follows_min_requests": "link_following.min_requests",
+    "probe_paths_min_hits": "probe_paths.min_hits",
+    "probe_paths_min_ratio": "probe_paths.min_ratio",
+    "post_heavy_ratio_min": "post_heavy.ratio_min",
+    "post_heavy_min_requests": "post_heavy.min_requests",
+    "fake_browser_min_requests": "fake_browser.min_requests",
+}
+_T = load_tuning("tags", _TUNING_SCHEMA)
+_S = load_shared_tuning()
 
 # Inter-arrival cadence tags: one is emitted from a single client's request timing.
 # On a multi-client display aggregate (a privacy-relay / VPN egress fold that folds
@@ -34,9 +49,10 @@ CADENCE_TAGS = frozenset({"metronomic", "bursty", "steady"})
 # Browser fingerprint thresholds, shared with the relative-tag reference predicate
 # (``classify.relative.is_reference_browser``) so "what counts as browser-like" is
 # defined once. A real browser co-loads a page's sub-resources and follows on-site
-# links; these are the lower bounds the ``loads-assets`` / ``follows-links`` tags use.
-BROWSER_COLOAD_MIN = 0.4  # asset_coload_ratio at/above which a client "loads-assets"
-BROWSER_FOLLOW_MIN = 0.3  # referer_following_ratio at/above which it "follows-links"
+# links; these are the lower bounds the ``loads-assets`` / ``follows-links`` tags
+# use, read from data/tuning/shared.toml.
+BROWSER_COLOAD_MIN = _S["browser_coload_min"]  # asset_coload_ratio -> "loads-assets"
+BROWSER_FOLLOW_MIN = _S["browser_follow_min"]  # referer_following_ratio -> "follows-links"
 
 
 def _declares_known_crawler(features: ClientFeatures) -> bool:
@@ -101,7 +117,7 @@ def looks_like_fake_browser(features: ClientFeatures) -> bool:
     return (
         features.ua_looks_like_browser
         and not identifies_as_known_agent(features)
-        and features.request_count >= 2
+        and features.request_count >= _T["fake_browser_min_requests"]
         and features.asset_coload_ratio == 0.0
         and features.referer_following_ratio == 0.0
     )
@@ -128,13 +144,20 @@ def _fingerprint_tags(features: ClientFeatures, aggregate: bool) -> dict[str, st
     # Cadence: how regular the inter-arrival timing is (clockwork vs. human).
     # Meaningless once many independent clients are interleaved into one row.
     reg = features.rate_regularity
-    if not aggregate and reg is not None and count >= 5:
-        if reg < 0.15:
-            tags["metronomic"] = f"inter-arrival CV {reg:.2f} < 0.15 over {count:,} requests"
-        elif reg > 0.6:
-            tags["bursty"] = f"inter-arrival CV {reg:.2f} > 0.6 over {count:,} requests"
+    metronomic_max = _S["cadence_metronomic_max"]
+    bursty_min = _S["cadence_bursty_min"]
+    if not aggregate and reg is not None and count >= _T["cadence_min_requests"]:
+        if reg < metronomic_max:
+            tags["metronomic"] = (
+                f"inter-arrival CV {reg:.2f} < {metronomic_max:g} over {count:,} requests"
+            )
+        elif reg > bursty_min:
+            tags["bursty"] = f"inter-arrival CV {reg:.2f} > {bursty_min:g} over {count:,} requests"
         else:
-            tags["steady"] = f"inter-arrival CV {reg:.2f} (0.15–0.6) over {count:,} requests"
+            tags["steady"] = (
+                f"inter-arrival CV {reg:.2f} ({metronomic_max:g}–{bursty_min:g}) "
+                f"over {count:,} requests"
+            )
 
     # Sub-resource loading: a browser pulls a page's CSS/JS/images. Only judgeable
     # when the client actually fetched HTML pages.
@@ -145,25 +168,25 @@ def _fingerprint_tags(features: ClientFeatures, aggregate: bool) -> dict[str, st
                 f"co-loaded sub-resources after {ratio:.0%} of {features.page_count:,} "
                 f"HTML page(s) (> {BROWSER_COLOAD_MIN:.0%})"
             )
-        elif ratio < 0.1:
+        elif ratio < _S["browser_no_coload_max"]:
             tags["no-assets"] = (
                 f"co-loaded sub-resources after only {ratio:.0%} of {features.page_count:,} "
-                "HTML page(s) (< 10%)"
+                f"HTML page(s) (< {_S['browser_no_coload_max']:.0%})"
             )
 
     # Navigation: following on-site links (referer is a path fetched earlier).
     # Only judgeable when some request carried a Referer at all.
-    if features.referer_count > 0 and count >= 4:
+    if features.referer_count > 0 and count >= _T["follows_min_requests"]:
         ratio = features.referer_following_ratio
         if ratio > BROWSER_FOLLOW_MIN:
             tags["follows-links"] = (
                 f"{ratio:.0%} of requests had an on-site Referer (> {BROWSER_FOLLOW_MIN:.0%}); "
                 f"{features.referer_count:,} carried one"
             )
-        elif ratio < 0.1:
+        elif ratio < _S["browser_no_follow_max"]:
             tags["cold"] = (
-                f"only {ratio:.0%} of requests followed an on-site Referer (< 10%); "
-                f"{features.referer_count:,} carried one"
+                f"only {ratio:.0%} of requests followed an on-site Referer "
+                f"(< {_S['browser_no_follow_max']:.0%}); {features.referer_count:,} carried one"
             )
 
     # Caching: a 304 proves a real cache. Its absence alone is content/server-
@@ -225,7 +248,10 @@ def _conduct_tags(features: ClientFeatures) -> dict[str, str]:
     # grazes a few attack-shaped URLs over tens of thousands of requests isn't
     # mistaken for a scan. Traversal / injection and encoding-evasion markers have
     # no legitimate use, so a single one is enough.
-    if features.vuln_path_hits >= 3 or features.vuln_path_ratio >= 0.05:
+    if (
+        features.vuln_path_hits >= _T["probe_paths_min_hits"]
+        or features.vuln_path_ratio >= _T["probe_paths_min_ratio"]
+    ):
         why = (
             f"{features.vuln_path_hits:,} known-probe path hit(s) "
             f"({features.vuln_path_ratio:.0%} of traffic)"
@@ -241,7 +267,10 @@ def _conduct_tags(features: ClientFeatures) -> dict[str, str]:
         tags["encoding-evasion"] = (
             f"{features.evasion_hits:,} double / overlong percent-encoded request(s)"
         )
-    if features.ratio_404 > 0.6 and features.distinct_404_paths >= 15:
+    if (
+        features.ratio_404 > _S["storm_404_ratio_min"]
+        and features.distinct_404_paths >= _S["storm_404_distinct_paths_min"]
+    ):
         tags["404-storm"] = (
             f"{features.ratio_404:.0%} 404s across {features.distinct_404_paths:,} distinct paths"
         )
@@ -251,15 +280,20 @@ def _conduct_tags(features: ClientFeatures) -> dict[str, str]:
             f"{features.exotic_method_count:,} request(s) using uncommon methods "
             "(PUT/DELETE/PROPFIND/CONNECT…)"
         )
-    if features.head_ratio > 0.1:
-        tags["uses-HEAD"] = f"HEAD is {features.head_ratio:.0%} of requests (> 10%)"
-    if features.post_ratio > 0.5 and features.request_count >= 5:
+    if features.head_ratio > _S["head_notable_ratio"]:
+        tags["uses-HEAD"] = (
+            f"HEAD is {features.head_ratio:.0%} of requests (> {_S['head_notable_ratio']:.0%})"
+        )
+    if features.post_ratio > _T["post_heavy_ratio_min"] and (
+        features.request_count >= _T["post_heavy_min_requests"]
+    ):
         tags["post-heavy"] = (
-            f"POST is {features.post_ratio:.0%} of {features.request_count:,} requests (> 50%)"
+            f"POST is {features.post_ratio:.0%} of {features.request_count:,} requests "
+            f"(> {_T['post_heavy_ratio_min']:.0%})"
         )
     if (
-        features.self_referer_ratio >= 0.5
-        and features.request_count >= 4
+        features.self_referer_ratio >= _S["fabricated_self_referer_min"]
+        and features.request_count >= _S["fabricated_min_requests"]
         # Only meaningful for a client posing as a browser: a fabricated Referer.
         and features.ua_looks_like_browser
         and not identifies_as_known_agent(features)
@@ -332,7 +366,7 @@ def _fact_tags(
         if compliance.sample_disallowed:
             why += f"; e.g. {', '.join(compliance.sample_disallowed[:3])}"
         tags["ignores-robots"] = why
-    if features.ua_count_for_ip >= _UA_ROTATION_THRESHOLD:
+    if features.ua_count_for_ip >= _T["ua_rotation_threshold"]:
         # Many UAs on one IP: evasive rotation from a hosting IP or a browser
         # costume; otherwise a benign shared egress (NAT / VPN / proxy / carrier).
         if datacenter or looks_like_fake_browser(features):

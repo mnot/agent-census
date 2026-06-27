@@ -1,0 +1,41 @@
+# Vulnerability / misconfiguration scanner tuning (see classify/vuln_scanner.py).
+# The signature: requests to known probe paths, a 404 storm across many distinct
+# missing paths, traversal / injection and encoding-evasion markers, unusual
+# methods, and a fast cadence. The 404-storm thresholds come from shared.toml.
+
+[scanner_ua]
+# The User-Agent names a scanning / pentest tool (see data/scanner_ua.toml).
+weight = 0.5
+
+[probe_paths]
+# Requests to known probe paths. A burst (`strong_min_hits`) or probes making up at
+# least `strong_ratio` of all traffic is a scanner (`strong_weight`); a lone probe
+# amid normal traffic is incidental (`incidental_weight`).
+strong_min_hits = 3
+strong_ratio = 0.5
+strong_weight = 0.45
+incidental_weight = 0.2
+
+[storm_404]
+# A 404 storm (thresholds from shared.toml storm_404): probing for paths that aren't
+# there, not a few broken links.
+weight = 0.3
+
+[traversal]
+# Any path-traversal / injection marker in a request.
+weight = 0.15
+
+[encoding_evasion]
+# Double / overlong percent-encoding -- no legitimate use, so weighted above plain
+# traversal.
+weight = 0.25
+
+[exotic_method]
+# Any request using an unusual method (PUT / DELETE / PROPFIND / CONNECT …).
+weight = 0.1
+
+[fast_cadence]
+# A fast median inter-arrival time over enough requests to judge it.
+median_max = 0.5
+min_requests = 5
+weight = 0.1

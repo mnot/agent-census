@@ -9,8 +9,18 @@ claim is taken at face value (high confidence); the combiner downgrades it to
 from __future__ import annotations
 
 from .. import uas
+from ..dataload import load_tuning
 from ..model import ClientFeatures, Signal
 from .base import Classifier
+
+# Confidence levels live in data/tuning/known_bot.toml.
+_TUNING_SCHEMA = {
+    "ua_base": "ua_match.base",
+    "robots_bonus": "ua_match.robots_bonus",
+    "no_probing_bonus": "ua_match.no_probing_bonus",
+    "asn_base": "asn_match.base",
+}
+_T = load_tuning("known_bot", _TUNING_SCHEMA)
 
 
 class KnownBotClassifier(Classifier):
@@ -24,10 +34,10 @@ class KnownBotClassifier(Classifier):
         if known is None:
             return self._by_asn(features)
         token, _spec = known
-        confidence = 0.7
+        confidence = _T["ua_base"]
         evidence = [f"User-Agent declares {token!r}, a known {self.descriptor}"]
         if features.fetched_robots_txt:
-            confidence += 0.08
+            confidence += _T["robots_bonus"]
             evidence.append("fetched /robots.txt")
         no_probing = (
             features.vuln_path_hits == 0
@@ -35,7 +45,7 @@ class KnownBotClassifier(Classifier):
             and features.evasion_hits == 0
         )
         if no_probing:
-            confidence += 0.05
+            confidence += _T["no_probing_bonus"]
             evidence.append("no vulnerability probing observed")
         return [self._signal(confidence, evidence)]
 
@@ -51,6 +61,7 @@ class KnownBotClassifier(Classifier):
         asn = uas.parse_asn(features.as_number)
         return [
             self._signal(
-                0.6, [f"origin AS{asn} is {label}, a recognised {self.descriptor} network"]
+                _T["asn_base"],
+                [f"origin AS{asn} is {label}, a recognised {self.descriptor} network"],
             )
         ]

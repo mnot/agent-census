@@ -87,6 +87,8 @@ PARAMS = RelativeParams(
     margin=3.0,
     min_reference=30,
     floors={"rate": 60.0, "bytes": 5_000_000.0, "breadth": 0.5, "duration": 86_400.0},
+    min_requests=5,
+    bounded_percentile=0.95,
 )
 
 
@@ -273,6 +275,8 @@ def _good() -> dict[str, object]:
         "params": {
             "margin": 3.0,
             "min_reference": 30,
+            "min_requests": 5,
+            "bounded_percentile": 0.95,
             "floor_rate": 60,
             "floor_bytes": 1,
             "floor_breadth": 1,

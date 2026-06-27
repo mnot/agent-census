@@ -1,0 +1,96 @@
+# Browser classifier tuning (see classify/browser.py).
+#
+# The classifier sums positive evidence that a client is an interactive browser
+# and caps or penalises anything that argues against it. Each block below is one
+# piece of that argument: its `weight` is added to a confidence that starts at zero
+# when the signal fires (penalties are subtracted). Raise a `weight` to make a
+# signal count for more; raise a `*_min` (or lower a `*_max`) to make its threshold
+# harder to reach. Confidence is clamped to 1.0.
+#
+# Several browser thresholds -- the co-load and link-following cutoffs, the cadence
+# bands, the fabricated-referer and notable-HEAD lines, and the unknown/floor level
+# -- are shared with the tags and other classifiers and so live in shared.toml. The
+# blocks below that carry only a `weight` read their threshold from there; the
+# comment on each says which.
+
+# The ceiling clamped on the moment something disqualifies the browser hypothesis:
+# probing, a forged or ancient version string, holding no cache, HEAD traffic. Set
+# just below shared.toml's unknown threshold so positive evidence can't drag a
+# disqualified client back up to a confident browser verdict.
+disqualified_ceiling = 0.3
+
+# A singleton client has no meaningful cadence, so the timing signals only apply
+# once there are at least this many requests to judge.
+min_requests_for_timing = 5
+
+# ── Positive evidence ────────────────────────────────────────────────────────
+
+[asset_coload]
+# A real browser fetches a page and then pulls its CSS/JS/images within seconds.
+# The strongest single tell, so it carries the most weight. Fires at
+# shared.toml browser_shape.coload_ratio_min.
+weight = 0.45
+
+[ua_browser_shape]
+# The User-Agent matches a real browser profile (Mozilla token + a layout engine).
+weight = 0.2
+
+[bursty_timing]
+# Irregular, bursty spacing -- a person clicking around, not a machine on a timer.
+# Fires above shared.toml cadence.bursty_min.
+weight = 0.1
+
+[follows_links]
+# Requests arrive via on-site referers: following links the way a person browses.
+# Fires above shared.toml browser_shape.follow_ratio_min.
+weight = 0.1
+
+[low_error_no_probing]
+# A low 404 rate with no probe-path hits: ordinary, well-behaved navigation.
+ratio_404_max = 0.1
+weight = 0.1
+
+[static_assets]
+# A meaningful share of requests are for static assets -- browser-shaped traffic.
+static_ratio_min = 0.3
+weight = 0.05
+
+[revalidates_cache]
+# Conditional requests answered 304 mean a real cache behind the client.
+weight = 0.1
+
+[version_current]
+# The UA's browser version is current for when the client was active.
+weight = 0.1
+
+# ── Penalties (subtracted -- a nudge, not a cap) ──────────────────────────────
+
+[metronomic_timing]
+# Machine-regular spacing (below shared.toml cadence.metronomic_max) is automation,
+# not a person clicking around.
+weight = 0.2
+
+[version_stale]
+# The claimed version is well out of date -- a mild tell of a frozen, spoofed UA.
+weight = 0.15
+
+[fetched_robots]
+# The client fetched /robots.txt -- a crawler's habit, never a browser's.
+weight = 0.15
+
+[no_cache]
+# Many requests yet never a 304: the client holds no browser cache. A soft penalty
+# while modest; once re-fetching dominates (`cold_refetch_min` revisits making up at
+# least `dominant_fraction` of the traffic) or the volume passes `high_volume`, the
+# verdict is instead clamped to the disqualified ceiling.
+soft_penalty = 0.2
+cold_refetch_min = 20
+dominant_fraction = 0.5
+high_volume = 2000
+
+# ── Disqualifier (clamps to the ceiling above) ───────────────────────────────
+
+[probing]
+# This many vuln-path hits (or any traversal / encoding-evasion marker) means
+# automation wearing a browser engine, not a person.
+vuln_hits_cap = 2

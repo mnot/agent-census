@@ -26,6 +26,8 @@
 [params]
 margin = 3.0          # a client must exceed 3x the reference browsers' p95 to fire
 min_reference = 30    # fewer reference browsers than this -> floor-only fallback
+min_requests = 5      # below this many requests a magnitude is too unstable to tag
+bounded_percentile = 0.95  # linear percentile for bounded metrics (breadth), no margin
 floor_rate = 60       # peak requests/minute
 floor_bytes = 5_000_000      # mean response size in bytes (~5 MB average object)
 floor_breadth = 0.5          # fraction of hops that change subtree (0..1)

@@ -536,21 +536,30 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         in_datacenter = (
             datacenter if datacenter is not None else network_category == _NET_DATACENTER
         )
+        # An egress fold folds many independent clients (relay/VPN users) into one
+        # display row past their throwaway IPs; it is not a single client. Per-client
+        # behavioural signals don't apply to it -- suppress its cadence and magnitude
+        # tags, and keep it out of the reference-browser pool.
+        aggregate = network_category == _NET_EGRESS
         verification = _resolve_asn_verification(verification, features)
         classification = classify_client(
             features,
             compliance=compliance,
             verification=verification,
             datacenter=in_datacenter,
+            aggregate=aggregate,
             unknown_threshold=unknown_threshold,
             keep_signals=keep_signals,
         )
         if extra_tags:
             classification = replace(classification, tags=classification.tags | extra_tags)
         # Sample this client into the reference pool (browsers only qualify). Done
-        # for every emitted client, so the distribution is eviction-safe and not
-        # limited to the capped `kept` heap.
-        collector.observe(features)
+        # for every emitted single client, so the distribution is eviction-safe and
+        # not limited to the capped `kept` heap. An egress fold is excluded: it is
+        # many clients in one row, and a relay-fronted browser bucket would otherwise
+        # pass the browser test and inflate the duration / rate thresholds it sets.
+        if not aggregate:
+            collector.observe(features)
         profile = ClientProfile(
             client_id=key,
             entries=(),
@@ -560,6 +569,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             verification=verification,
             member_ips=member,
             network=network,
+            is_aggregate=aggregate,
         )
         kind = classification.primary
         verdict = compliance.verdict if compliance is not None else None

@@ -25,6 +25,12 @@ from .feed_reader import ua_is_feed_reader
 
 _UA_ROTATION_THRESHOLD = 4
 
+# Inter-arrival cadence tags: one is emitted from a single client's request timing.
+# On a multi-client display aggregate (a privacy-relay / VPN egress fold that folds
+# many independent users into one row) the interleaved arrivals carry no cadence, so
+# these are suppressed there -- see ``ClientProfile.is_aggregate``.
+CADENCE_TAGS = frozenset({"metronomic", "bursty", "steady"})
+
 # Browser fingerprint thresholds, shared with the relative-tag reference predicate
 # (``classify.relative.is_reference_browser``) so "what counts as browser-like" is
 # defined once. A real browser co-loads a page's sub-resources and follows on-site
@@ -101,18 +107,24 @@ def looks_like_fake_browser(features: ClientFeatures) -> bool:
     )
 
 
-def _fingerprint_tags(features: ClientFeatures) -> set[str]:
+def _fingerprint_tags(features: ClientFeatures, aggregate: bool) -> set[str]:
     """The behavioural fingerprint: one tag per dimension we can actually measure.
 
     Each dimension emits its observed value (a polar pair, or a gradation) only
     when there is enough data to judge it -- so an absent tag means "couldn't
     tell", never a silent "no". This is the evidence a reader weighs themselves.
+
+    ``aggregate`` marks a multi-client display fold (a privacy-relay / VPN row):
+    its cadence is suppressed because interleaved users have no shared timing. The
+    other dimensions (asset co-load, link-following, caching, UA shape) are
+    per-request or per-UA ratios that survive folding, so they still apply.
     """
     tags: set[str] = set()
 
     # Cadence: how regular the inter-arrival timing is (clockwork vs. human).
+    # Meaningless once many independent clients are interleaved into one row.
     reg = features.rate_regularity
-    if reg is not None and features.request_count >= 5:
+    if not aggregate and reg is not None and features.request_count >= 5:
         tags.add("metronomic" if reg < 0.15 else "bursty" if reg > 0.6 else "steady")
 
     # Sub-resource loading: a browser pulls a page's CSS/JS/images. Only judgeable
@@ -250,10 +262,15 @@ def derive_tags(
     verification: BotVerification | None,
     *,
     datacenter: bool = False,
+    aggregate: bool = False,
 ) -> set[str]:
-    """The client's tags: a measured behavioural fingerprint, conduct flags, and facts."""
+    """The client's tags: a measured behavioural fingerprint, conduct flags, and facts.
+
+    ``aggregate`` marks a multi-client display fold, suppressing the per-client
+    cadence tags (see :func:`_fingerprint_tags`).
+    """
     return (
-        _fingerprint_tags(features)
+        _fingerprint_tags(features, aggregate)
         | _conduct_tags(features)
         | _fact_tags(features, compliance, verification, datacenter)
     )

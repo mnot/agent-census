@@ -71,6 +71,7 @@ def combine(
     compliance: ComplianceReport | None = None,
     verification: BotVerification | None = None,
     datacenter: bool = False,
+    aggregate: bool = False,
     unknown_threshold: float = DEFAULT_UNKNOWN_THRESHOLD,
     keep_signals: bool = True,
 ) -> Classification:
@@ -79,6 +80,9 @@ def combine(
     ``keep_signals`` retains every contributing signal on the result for inspect
     mode's rationale. The ``analyze`` report never reads them, so it passes
     ``False`` to avoid holding a Signal (and its evidence strings) per client.
+
+    ``aggregate`` marks a multi-client display fold, suppressing per-client
+    cadence tags (see :func:`~agent_census.classify.tags.derive_tags`).
     """
     by_label: dict[Kind, float] = {}
     for signal in signals:
@@ -94,7 +98,9 @@ def combine(
     if datacenter and Kind.BROWSER in by_label:
         by_label[Kind.BROWSER] = round(max(0.0, by_label[Kind.BROWSER] - 0.1), 3)
 
-    tags = derive_tags(features, compliance, verification, datacenter=datacenter)
+    tags = derive_tags(
+        features, compliance, verification, datacenter=datacenter, aggregate=aggregate
+    )
     stored = tuple(signals) if keep_signals else ()
 
     # Impersonation is decisive: a client faking a declared identity is an

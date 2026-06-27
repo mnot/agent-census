@@ -379,7 +379,14 @@ def tag_profile(
     config: RelativeTagConfig,
     calibration: ReferenceCalibration,
 ) -> ClientProfile:
-    """Return ``profile`` with any site-relative tags folded into its classification."""
+    """Return ``profile`` with any site-relative tags folded into its classification.
+
+    A multi-client display fold (``profile.is_aggregate``) is left untouched: its
+    rate / bytes / breadth / duration are the union of many independent clients,
+    not one client's magnitudes, so a site-relative tag on it would be an artifact.
+    """
+    if profile.is_aggregate:
+        return profile
     extra = relative_tags(profile.features, profile.classification.primary, config, calibration)
     if not extra:
         return profile

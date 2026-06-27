@@ -148,6 +148,9 @@ table { border-collapse: collapse; width: 100%; margin: .5rem 0 1rem; font-size:
    page to scroll sideways on a narrow screen. */
 .tscroll { overflow-x: auto; overscroll-behavior-x: contain; margin: .5rem 0 1rem; }
 .tscroll > table { margin: 0; }
+/* When a track is made focusable (only while it actually overflows) show the
+   focus ring so keyboard users can tell it's selected and arrow-scroll it. */
+.tscroll:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
 th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid #8884; vertical-align: top; }
 th { font-weight: 600; border-bottom: 2px solid #8886; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -295,7 +298,46 @@ document.addEventListener('input', function (event) {
     var live = boxes[b].querySelectorAll('tr.frow:not([style*="none"])');
     boxes[b].style.display = (!on || live.length) ? '' : 'none';
   }
+  markScrollables();  // hiding rows can change a table's width and overflow
 }, false);
+
+// Make a table's horizontal-scroll track keyboard-operable, but ONLY while it
+// actually overflows -- a focusable region with nothing to scroll is a dead tab
+// stop. Re-checked on resize and after filtering. The accessible name is taken
+// from the nearest preceding heading so a screen reader says which table it is.
+function markScrollables() {
+  var wraps = document.querySelectorAll('.tscroll');
+  for (var i = 0; i < wraps.length; i++) {
+    var el = wraps[i], over = el.scrollWidth - el.clientWidth > 1;
+    if (over && el.tabIndex < 0) {
+      el.tabIndex = 0;
+      el.setAttribute('role', 'region');
+      el.setAttribute('aria-label', scrollLabel(el) + ' (scrollable)');
+    } else if (!over && el.hasAttribute('role')) {
+      el.removeAttribute('tabindex');
+      el.removeAttribute('role');
+      el.removeAttribute('aria-label');
+    }
+  }
+}
+function scrollLabel(el) {
+  for (var n = el; n && n.tagName !== 'BODY'; n = n.parentElement) {
+    for (var p = n.previousElementSibling; p; p = p.previousElementSibling) {
+      if (/^H[1-3]$/.test(p.tagName)) return p.textContent.trim().replace(/\\s+/g, ' ');
+      var h = p.querySelector && p.querySelector('h1,h2,h3');
+      if (h) return h.textContent.trim().replace(/\\s+/g, ' ');
+    }
+  }
+  return 'Table';
+}
+markScrollables();
+(function () {
+  var t;
+  window.addEventListener('resize', function () {
+    clearTimeout(t);
+    t = setTimeout(markScrollables, 150);
+  }, false);
+})();
 """.strip()
 
 

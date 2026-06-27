@@ -169,6 +169,7 @@ def test_network_table_renders_with_providers(
     assert "id='netcol'" in html and "netcolctl" in html  # the phone column picker
     assert "data-net=" in html  # columns tagged for show/hide
     assert "class='tscroll'" in html  # tables wrapped in a scroll track
+    assert "markScrollables" in html  # overflowing tracks are made keyboard-scrollable
 
 
 def test_network_table_offers_breakout_for_folded_datacenters(

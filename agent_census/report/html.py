@@ -8,13 +8,16 @@ file you can open in a browser -- no external assets, no dependencies.
 from __future__ import annotations
 
 import html
+import json
 from functools import lru_cache
 
 from .. import __version__
 from ..dataload import load_egress_networks
 from ..model import ClientProfile, Kind
 from ..pipeline import OTHER_HOSTING, RESIDENTIAL_NETWORK, AnalysisResult, KindRollup
+from ._netscript import NET_SCRIPT
 from .aggregate import (
+    BREAKOUT_MIN_SHARE,
     KIND_BLURB,
     KIND_ORDER,
     ActorGroup,
@@ -468,46 +471,16 @@ def _summary_table(result: AnalysisResult) -> str:
 # cell carries data-v (its raw count); the script reformats text, shades a pale-blue
 # heat by share of the row (counts / % of kind) or column (% of network) max, and
 # bolds that group's leader. The Total column and All-kinds row stay raw counts.
-_NET_SCRIPT = """
-<script>
-(function(){
-  var tab=document.getElementById('nettab'); if(!tab) return;
-  var sel=document.getElementById('netmode'); if(!sel) return;
-  var cells=[].slice.call(tab.querySelectorAll('td.mxcell'));
-  var byRow={}, byCol={};
-  cells.forEach(function(c){
-    var r=c.parentNode.rowIndex, col=c.cellIndex; c._v=+c.getAttribute('data-v');
-    (byRow[r]=byRow[r]||[]).push(c);
-    (byCol[col]=byCol[col]||[]).push(c);
-  });
-  function paint(mode){
-    var groups=(mode==='col')?byCol:byRow;
-    cells.forEach(function(c){c.style.background='';c.style.fontWeight='';});
-    Object.keys(groups).forEach(function(k){
-      var g=groups[k], tot=0, mx=0;
-      g.forEach(function(c){tot+=c._v; if(c._v>mx)mx=c._v;});
-      g.forEach(function(c){
-        var v=c._v;
-        c.textContent = (mode==='count') ? (v?v.toLocaleString():'\\u2013')
-                                         : ((v&&tot)?Math.round(v/tot*100)+'%':'\\u2013');
-        if(v>0&&mx>0) c.style.background='rgba(96,165,250,'+(v/mx*0.8).toFixed(3)+')';
-        if(v>0&&v===mx) c.style.fontWeight='500';
-      });
-    });
-  }
-  sel.addEventListener('change',function(){paint(sel.value);});
-  paint('count');
-})();
-</script>
-""".strip()
-
-
 def _num(value: int) -> str:
     return f"{value:,}" if value else "–"
 
 
-def _network_table(result: AnalysisResult) -> str:
-    matrix = network_matrix(result.network_rollups, result.network_categories)
+def _network_table(result: AnalysisResult, *, breakout_min_share: float) -> str:
+    matrix = network_matrix(
+        result.network_rollups,
+        result.network_categories,
+        min_breakout_share=breakout_min_share,
+    )
     if matrix is None:
         return ""
     nets = matrix.networks
@@ -522,13 +495,14 @@ def _network_table(result: AnalysisResult) -> str:
         desc = _network_title(net, matrix.categories.get(net, ""))
         return f' title="{_esc(desc)}"' if desc else ""
 
+    def hd(i: int, net: str) -> str:
+        cls = f"num{div(i)}" + ("" if matrix.is_hosting(net) else " netoff")
+        hid = " id='netotherhd'" if net == OTHER_HOSTING else ""
+        return f"<th class='{cls}'{hid}{title(net)}>{_esc(net)}</th>"
+
     head = (
         "<tr><th>Kind</th>"
-        + "".join(
-            f"<th class='num{div(i)}{'' if matrix.is_hosting(n) else ' netoff'}'{title(n)}>"
-            f"{_esc(n)}</th>"
-            for i, n in enumerate(nets)
-        )
+        + "".join(hd(i, n) for i, n in enumerate(nets))
         + "<th class='num netdiv'>Total</th></tr>"
     )
 
@@ -542,10 +516,16 @@ def _network_table(result: AnalysisResult) -> str:
             return ""
         return f' style="background:rgba(220,38,38,{value / peak * 0.8:.3f})"'
 
+    def cell_extra(net: str, kind: Kind) -> str:
+        # Tag the Other-datacentre cells so the break-out control can rewrite them.
+        if net != OTHER_HOSTING:
+            return ""
+        return f" othercol' data-kind='{kind.value}' data-agg='{matrix.cell(net, kind)}"
+
     rows = []
     for kind in matrix.kinds:
         cells = "".join(
-            f"<td class='num mxcell{div(i)}' data-v='{matrix.cell(n, kind)}'>"
+            f"<td class='num mxcell{div(i)}{cell_extra(n, kind)}' data-v='{matrix.cell(n, kind)}'>"
             f"{_num(matrix.cell(n, kind))}</td>"
             for i, n in enumerate(nets)
         )
@@ -557,7 +537,8 @@ def _network_table(result: AnalysisResult) -> str:
 
     def total_cell(i: int, net: str) -> str:
         col = matrix.col_totals[net]
-        return f"<td class='num{div(i)}'{red(col, peak_col)}>{col:,}</td>"
+        extra = " othertot" if net == OTHER_HOSTING else ""
+        return f"<td class='num{div(i)}{extra}' data-agg='{col}'{red(col, peak_col)}>{col:,}</td>"
 
     totals = "".join(total_cell(i, n) for i, n in enumerate(nets))
     rows.append(
@@ -565,12 +546,26 @@ def _network_table(result: AnalysisResult) -> str:
         f"{totals}<td class='num netdiv' style=\"background:rgba(220,38,38,0.8)\">"
         f"{matrix.total:,}</td></tr>"
     )
+    breakout = ""
+    if matrix.collapsed:
+        data = {name: {k.value: v for k, v in counts.items()} for name, counts in matrix.collapsed}
+        blob = json.dumps(data, separators=(",", ":")).replace("<", "\\u003c")
+        opts = "".join(
+            f"<option value='{_esc(name)}'>{_esc(name)} ({sum(counts.values()):,})</option>"
+            for name, counts in matrix.collapsed
+        )
+        breakout = (
+            " <label>Break out <select id='netbreakout'>"
+            f"<option value=''>{_esc(OTHER_HOSTING)} (all)</option>{opts}"
+            "</select></label>"
+            f"<script type='application/json' id='netbreakdata'>{blob}</script>"
+        )
     control = (
         "<div class='netctl'><label>Show <select id='netmode'>"
         "<option value='count'>counts</option>"
         "<option value='row'>% of kind</option>"
         "<option value='col'>% of network</option>"
-        "</select></label></div>"
+        "</select></label>" + breakout + "</div>"
     )
     return (
         "<h2>Requests by kind and network</h2>\n"
@@ -580,7 +575,14 @@ def _network_table(result: AnalysisResult) -> str:
         "(the Total column keeps the raw count). Cell shading tracks the same axis — "
         "across each kind, or down each network. Hosting reads left of the thick rule, "
         f"off-network (relays / Tor / residential) to its right; smallest hosters fold into "
-        f"“{_esc(OTHER_HOSTING)}”.</p>" + _NET_SCRIPT
+        f"“{_esc(OTHER_HOSTING)}”"
+        + (
+            ", and the break-out control swaps that column to show one of them on its own."
+            if matrix.collapsed
+            else "."
+        )
+        + "</p>"
+        + NET_SCRIPT
     )
 
 
@@ -816,6 +818,7 @@ def render_report_html(
     robots_note: str | None = None,
     elapsed: float | None = None,
     country_flags: CountryFlags | None = None,
+    breakout_min_share: float = BREAKOUT_MIN_SHARE,
 ) -> str:
     """Render the full analysis report as a standalone HTML page."""
     flags = country_flags or CountryFlags()
@@ -825,7 +828,7 @@ def render_report_html(
         f"<h1>{_esc(heading)}</h1>",
         _meta_list(result, source, robots_note, elapsed),
         _summary_table(result),
-        _network_table(result),
+        _network_table(result, breakout_min_share=breakout_min_share),
         '<input class="filter" type="search" '
         'placeholder="filter all clients by IP, User-Agent, AS name, or tag…" '
         'aria-label="filter clients">',

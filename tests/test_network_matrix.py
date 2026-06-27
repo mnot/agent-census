@@ -42,6 +42,70 @@ def test_collapses_smallest_datacenter_providers_into_other() -> None:
     assert matrix.kinds == (Kind.BROWSER, Kind.SCRAPER)
 
 
+def test_collapsed_breakdown_lists_each_folded_provider_biggest_first() -> None:
+    # Eight datacenters; DC6 and DC7 fold into Other and should each appear in
+    # the collapsed breakdown, busiest first, with their own per-kind counts.
+    rollups: dict[str, dict[Kind, KindRollup]] = {}
+    categories: dict[str, str] = {}
+    for i in range(8):
+        rollups[f"DC{i}"] = {Kind.SCRAPER: _rollup(100 - i)}
+        categories[f"DC{i}"] = "datacenter"
+    rollups[RESIDENTIAL_NETWORK] = {Kind.BROWSER: _rollup(500)}
+    categories[RESIDENTIAL_NETWORK] = "residential"
+
+    matrix = network_matrix(rollups, categories, max_datacenter=6)
+
+    assert matrix is not None
+    names = [name for name, _ in matrix.collapsed]
+    assert names == ["DC6", "DC7"]  # only the folded ones, busiest first
+    by_name = dict(matrix.collapsed)
+    assert by_name["DC6"] == {Kind.SCRAPER: 100 - 6}
+    assert by_name["DC7"] == {Kind.SCRAPER: 100 - 7}
+    # The breakdown sums back to the aggregated Other column, per kind.
+    assert sum(c[Kind.SCRAPER] for _, c in matrix.collapsed) == matrix.cell(
+        OTHER_HOSTING, Kind.SCRAPER
+    )
+
+
+def test_breakout_selector_drops_long_tail_below_share_floor() -> None:
+    # Six big named datacenters keep their columns; two more fold -- one sizeable,
+    # one tiny. Only the sizeable one clears the break-out share floor.
+    rollups: dict[str, dict[Kind, KindRollup]] = {}
+    categories: dict[str, str] = {}
+    for i in range(6):
+        rollups[f"DC{i}"] = {Kind.SCRAPER: _rollup(100)}
+        categories[f"DC{i}"] = "datacenter"
+    rollups["BigFold"] = {Kind.SCRAPER: _rollup(80)}
+    categories["BigFold"] = "datacenter"
+    rollups["TinyFold"] = {Kind.SCRAPER: _rollup(5)}
+    categories["TinyFold"] = "datacenter"
+
+    # Total = 685; floor at 10% = 68.5: BigFold (80) clears, TinyFold (5) does not.
+    matrix = network_matrix(rollups, categories, max_datacenter=6, min_breakout_share=0.1)
+
+    assert matrix is not None
+    assert [name for name, _ in matrix.collapsed] == ["BigFold"]
+    # Both are still folded into the aggregate Other column, only off the selector.
+    assert matrix.cell(OTHER_HOSTING, Kind.SCRAPER) == 85
+    # A zero floor offers the whole tail again.
+    everything = network_matrix(rollups, categories, max_datacenter=6, min_breakout_share=0.0)
+    assert everything is not None
+    assert [name for name, _ in everything.collapsed] == ["BigFold", "TinyFold"]
+
+
+def test_collapsed_breakdown_empty_when_nothing_folds() -> None:
+    rollups = {
+        "DC0": {Kind.SCRAPER: _rollup(100)},
+        RESIDENTIAL_NETWORK: {Kind.BROWSER: _rollup(200)},
+    }
+    categories = {"DC0": "datacenter", RESIDENTIAL_NETWORK: "residential"}
+    matrix = network_matrix(rollups, categories, max_datacenter=6)
+
+    assert matrix is not None
+    assert matrix.collapsed == ()
+    assert OTHER_HOSTING not in matrix.networks
+
+
 def test_egress_networks_are_never_collapsed() -> None:
     rollups = {
         "iCloud Private Relay": {Kind.BROWSER: _rollup(10)},

@@ -278,6 +278,14 @@ def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argumen
         metavar="N",
         help="ignore clients below N requests (default: 1)",
     )
+    analyze_out.add_argument(
+        "--breakout-min-pct",
+        type=float,
+        default=5.0,
+        metavar="PCT",
+        help="HTML report: smallest folded datacentre offered in the network "
+        "table's break-out selector, as a %% of total traffic (default: 5)",
+    )
 
     calibrate = sub.add_parser(
         "calibrate",
@@ -649,6 +657,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     robots_note=ctx.robots_note,
                     elapsed=ctx.elapsed,
                     country_flags=ctx.country_flags,
+                    breakout_min_share=args.breakout_min_pct / 100,
                 )
         elif args.command == "calibrate":
             text = render_calibration(ctx.result, source=_source_label(args), top=args.top)

@@ -8,9 +8,16 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent_census import identity, pipeline
-from agent_census.cli import _warn_maxmind_skew
-from agent_census.maxmind import AsnResolver, CountryHit, CountryResolver
+from agent_census import cli, identity, pipeline
+from agent_census.cli import _maxmind_paths, _warn_maxmind_skew
+from agent_census.errors import ConfigError
+from agent_census.maxmind import (
+    AsnResolver,
+    CountryHit,
+    CountryResolver,
+    DiscoveredDbs,
+    discover_mm_dir,
+)
 from agent_census.parsing import resolve
 from agent_census.parsing.apache import PRESETS
 
@@ -139,3 +146,94 @@ def test_no_skew_warning_within_window(capsys: pytest.CaptureFixture[str]) -> No
     r.build_epoch = int((log_time + timedelta(days=30)).timestamp())
     _warn_maxmind_skew(r, _skew_result(log_time), "AS attributions")  # type: ignore[arg-type]
     assert capsys.readouterr().err == ""
+
+
+def _mkdir_with(tmp_path: Path, names: tuple[str, ...]) -> Path:
+    """A directory holding empty placeholder .mmdb files (type comes from the injected map)."""
+    d = tmp_path / "dbs"
+    d.mkdir(parents=True)
+    for name in names:
+        (d / name).touch()
+    return d
+
+
+def _type_map(mapping: dict[str, str]):
+    return lambda path: mapping.get(path.name)
+
+
+def test_discover_routes_asn_and_country_by_metadata(tmp_path: Path) -> None:
+    # Filenames are deliberately non-canonical; routing is by metadata type, not name.
+    d = _mkdir_with(tmp_path, ("a.mmdb", "b.mmdb"))
+    types = {"a.mmdb": "GeoLite2-ASN", "b.mmdb": "GeoIP2-Country"}
+    found = discover_mm_dir(d, type_of=_type_map(types))
+    assert found.asn == d / "a.mmdb"
+    assert found.country == d / "b.mmdb"
+
+
+def test_discover_prefers_country_over_city(tmp_path: Path) -> None:
+    d = _mkdir_with(tmp_path, ("city.mmdb", "country.mmdb"))
+    types = {"city.mmdb": "GeoIP2-City", "country.mmdb": "GeoLite2-Country"}
+    found = discover_mm_dir(d, type_of=_type_map(types))
+    assert found.country == d / "country.mmdb"  # Country wins over City
+
+
+def test_discover_city_alone_fills_country_role(tmp_path: Path) -> None:
+    d = _mkdir_with(tmp_path, ("only.mmdb",))
+    found = discover_mm_dir(d, type_of=_type_map({"only.mmdb": "GeoIP2-City"}))
+    assert found.country == d / "only.mmdb" and found.asn is None
+
+
+def test_discover_isp_fills_asn_and_enterprise_fills_both(tmp_path: Path) -> None:
+    d = _mkdir_with(tmp_path, ("isp.mmdb",))
+    assert discover_mm_dir(d, type_of=_type_map({"isp.mmdb": "GeoIP2-ISP"})).asn == d / "isp.mmdb"
+    e = _mkdir_with(tmp_path / "x", ("ent.mmdb",))
+    found = discover_mm_dir(e, type_of=_type_map({"ent.mmdb": "GeoIP2-Enterprise"}))
+    assert found.asn == e / "ent.mmdb" and found.country == e / "ent.mmdb"
+
+
+def test_discover_dedicated_asn_beats_isp(tmp_path: Path) -> None:
+    d = _mkdir_with(tmp_path, ("isp.mmdb", "asn.mmdb"))
+    types = {"isp.mmdb": "GeoIP2-ISP", "asn.mmdb": "GeoLite2-ASN"}
+    assert discover_mm_dir(d, type_of=_type_map(types)).asn == d / "asn.mmdb"
+
+
+def test_discover_empty_dir_finds_nothing(tmp_path: Path) -> None:
+    d = _mkdir_with(tmp_path, ("readme.txt",))  # no .mmdb
+    found = discover_mm_dir(d, type_of=_type_map({}))
+    assert found.asn is None and found.country is None
+
+
+def test_discover_unreadable_files_are_skipped(tmp_path: Path) -> None:
+    d = _mkdir_with(tmp_path, ("good.mmdb", "broken.mmdb"))
+    types = {"good.mmdb": "GeoLite2-Country"}  # broken.mmdb -> None (unreadable)
+    found = discover_mm_dir(d, type_of=_type_map(types))
+    assert found.country == d / "good.mmdb" and found.asn is None
+
+
+def test_discover_rejects_non_directory(tmp_path: Path) -> None:
+    missing = tmp_path / "nope"
+    with pytest.raises(ConfigError):
+        discover_mm_dir(missing)
+
+
+def _mm_args(**kw: object) -> SimpleNamespace:
+    base = {"mm_asn_db": None, "mm_country_db": None, "mm_db_dir": None}
+    base.update(kw)
+    return SimpleNamespace(**base)
+
+
+def test_maxmind_paths_explicit_overrides_dir(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        cli, "discover_mm_dir", lambda d: DiscoveredDbs(asn=Path("dir-asn"), country=Path("dir-cc"))
+    )
+    asn, country = _maxmind_paths(_mm_args(mm_asn_db=Path("flag-asn"), mm_db_dir=Path("/x")))
+    assert asn == Path("flag-asn")  # explicit flag wins for its role
+    assert country == Path("dir-cc")  # the directory fills the role left unset
+
+
+def test_maxmind_paths_warns_when_dir_yields_nothing(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(cli, "discover_mm_dir", lambda d: DiscoveredDbs())
+    assert _maxmind_paths(_mm_args(mm_db_dir=Path("/empty"))) == (None, None)
+    assert "no ASN or country .mmdb" in capsys.readouterr().err

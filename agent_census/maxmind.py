@@ -8,6 +8,11 @@ blanks out ASN-based datacentre / egress / crawler recognition. Pointing
 logged AS when it has an answer. ``--mm-country-db`` adds the origin country, used to
 flag high-traffic, unidentified non-human clients in the report.
 
+Rather than a path per database, ``--mm-db-dir`` can point at a directory (e.g. a
+``geoipupdate`` target); :func:`discover_mm_dir` then routes each ``.mmdb`` by its
+metadata type, so an explicit ``--mm-asn-db`` / ``--mm-country-db`` is only needed for
+an oddly-named or out-of-tree file (and overrides the directory for its role).
+
 The reader (``maxminddb``) is bundled. The databases are not: MaxMind's licence
 forbids redistributing GeoLite2, the files are several MB, and they go stale, so the
 user supplies the path. Only the standard ASN / country fields are read, so any
@@ -16,6 +21,7 @@ matching ``.mmdb`` (GeoLite2, IPinfo, DB-IP) works.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -123,3 +129,73 @@ def open_asn_db(path: Path) -> AsnResolver:
 def open_country_db(path: Path) -> CountryResolver:
     """Open a MaxMind country (or city) database, raising :class:`ConfigError` on any problem."""
     return CountryResolver(*_open(path))
+
+
+# A database's ``database_type`` metadata, matched case-insensitively as a substring,
+# tells us what each ``.mmdb`` in a directory carries -- regardless of its filename, so
+# the free GeoLite2-*, the commercial GeoIP2-*, and third-party (IPinfo, DB-IP) names
+# all route correctly. Listed best-first: a dedicated database wins over a richer one
+# that merely happens to include the same field (ISP/Enterprise carry an AS; City and
+# Enterprise carry a country block).
+_ASN_TYPES = ("ASN", "ISP", "Enterprise")
+_COUNTRY_TYPES = ("Country", "City", "Enterprise")
+
+
+@dataclass(frozen=True)
+class DiscoveredDbs:
+    """The best ASN and country ``.mmdb`` found in a directory (either may be ``None``)."""
+
+    asn: Path | None = None
+    country: Path | None = None
+
+
+def _db_type(path: Path) -> str | None:
+    """A database's ``database_type`` metadata string, or ``None`` if it won't open."""
+    try:
+        reader = maxminddb.open_database(str(path))
+    except (OSError, ValueError):
+        return None
+    try:
+        return str(reader.metadata().database_type)
+    except (AttributeError, ValueError):
+        return None
+    finally:
+        reader.close()
+
+
+def discover_mm_dir(
+    directory: Path, *, type_of: Callable[[Path], str | None] = _db_type
+) -> DiscoveredDbs:
+    """Find the best ASN and country ``.mmdb`` in ``directory`` by each file's metadata type.
+
+    Filenames are not trusted: every ``*.mmdb`` is opened and routed by its
+    ``database_type`` (see :data:`_ASN_TYPES` / :data:`_COUNTRY_TYPES`), so any vendor's
+    naming works. When several files can fill a role the more specific one wins; ties
+    break on filename for determinism. Raises :class:`ConfigError` if ``directory`` is
+    not a directory.
+    """
+    if not directory.is_dir():
+        raise ConfigError(f"not a directory: {directory}")
+
+    def _best(candidates: tuple[str, ...], db_type: str) -> int | None:
+        low = db_type.lower()
+        for rank, key in enumerate(candidates):
+            if key.lower() in low:
+                return rank
+        return None
+
+    asn_rank: int | None = None
+    asn_path: Path | None = None
+    country_rank: int | None = None
+    country_path: Path | None = None
+    for path in sorted(directory.glob("*.mmdb")):
+        db_type = type_of(path)
+        if not db_type:
+            continue
+        rank = _best(_ASN_TYPES, db_type)
+        if rank is not None and (asn_rank is None or rank < asn_rank):
+            asn_rank, asn_path = rank, path
+        rank = _best(_COUNTRY_TYPES, db_type)
+        if rank is not None and (country_rank is None or rank < country_rank):
+            country_rank, country_path = rank, path
+    return DiscoveredDbs(asn=asn_path, country=country_path)

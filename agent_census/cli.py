@@ -16,7 +16,13 @@ from .audit import run as run_audit
 from .classify import DEFAULT_UNKNOWN_THRESHOLD
 from .errors import AgentCensusError
 from .identity import ClientKeyStrategy
-from .maxmind import AsnResolver, CountryResolver, open_asn_db, open_country_db
+from .maxmind import (
+    AsnResolver,
+    CountryResolver,
+    discover_mm_dir,
+    open_asn_db,
+    open_country_db,
+)
 from .netverify import BotVerifier
 from .parsing import available, resolve
 from .parsing.apache import PRESETS
@@ -166,6 +172,15 @@ def _add_shared(parser: argparse.ArgumentParser) -> None:
         help="MaxMind-format country (or city) database (.mmdb) used to flag the "
         "origin country of high-traffic, unidentified non-human clients in the "
         "report. Remembered between runs.",
+    )
+    asn_group.add_argument(
+        "--mm-db-dir",
+        type=Path,
+        metavar="DIR",
+        help="directory of MaxMind .mmdb files (e.g. a geoipupdate target); the ASN "
+        "and country databases are found by their metadata, whatever they're named. "
+        "An explicit --mm-asn-db / --mm-country-db overrides it for that role. "
+        "Remembered between runs.",
     )
 
     out_group = parser.add_argument_group("output")
@@ -428,14 +443,28 @@ def _apply_persisted_settings(args: argparse.Namespace) -> None:
         elif "robots_url" in cfg:
             args.robots_url = cfg["robots_url"]
 
+    # A MaxMind source is either a directory (discovered) or explicit per-database paths;
+    # an explicit path overrides the directory for its role. Passing --mm-db-dir this run
+    # drops any restored explicit paths so the directory can take over cleanly, but a
+    # path also passed this run still wins.
+    passed_dir = args.mm_db_dir is not None
+    if passed_dir:
+        cfg["mm_db_dir"], updated = str(args.mm_db_dir), True
+        if args.mm_asn_db is None:
+            cfg.pop("mm_asn_db", None)
+        if args.mm_country_db is None:
+            cfg.pop("mm_country_db", None)
+    elif "mm_db_dir" in cfg:
+        args.mm_db_dir = Path(cfg["mm_db_dir"])
+
     if args.mm_asn_db is not None:
         cfg["mm_asn_db"], updated = str(args.mm_asn_db), True
-    elif "mm_asn_db" in cfg:
+    elif not passed_dir and "mm_asn_db" in cfg:
         args.mm_asn_db = Path(cfg["mm_asn_db"])
 
     if args.mm_country_db is not None:
         cfg["mm_country_db"], updated = str(args.mm_country_db), True
-    elif "mm_country_db" in cfg:
+    elif not passed_dir and "mm_country_db" in cfg:
         args.mm_country_db = Path(cfg["mm_country_db"])
 
     if updated:
@@ -476,6 +505,21 @@ def _warn_maxmind_skew(
         )
 
 
+def _maxmind_paths(args: argparse.Namespace) -> tuple[Path | None, Path | None]:
+    """Effective (ASN, country) database paths; explicit flags override --mm-db-dir."""
+    asn, country = args.mm_asn_db, args.mm_country_db
+    if args.mm_db_dir is not None:
+        found = discover_mm_dir(args.mm_db_dir)
+        asn = asn or found.asn
+        country = country or found.country
+        if asn is None and country is None:
+            print(
+                f"agent-census: warning: no ASN or country .mmdb found in {args.mm_db_dir}",
+                file=sys.stderr,
+            )
+    return asn, country
+
+
 def _run_pipeline(args: argparse.Namespace) -> _RunContext:
     parser = _build_log_parser(args)
     strategy = identity.get_strategy(args.identity)
@@ -488,7 +532,8 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
     if args.fetch_ranges:
         iprange.enable_remote()
     quiescent = args.quiescent_hours * 3600 if args.quiescent_hours > 0 else None
-    asn_resolver = open_asn_db(args.mm_asn_db) if args.mm_asn_db else None
+    asn_path, country_path = _maxmind_paths(args)
+    asn_resolver = open_asn_db(asn_path) if asn_path else None
 
     start = time.monotonic()
     try:
@@ -512,8 +557,8 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
         _warn_maxmind_skew(asn_resolver, result, "AS attributions")
 
     flags = CountryFlags()
-    if args.mm_country_db:
-        country_resolver = open_country_db(args.mm_country_db)
+    if country_path:
+        country_resolver = open_country_db(country_path)
         try:
             flags = country_flags(result.profiles, country_resolver)
         finally:

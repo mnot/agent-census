@@ -24,6 +24,7 @@ PERSISTED = (
     "cf_api_token",
     "mm_asn_db",
     "mm_country_db",
+    "mm_db_dir",
 )
 
 

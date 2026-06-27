@@ -9,11 +9,12 @@ hold an ``[[agent]]`` array of tables, each with a ``ua_substring`` and optional
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date
 from functools import lru_cache
 from importlib.resources import files
+from types import MappingProxyType
 from typing import Any
 
 from .errors import ConfigError
@@ -82,6 +83,56 @@ def _grouped_lists(
                 raise ConfigError(f"{filename}: [{table}] '{key}' must be a list of strings")
             out[(table, key)] = tuple(value)
     return out
+
+
+def _is_number(value: object) -> bool:
+    # bool is an int subclass in Python; exclude it so `true` isn't a valid number.
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def load_tuning(name: str, schema: Mapping[str, str]) -> Mapping[str, float]:
+    """Load a numeric tuning file (``data/tuning/<name>.toml``) into a flat mapping.
+
+    ``schema`` maps each output knob name to its location in the file: either a
+    top-level scalar (``"clean_browser_floor"``) or a ``table.key`` path
+    (``"asset_coload.weight"``). The grouping exists for the file's readability; the
+    returned mapping is flat, keyed by the schema's names. Every listed knob must be
+    present and numeric, and any unexpected table or key in the file is rejected --
+    so the file is always the complete, accurate list of a classifier's knobs. An
+    integer in the file is accepted and widened to float.
+    """
+    filename = f"tuning/{name}.toml"
+    data = _load(name, "tuning")
+    scalars: set[str] = set()
+    tables: dict[str, set[str]] = {}
+    for path in schema.values():
+        if "." in path:
+            table, key = path.split(".", 1)
+            tables.setdefault(table, set()).add(key)
+        else:
+            scalars.add(path)
+    _check_top_level(filename, data, scalars | set(tables))
+    for table, keys in tables.items():
+        section = data.get(table, {})
+        if not isinstance(section, dict):
+            raise ConfigError(f"{filename}: [{table}] must be a table")
+        extra = set(section) - keys
+        if extra:
+            raise ConfigError(
+                f"{filename}: [{table}] unexpected key(s) {', '.join(sorted(extra))} "
+                f"(allowed: {', '.join(sorted(keys))})"
+            )
+    values: dict[str, float] = {}
+    for field, path in schema.items():
+        table, _, key = path.partition(".")
+        section = data.get(table) if key else data
+        raw = section.get(key or table) if isinstance(section, dict) else None
+        if raw is None:
+            raise ConfigError(f"{filename}: missing '{path}'")
+        if not _is_number(raw):
+            raise ConfigError(f"{filename}: '{path}' must be a number")
+        values[field] = float(raw)
+    return MappingProxyType(values)
 
 
 def _validate_records(
@@ -478,3 +529,27 @@ def load_request_signatures() -> RequestSignatures:
         feed_filename_tokens=groups[("feed_urls", "filename_tokens")],
         feed_filenames=groups[("feed_urls", "filenames")],
     )
+
+
+# Numeric thresholds shared by more than one classifier or tag (data/tuning/shared.toml),
+# keyed by the names the consumers look them up under.
+_SHARED_TUNING: dict[str, str] = {
+    "unknown_threshold": "verdict.unknown_threshold",
+    "browser_coload_min": "browser_shape.coload_ratio_min",
+    "browser_no_coload_max": "browser_shape.no_coload_max",
+    "browser_follow_min": "browser_shape.follow_ratio_min",
+    "browser_no_follow_max": "browser_shape.no_follow_max",
+    "cadence_metronomic_max": "cadence.metronomic_max",
+    "cadence_bursty_min": "cadence.bursty_min",
+    "head_notable_ratio": "head_traffic.notable_ratio",
+    "fabricated_self_referer_min": "fabricated_referer.self_referer_min",
+    "fabricated_min_requests": "fabricated_referer.min_requests",
+    "storm_404_ratio_min": "storm_404.ratio_min",
+    "storm_404_distinct_paths_min": "storm_404.distinct_paths_min",
+}
+
+
+@lru_cache(maxsize=None)
+def load_shared_tuning() -> Mapping[str, float]:
+    """Return the cross-classifier numeric thresholds from ``tuning/shared.toml``."""
+    return load_tuning("shared", _SHARED_TUNING)

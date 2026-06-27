@@ -1,0 +1,34 @@
+# Content scraper tuning (see classify/scraper.py). A scraper harvests pages in
+# bulk like a crawler, but hits URLs cold (little on-site link-following) and often
+# rides a generic HTTP library or empty User-Agent. The co-load and link-following
+# cutoffs come from shared.toml.
+
+[broad]
+# The bar for "harvesting broadly": enough distinct paths and enough requests.
+# Several signals below gate on this combined condition.
+distinct_paths_min = 10
+min_requests = 15
+
+[harvest]
+# Broad harvesting with no browser co-loading and no browser-shaped UA. Co-load
+# cutoff from shared.toml browser_shape.no_coload_max.
+weight = 0.3
+
+[cold]
+# Broad harvesting that hits URLs cold -- below shared.toml browser_shape
+# .no_follow_max on-site link-following.
+weight = 0.15
+
+[library]
+# The User-Agent is a generic HTTP library (curl, python-requests, …).
+weight = 0.2
+
+[no_user_agent]
+# No User-Agent at all, while harvesting broadly.
+weight = 0.15
+
+[benign]
+# Mostly successful and not probing: harvesting, not scanning. Only added once some
+# other scraper signal already fired.
+ratio_2xx_min = 0.6
+weight = 0.05

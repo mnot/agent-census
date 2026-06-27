@@ -60,11 +60,11 @@ METRICS: tuple[str, ...] = tuple(_METRIC_TAGS)
 # a high linear percentile of the browser pool directly (no multiplicative margin),
 # so "wider than ~all browsers on this site" stays reachable.
 _BOUNDED_METRICS: frozenset[str] = frozenset({"breadth"})
-_BOUNDED_PERCENTILE = 0.95
 
-# Enough requests for a magnitude to be stable -- a singleton or near-singleton has
-# no meaningful rate/volume. Matches the cadence tags' gate.
-_MIN_REQUESTS = 5
+# The bounded-metric percentile and the magnitude-stability request gate are tunable
+# in relative_tags.toml [params]; they are bound to module constants at the end of
+# the config section below, where the loader is in scope, so the bare predicates that
+# use them (is_reference_browser / _gated) don't each need the params threaded in.
 
 
 def is_reference_browser(features: ClientFeatures) -> bool:
@@ -153,11 +153,14 @@ def _relative_threshold(metric: str, samples: list[float], margin: float) -> flo
 
 @dataclass(frozen=True, slots=True)
 class RelativeParams:
-    """Tunable knobs: the relative margin, the thin-pool cutoff, per-metric floors."""
+    """Tunable knobs: the relative margin, the thin-pool cutoff, per-metric floors,
+    the magnitude-stability request gate, and the bounded-metric percentile."""
 
     margin: float
     min_reference: int
     floors: Mapping[str, float]
+    min_requests: int
+    bounded_percentile: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,7 +183,9 @@ class RelativeTagConfig:
         return self.overrides.get(kind.value, self.default)
 
 
-_PARAMS_KEYS = {"margin", "min_reference"} | {f"floor_{m}" for m in METRICS}
+_PARAMS_KEYS = {"margin", "min_reference", "min_requests", "bounded_percentile"} | {
+    f"floor_{m}" for m in METRICS
+}
 _RULE_KEYS = {"reference", "tags"}
 
 
@@ -241,10 +246,15 @@ def parse_relative_tags(data: Mapping[str, object]) -> RelativeTagConfig:
     min_ref = raw_params["min_reference"]
     if isinstance(min_ref, bool) or not isinstance(min_ref, int):
         raise ConfigError("relative_tags.toml: [params] 'min_reference' must be an integer")
+    min_req = raw_params["min_requests"]
+    if isinstance(min_req, bool) or not isinstance(min_req, int):
+        raise ConfigError("relative_tags.toml: [params] 'min_requests' must be an integer")
     params = RelativeParams(
         margin=_num("[params] 'margin'", raw_params["margin"]),
         min_reference=min_ref,
         floors={m: _num(f"[params] 'floor_{m}'", raw_params[f"floor_{m}"]) for m in METRICS},
+        min_requests=min_req,
+        bounded_percentile=_num("[params] 'bounded_percentile'", raw_params["bounded_percentile"]),
     )
     raw_default = data.get("default", {})
     if not isinstance(raw_default, dict):
@@ -263,6 +273,13 @@ def parse_relative_tags(data: Mapping[str, object]) -> RelativeTagConfig:
             raise ConfigError(f"relative_tags.toml: [[kind]] #{index}: unknown kind {name!r}")
         overrides[name] = _rule(f"[[kind]] {name}", {k: v for k, v in table.items() if k != "kind"})
     return RelativeTagConfig(params=params, default=default, overrides=overrides)
+
+
+# Bound once here, where the loader is fully defined, for the bare predicates above
+# (is_reference_browser / _gated) that have no params in hand. The load is cached, so
+# this is the same config every other caller sees.
+_MIN_REQUESTS = load_relative_tags().params.min_requests
+_BOUNDED_PERCENTILE = load_relative_tags().params.bounded_percentile
 
 
 # ----------------------------------------------------------------- sampling / tagging

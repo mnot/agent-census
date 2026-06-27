@@ -1,0 +1,36 @@
+# RSS / Atom feed reader tuning (see classify/feed_reader.py). Recognised from feed
+# requests and a feed-reader User-Agent, corroborated by steady polling of a few
+# URLs with conditional/HEAD freshness checks. Each block adds its `weight`.
+
+[feed_traffic]
+# Feeds are the point. When they are the majority of requests (`dominant_ratio_min`)
+# the dominant weight applies; otherwise any feed request at all earns the smaller
+# present weight.
+dominant_ratio_min = 0.5
+dominant_weight = 0.5
+present_weight = 0.2
+
+[feed_ua]
+# The User-Agent identifies a feed reader (see ua_signatures.toml / feed_readers.toml).
+weight = 0.4
+
+[few_urls]
+# Polls a handful of URLs repeatedly, over enough requests to judge it.
+distinct_paths_max = 3
+min_requests = 4
+weight = 0.1
+
+[steady_polling]
+# Low timing variability over enough requests: a poller on a schedule.
+regularity_max = 0.3
+min_requests = 4
+weight = 0.1
+
+[conditional]
+# Conditional requests answered 304 -- a polite reader caching the feed.
+weight = 0.1
+
+[head_checks]
+# A meaningful HEAD share: checking for a change before fetching the feed.
+head_ratio_min = 0.2
+weight = 0.1

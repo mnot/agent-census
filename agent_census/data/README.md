@@ -24,3 +24,10 @@ remaining files here each have their own shape, documented in their own header c
 - `feed_readers.toml`, `app_clients.toml`, `scanner_ua.toml`, `vuln_paths.toml`,
   `monitor_uas.toml`, `submit_paths.toml` -- flat lists of substrings/paths, keyed
   by the file name.
+
+The **`tuning/`** subdirectory holds the numeric knobs -- the confidence weights and
+decision thresholds each classifier and the tag layer use. There is one file per
+classifier (`tuning/browser.toml`, `tuning/crawler.toml`, …), each grouping a signal's
+threshold and weight together, plus `tuning/shared.toml` for the thresholds used by
+more than one of them (so "what counts as browser-like" is defined once). See
+[`tuning/README.md`](tuning/README.md).

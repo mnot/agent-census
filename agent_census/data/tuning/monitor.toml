@@ -1,0 +1,24 @@
+# Uptime / monitoring tuning (see classify/monitor.py). A monitor hammers one or a
+# few URLs on a fixed schedule, often with HEAD, at very regular intervals -- the
+# lowest timing variability of any client kind. Each block adds its `weight`.
+
+[monitor_ua]
+# The User-Agent names a monitoring service (see data/monitor_uas.toml).
+weight = 0.4
+
+[few_urls]
+# Polls just a URL or two, repeatedly, over enough requests to be sure.
+distinct_paths_max = 2
+min_requests = 5
+weight = 0.2
+
+[head_polling]
+# A high HEAD share -- checking liveness without fetching the body.
+head_ratio_min = 0.5
+weight = 0.2
+
+[regular_polling]
+# Very low timing variability over enough requests: a fixed schedule.
+regularity_max = 0.2
+min_requests = 5
+weight = 0.25

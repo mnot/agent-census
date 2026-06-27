@@ -7,11 +7,30 @@ traversal/injection markers, and no browser-like sub-resource loading.
 
 from __future__ import annotations
 
-from ..dataload import load_list
+from ..dataload import load_list, load_shared_tuning, load_tuning
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
 
 _SCANNER_UA = tuple(token.lower() for token in load_list("scanner_ua"))
+
+# Numeric knobs: this classifier's own in data/tuning/vuln_scanner.toml, the
+# 404-storm thresholds in data/tuning/shared.toml.
+_TUNING_SCHEMA = {
+    "scanner_ua_weight": "scanner_ua.weight",
+    "probe_strong_min_hits": "probe_paths.strong_min_hits",
+    "probe_strong_ratio": "probe_paths.strong_ratio",
+    "probe_strong_weight": "probe_paths.strong_weight",
+    "probe_incidental_weight": "probe_paths.incidental_weight",
+    "storm_404_weight": "storm_404.weight",
+    "traversal_weight": "traversal.weight",
+    "evasion_weight": "encoding_evasion.weight",
+    "exotic_weight": "exotic_method.weight",
+    "fast_median_max": "fast_cadence.median_max",
+    "fast_min_requests": "fast_cadence.min_requests",
+    "fast_weight": "fast_cadence.weight",
+}
+_T = load_tuning("vuln_scanner", _TUNING_SCHEMA)
+_S = load_shared_tuning()
 
 
 def _ua_is_scanner(ua: str | None) -> str | None:
@@ -31,7 +50,7 @@ class VulnScannerClassifier(Classifier):
 
         scanner_token = _ua_is_scanner(features.user_agent)
         if scanner_token is not None:
-            confidence += 0.5
+            confidence += _T["scanner_ua_weight"]
             evidence.append(f"User-Agent names a scanning tool ({scanner_token})")
 
         hits = features.vuln_path_hits
@@ -42,36 +61,46 @@ class VulnScannerClassifier(Classifier):
             # probe amid otherwise normal traffic is incidental. Keying the strong
             # tier on the ratio (not raw count) rescues a lone pure probe from the
             # singleton bucket: one GET /.env is as hostile as a hundred.
-            if hits >= 3 or hits >= features.request_count * 0.5:
-                confidence += 0.45
+            if (
+                hits >= _T["probe_strong_min_hits"]
+                or hits >= features.request_count * _T["probe_strong_ratio"]
+            ):
+                confidence += _T["probe_strong_weight"]
                 evidence.append(f"{hits} request(s) to known probe paths ({sample})")
             else:
-                confidence += 0.2
+                confidence += _T["probe_incidental_weight"]
                 evidence.append(f"{hits} request(s) to known probe paths ({sample}); incidental")
 
-        if features.ratio_404 > 0.6 and features.distinct_404_paths >= 15:
-            confidence += 0.3
+        if (
+            features.ratio_404 > _S["storm_404_ratio_min"]
+            and features.distinct_404_paths >= _S["storm_404_distinct_paths_min"]
+        ):
+            confidence += _T["storm_404_weight"]
             evidence.append(
                 f"{features.ratio_404:.0%} 404s across {features.distinct_404_paths} distinct paths"
             )
 
         if features.traversal_hits > 0:
-            confidence += 0.15
+            confidence += _T["traversal_weight"]
             evidence.append(f"{features.traversal_hits} path-traversal / injection marker(s)")
 
         if features.evasion_hits > 0:
             # Double / overlong encoding has no legitimate use -- weight it above
             # plain traversal.
-            confidence += 0.25
+            confidence += _T["evasion_weight"]
             evidence.append(f"{features.evasion_hits} encoding-evasion marker(s)")
 
         if features.exotic_method_count > 0:
-            confidence += 0.1
+            confidence += _T["exotic_weight"]
             evidence.append(f"{features.exotic_method_count} unusual-method request(s)")
 
         median = features.inter_arrival_median
-        if median is not None and median < 0.5 and features.request_count >= 5:
-            confidence += 0.1
+        if (
+            median is not None
+            and median < _T["fast_median_max"]
+            and features.request_count >= _T["fast_min_requests"]
+        ):
+            confidence += _T["fast_weight"]
             evidence.append(f"fast cadence: median {median:.2f}s between requests")
 
         if not evidence:

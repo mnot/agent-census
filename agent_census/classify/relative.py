@@ -14,10 +14,14 @@ would chase the thing it measures. So :func:`is_reference_browser` is built only
 from *absolute* browser evidence (UA shape, asset co-loading, caching / link
 following) and never from rate/bytes/breadth/duration.
 
-This module is metric-agnostic: it knows four metrics (``rate`` / ``bytes`` /
-``breadth`` / ``duration``) but which ones actually emit a tag for a given kind is
-the per-kind config's job (``data/relative_tags.toml``) -- the single lever for
-suppressing a metric that proves noisy for some kind.
+This module is metric-agnostic: it knows four metrics -- ``rate`` (peak req/min),
+``bytes`` (mean response size, so it isn't a restatement of rate), ``breadth``
+(fraction of hops changing subtree), ``duration`` (session span) -- but which ones
+actually emit a tag for a given kind is the per-kind config's job
+(``data/relative_tags.toml``), the single lever for suppressing a metric that proves
+noisy for some kind. The unbounded magnitudes calibrate as ``p95(log) x margin``;
+``breadth`` is a bounded ratio and uses a high linear percentile instead (see
+:data:`_BOUNDED_METRICS`).
 """
 
 from __future__ import annotations
@@ -39,16 +43,24 @@ else:  # Python 3.10 has no stdlib tomllib.
     import tomli as tomllib
 
 
-# The metrics the framework can tag, each mapped to the tag it emits. A metric
-# only fires when a kind's config lists it; the value side is heavy-tailed and
-# calibrated on a log scale against the reference pool's p95.
+# The metrics the framework can tag, each mapped to the tag it emits. A metric only
+# fires when a kind's config lists it.
 _METRIC_TAGS: dict[str, str] = {
     "rate": "high-rate",  # peak requests/minute well above a typical browser's
-    "bytes": "high-bytes",  # total bytes transferred (fast-follow)
-    "breadth": "wide-breadth",  # subtree-changing hops (fast-follow)
-    "duration": "long-session",  # session lifespan (fast-follow)
+    "bytes": "high-bytes",  # mean response size -- few large objects, not just volume
+    "breadth": "wide-breadth",  # fraction of hops that change subtree (bounded 0..1)
+    "duration": "long-session",  # session lifespan
 }
 METRICS: tuple[str, ...] = tuple(_METRIC_TAGS)
+
+# Metrics that are bounded ratios in [0, 1] rather than unbounded heavy-tailed
+# magnitudes. The unbounded ones calibrate as ``p95(log) x margin``; that model is
+# wrong for a bounded ratio -- a margin > 1 pushes the threshold above 1.0, where no
+# client can reach it and the tag silently never fires. A bounded ratio instead uses
+# a high linear percentile of the browser pool directly (no multiplicative margin),
+# so "wider than ~all browsers on this site" stays reachable.
+_BOUNDED_METRICS: frozenset[str] = frozenset({"breadth"})
+_BOUNDED_PERCENTILE = 0.95
 
 # Enough requests for a magnitude to be stable -- a singleton or near-singleton has
 # no meaningful rate/volume. Matches the cadence tags' gate.
@@ -85,7 +97,10 @@ def _metric_value(features: ClientFeatures, metric: str) -> float:
     if metric == "rate":
         return float(features.peak_requests_per_minute)
     if metric == "bytes":
-        return float(features.total_bytes)
+        # Mean response size, not total: total scales with request_count, so it
+        # largely shadows high-rate. The mean isolates few-large-objects / heavy
+        # downloads -- the independent signal this metric is meant to catch.
+        return features.mean_bytes
     if metric == "breadth":
         return features.breadth_ratio
     if metric == "duration":
@@ -101,6 +116,12 @@ def _gated(features: ClientFeatures, metric: str) -> bool:
     return features.request_count >= _MIN_REQUESTS
 
 
+def _nearest_rank(values: list[float], quantile: float) -> float:
+    """Nearest-rank ``quantile`` of ``values`` (assumed sorted, non-empty)."""
+    rank = max(0, min(len(values) - 1, math.ceil(quantile * len(values)) - 1))
+    return values[rank]
+
+
 def _p95_log(values: list[float]) -> float | None:
     """The 95th-percentile of the positive values, computed on a log scale.
 
@@ -110,9 +131,21 @@ def _p95_log(values: list[float]) -> float | None:
     pos = sorted(v for v in values if v > 0)
     if not pos:
         return None
-    logs = [math.log(v) for v in pos]
-    rank = max(0, min(len(logs) - 1, math.ceil(0.95 * len(logs)) - 1))
-    return math.exp(logs[rank])
+    return math.exp(_nearest_rank([math.log(v) for v in pos], 0.95))
+
+
+def _relative_threshold(metric: str, samples: list[float], margin: float) -> float | None:
+    """The reference pool's relative bar for ``metric``, or ``None`` if uncomputable.
+
+    Bounded ratios use a high linear percentile (zeros included) with no margin;
+    unbounded heavy-tailed magnitudes use ``p95(log) x margin``.
+    """
+    if metric in _BOUNDED_METRICS:
+        if not samples:
+            return None
+        return _nearest_rank(sorted(samples), _BOUNDED_PERCENTILE)
+    p95 = _p95_log(samples)
+    return None if p95 is None else p95 * margin
 
 
 # --------------------------------------------------------------------------- config
@@ -301,8 +334,11 @@ class ReferenceCollector:
             per_metric: dict[str, MetricThreshold] = {}
             for metric in METRICS:
                 floor = params.floors[metric]
-                p95 = None if thin else _p95_log(self._samples[name][metric])
-                relative = None if p95 is None else p95 * params.margin
+                relative = (
+                    None
+                    if thin
+                    else _relative_threshold(metric, self._samples[name][metric], params.margin)
+                )
                 value = floor if relative is None else max(floor, relative)
                 per_metric[metric] = MetricThreshold(
                     metric=metric, value=value, floor=floor, relative=relative, fallback=thin

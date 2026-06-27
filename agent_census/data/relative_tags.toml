@@ -1,11 +1,15 @@
 # Site-relative magnitude tags (see classify/relative.py and issue #8).
 #
-# Some signals -- request rate, bytes transferred, crawl breadth, session length --
-# mean nothing as global constants: a flood for a blog is idle for a busy site. They
-# are tagged relative to the site's own high-confidence *real browsers*, the one
+# Some signals -- request rate, response size, crawl breadth, session length -- mean
+# nothing as global constants: a flood for a blog is idle for a busy site. They are
+# tagged relative to the site's own high-confidence *real browsers*, the one
 # reference class bots imitate in User-Agent but not in behaviour. Per metric:
 #
 #   threshold = max(floor_<metric>, browser_p95 x margin)   (p95 on a log scale)
+#
+# except `breadth`, a bounded ratio in [0, 1]: a multiplicative margin would push its
+# threshold above 1.0 (unreachable), so it uses a high linear browser percentile with
+# no margin -- threshold = max(floor_breadth, browser_p95_linear).
 #
 # Both gates must clear: the relative gate (exceeds the human-plausible envelope) and
 # the absolute floor (a sanity guard, and the sole rule when the browser pool is too
@@ -23,7 +27,7 @@
 margin = 3.0          # a client must exceed 3x the reference browsers' p95 to fire
 min_reference = 30    # fewer reference browsers than this -> floor-only fallback
 floor_rate = 60       # peak requests/minute
-floor_bytes = 50_000_000     # total bytes transferred (~50 MB)
+floor_bytes = 5_000_000      # mean response size in bytes (~5 MB average object)
 floor_breadth = 0.5          # fraction of hops that change subtree (0..1)
 floor_duration = 86_400      # session span in seconds (1 day)
 

@@ -85,7 +85,7 @@ def _calibrate(rates: list[int], params: RelativeParams) -> ReferenceCalibration
 PARAMS = RelativeParams(
     margin=3.0,
     min_reference=30,
-    floors={"rate": 60.0, "bytes": 50_000_000.0, "breadth": 0.5, "duration": 86_400.0},
+    floors={"rate": 60.0, "bytes": 5_000_000.0, "breadth": 0.5, "duration": 86_400.0},
 )
 
 
@@ -108,6 +108,22 @@ def test_full_pool_uses_relative_threshold() -> None:
     assert th.relative is not None and th.value == th.relative
     assert th.value > 60.0
     assert cal.warning() is None
+
+
+def test_full_pool_breadth_threshold_is_reachable() -> None:
+    # breadth_ratio is bounded [0, 1]: the relative bar must stay below 1.0 so the
+    # tag can actually fire. The old `p95 x margin` model gave 0.6 x 3 = 1.8 here,
+    # unreachable -- this exercises the full-pool (non-fallback) bounded path.
+    collector = make_collector()
+    for i in range(30):
+        collector.observe(replace(browser(10), breadth_ratio=0.6 if i % 5 == 0 else 0.2))
+    cal = collector.calibrate(PARAMS)
+    th = cal.threshold("browsers", "breadth")
+    assert th is not None and th.fallback is False
+    assert th.relative is not None and th.relative <= 1.0  # a percentile, not p95 x margin
+    assert th.value < 1.0  # reachable
+    f = replace(browser(10), breadth_ratio=0.9)
+    assert "wide-breadth" in relative_tags(f, Kind.BROWSER, load_relative_tags(), cal)
 
 
 def test_relative_threshold_floored_when_browsers_are_quiet() -> None:
@@ -141,9 +157,21 @@ def test_low_volume_client_not_tagged() -> None:
 
 
 def test_high_bytes_tagged_for_browser() -> None:
-    cal = _calibrate([10] * 5, PARAMS)  # thin -> floor 50 MB
-    f = replace(browser(10), total_bytes=10**9)  # 1 GB
+    cal = _calibrate([10] * 5, PARAMS)  # thin -> floor 5 MB (mean response size)
+    f = replace(browser(10), mean_bytes=10**8)  # 100 MB average object
     assert "high-bytes" in relative_tags(f, Kind.BROWSER, load_relative_tags(), cal)
+
+
+def test_bytes_keys_on_mean_not_total() -> None:
+    # The bytes metric is mean response size, not total volume: a client of few
+    # large objects fires; a high-volume-but-small-objects client does not (its
+    # volume is already covered by high-rate).
+    cal = _calibrate([10] * 5, PARAMS)
+    cfg = load_relative_tags()
+    heavy = replace(browser(10), mean_bytes=10**8, total_bytes=0)
+    light = replace(browser(10), mean_bytes=1_000.0, total_bytes=10**12)
+    assert "high-bytes" in relative_tags(heavy, Kind.BROWSER, cfg, cal)
+    assert "high-bytes" not in relative_tags(light, Kind.BROWSER, cfg, cal)
 
 
 def test_wide_breadth_tagged_for_browser() -> None:
@@ -169,7 +197,7 @@ def test_breadth_and_duration_suppressed_for_unknown() -> None:
 
 def test_automation_keeps_rate_and_bytes() -> None:
     cal = _calibrate([10] * 5, PARAMS)
-    f = replace(browser(100), total_bytes=10**9, breadth_ratio=0.9)
+    f = replace(browser(100), mean_bytes=10**8, breadth_ratio=0.9)
     tags = relative_tags(f, Kind.AUTOMATION, load_relative_tags(), cal)
     assert tags == frozenset({"high-rate", "high-bytes"})
 

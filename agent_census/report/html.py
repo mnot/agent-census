@@ -162,11 +162,15 @@ tr.netall td { border-top: 2px solid #8887; }
 /* On a phone the cross-tab can't show every network column at readable width, so
    it folds to Kind | one chosen network | Total and the picker swaps the column
    in place (same idea as the desktop "break out" control). Desktop shows all. */
-.netcolctl { display: none; }
+.netcolctl, .netnarrow { display: none; }
 @media (max-width: 640px) {
   .netcolctl { display: inline; }
   #nettab th[data-net], #nettab td[data-net] { display: none; }
   #nettab th[data-net].colshow, #nettab td[data-net].colshow { display: table-cell; }
+  /* The cross-tab caption's spatial guidance describes columns the folded table
+     hides, so swap it for a note about the Column picker. */
+  .netwide { display: none; }
+  .netnarrow { display: inline; }
   /* Keep the identity column from collapsing to a sliver of break-all mono text
      when the client table scrolls sideways; it stays readable, the row scrolls. */
   td.cid { min-width: 11rem; max-width: 16rem; }
@@ -569,21 +573,35 @@ def _network_table(result: AnalysisResult, *, breakout_min_share: float) -> str:
         "<option value='col'>% of network</option>"
         "</select></label>" + breakout + colpick + "</div>"
     )
-    return (
-        "<h2>Requests by kind and network</h2>\n"
-        + control
-        + f"<div class='tscroll'><table id='nettab'>{head}{''.join(rows)}</table></div>\n"
-        + '<p class="muted">Counts default; the toggle switches to row or column shares '
-        "(the Total column keeps the raw count). Cell shading tracks the same axis — "
-        "across each kind, or down each network. Hosting reads left of the thick rule, "
-        f"off-network (relays / Tor / residential) to its right; smallest hosters fold into "
+    # The spatial guidance only makes sense with every column visible (desktop);
+    # on a phone the table folds to one network, so swap in a note about the picker.
+    spatial = (
+        "Hosting reads left of the thick rule, off-network "
+        "(relays / Tor / residential) to its right; smallest hosters fold into "
         f"“{_esc(OTHER_HOSTING)}”"
         + (
             ", and the break-out control swaps that column to show one of them on its own."
             if matrix.collapsed
             else "."
         )
-        + "</p>"
+    )
+    narrow = (
+        " <span class='netnarrow'>On a narrow screen the table folds to one network — "
+        "choose which with the Column control above.</span>"
+        if len(nets) > 1
+        else ""
+    )
+    caption = (
+        '<p class="muted">Counts default; the toggle switches to row or column shares '
+        "(the Total column keeps the raw count). Cell shading tracks the same axis — "
+        "across each kind, or down each network. "
+        f"<span class='netwide'>{spatial}</span>{narrow}</p>"
+    )
+    return (
+        "<h2>Requests by kind and network</h2>\n"
+        + control
+        + f"<div class='tscroll'><table id='nettab'>{head}{''.join(rows)}</table></div>\n"
+        + caption
         + NET_SCRIPT
     )
 

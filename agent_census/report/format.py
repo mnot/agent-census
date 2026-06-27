@@ -251,11 +251,20 @@ def as_display(org: str | None, number: str | None) -> str:
     return org or "–"
 
 
+def count(n: int, noun: str, plural: str | None = None) -> str:
+    """A count with its noun pluralised to match, e.g. ``1 client`` / ``2 clients``.
+
+    Defaults to the regular ``+s`` plural; pass ``plural`` for an irregular noun.
+    """
+    word = noun if n == 1 else (plural or f"{noun}s")
+    return f"{n:,} {word}"
+
+
 def actor_spread(distinct_ips: int, distinct_asns: int) -> str:
     """Summarise a collapsed group's footprint, e.g. ``12 IPs · 3 ASNs``."""
-    label = f"{distinct_ips:,} IPs"
+    label = count(distinct_ips, "IP")
     if distinct_asns:
-        label += f" · {distinct_asns:,} ASNs"
+        label += f" · {count(distinct_asns, 'ASN')}"
     return label
 
 

@@ -19,6 +19,7 @@ from .format import (
     as_display,
     client_id_parts,
     client_label,
+    count,
     fmt_ts,
     human_bytes,
     kind_label,
@@ -64,8 +65,8 @@ def _header(
         [
             f"- **Time range:** {fmt_ts(start)} → {fmt_ts(end)}",
             f"- **Identity strategy:** `{result.identity_strategy}` "
-            f"({stats.client_count:,} clients; {stats.singletons:,} singletons; "
-            f"{stats.ips_with_multiple_uas:,} IPs with multiple UAs)",
+            f"({count(stats.client_count, 'client')}; {count(stats.singletons, 'singleton')}; "
+            f"{count(stats.ips_with_multiple_uas, 'IP')} with multiple UAs)",
         ]
     )
     if robots_note:
@@ -169,7 +170,8 @@ def _actor_label(actor: ActorGroup, flags: CountryFlags) -> str:
             # A single entry that folded many IPs (an ASN operator, a verified bot,
             # an egress/subnet cluster): note the cluster size beside its identity.
             prefix, _, ua = client_id_parts(lead)
-            label = f"{prefix} ({len(lead.member_ips):,} IPs) | {ua if ua is not None else '-'}"
+            ips = count(len(lead.member_ips), "IP")
+            label = f"{prefix} ({ips}) | {ua if ua is not None else '-'}"
             return _flag(lead, flags) + md_escape(label[:140])
         return _client_label(lead, flags)
     _, _, ua = client_id_parts(actor.lead)
@@ -191,7 +193,8 @@ def _kind_section(
     actors = group_actors(group)
     typical = typical_conduct(group)
     lines = [
-        f"## {kind_label(kind)} ({rollup.clients:,} clients, {rollup.requests:,} requests)",
+        f"## {kind_label(kind)} "
+        f"({count(rollup.clients, 'client')}, {count(rollup.requests, 'request')})",
         "",
         KIND_BLURB.get(kind, ""),
         "",

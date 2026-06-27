@@ -11,6 +11,7 @@ from ..model import Classification, ClientProfile, Kind
 from ..pipeline import AnalysisResult
 from .format import (
     client_label,
+    count,
     elide_ua,
     feature_rows,
     fmt_ts,
@@ -173,9 +174,9 @@ def _rollup_block(profiles: list[ClientProfile]) -> list[str]:
     total_requests = sum(p.features.request_count for p in profiles)
     total_bytes = sum(p.features.total_bytes for p in profiles)
     lines = [
-        f"## {ip} — {len(profiles):,} clients on one IP",
+        f"## {ip} — {count(len(profiles), 'client')} on one IP",
         "",
-        f"This IP presents {len(profiles):,} distinct user-agents (user-agent rotation). "
+        f"This IP presents {count(len(profiles), 'distinct user-agent')} (user-agent rotation). "
         "Per-client summary below; inspect one by passing a distinctive part of its "
         "user-agent to `--client`.",
         "",

@@ -11,7 +11,15 @@ from agent_census.model import (
     Kind,
     VerificationStatus,
 )
-from agent_census.report.format import as_label, client_label, elide_ua, feature_rows, top_evidence, truncate
+from agent_census.report.format import (
+    as_label,
+    client_label,
+    count,
+    elide_ua,
+    feature_rows,
+    top_evidence,
+    truncate,
+)
 
 GOOGLEBOT = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
 GPTBOT = "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.1; +https://openai.com/gptbot)"
@@ -114,3 +122,13 @@ def test_truncate_clips_long_text_with_ellipsis() -> None:
     out = truncate("x" * 100, 80)
     assert len(out) == 80
     assert out.endswith("…")
+
+
+def test_count_pluralises_to_match() -> None:
+    assert count(1, "client") == "1 client"
+    assert count(0, "client") == "0 clients"
+    assert count(2, "client") == "2 clients"
+    assert count(1, "member IP") == "1 member IP"
+    assert count(3, "member IP") == "3 member IPs"
+    assert count(1234, "request") == "1,234 requests"  # thousands separator kept
+    assert count(1, "IP", "IPs") == "1 IP"  # explicit plural for an irregular noun

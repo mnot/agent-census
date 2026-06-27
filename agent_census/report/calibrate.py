@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from ..model import ClientProfile, Kind
 from ..pipeline import AnalysisResult
 from ..uas import browser_version
-from .format import elide_ua, kind_label, truncate
+from .format import count, elide_ua, kind_label, truncate
 
 DEFAULT_TOP = 30
 
@@ -171,7 +171,7 @@ def _ua_group(title: str, clusters: dict[str, _Cluster], top: int) -> list[str]:
     lines = ["", f"### {title}", ""]
     for ua, cluster in keyed[:top]:
         lines.append(
-            f"- **{cluster.requests:,} req** · {cluster.clients:,} clients · "
+            f"- **{cluster.requests:,} req** · {count(cluster.clients, 'client')} · "
             f"{cluster.top_kinds()}"
         )
         lines.append(f"  `{truncate(ua, 120)}`")
@@ -305,7 +305,7 @@ def _singletons(result: AnalysisResult, top: int) -> list[str]:
     by_net: Counter[str] = Counter(_net_cat(result, p) for p in singles)
     by_ua: Counter[str] = Counter(_ua(p) for p in singles)
     lines += [
-        f"{len(singles):,} clients made exactly one request "
+        f"{count(len(singles), 'client')} made exactly one request "
         f"({_pct(len(singles), total_clients)} of clients, "
         f"{_pct(len(singles), total_requests)} of requests). A UA recurring across "
         "many singletons points at identity fragmentation or one-shot bots.",
@@ -322,8 +322,8 @@ def _singletons(result: AnalysisResult, top: int) -> list[str]:
         ncol = f"{nets[i][0]} | {nets[i][1]:,}" if i < len(nets) else " | "
         lines.append(f"| {kcol} | {scol} | {ncol} |")
     lines += ["", "**Most common singleton UAs**", ""]
-    for ua, count in by_ua.most_common(top):
-        lines.append(f"- ×{count:,} `{truncate(ua, 110)}`")
+    for ua, freq in by_ua.most_common(top):
+        lines.append(f"- ×{freq:,} `{truncate(ua, 110)}`")
     lines += _trunc_note(min(top, len(by_ua)), len(by_ua), "distinct UAs")
     return lines
 
@@ -346,7 +346,7 @@ def _unknowns(result: AnalysisResult, top: int) -> list[str]:
     ]
     for (shape, net), cluster in ranked[:top]:
         lines.append(
-            f"- **{shape} · {net}** — {cluster.requests:,} req, {cluster.clients:,} clients"
+            f"- **{shape} · {net}** — {cluster.requests:,} req, {count(cluster.clients, 'client')}"
         )
         for sample in cluster.top_uas(3):
             lines.append(f"  - {sample}")

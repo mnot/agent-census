@@ -87,6 +87,7 @@ def test_kind_section_disclosure_and_filter(tmp_path: Path) -> None:
     # One page-level filter sits above the sections (not inside the disclosure)…
     assert html.count('class="filter"') == 1
     assert "filter all clients" in html
+    assert 'id="nomatch"' in html  # the no-match empty state the filter script fills
     # …and every detailed client row is filterable: 5 shown + 3 in the disclosure.
     assert html.count('class="frow"') == 8
 

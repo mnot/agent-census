@@ -360,22 +360,35 @@ native one exists.
 
 ### Collapsible Actor Row
 - A folded actor (an ASN operator, a verified bot, an egress cluster) is a
-  `<tbody>` whose summary row carries the Interaction-Blue `▶` triangle; clicking
-  rotates it 90° (`transform .12s`) and reveals member-IP rows that share the
-  table's Requests/Bandwidth columns. The "Show more" set per kind uses a native
-  exclusive accordion (`<details name=...>`); opening one closes the others, and
-  the script pins the clicked summary so the page doesn't jump.
+  `<tbody>` whose summary row carries an Interaction-Blue `▶` **disclosure
+  button** — a real `<button>` with `aria-expanded`, so it is keyboard-operable
+  (Enter/Space), while the whole row stays a click target for mouse. Activating
+  it rotates the triangle 90° (`transform .12s`, with a `prefers-reduced-motion`
+  fallback) and reveals member-IP rows that share the table's Requests/Bandwidth
+  columns. The "Show more" set per kind uses a native exclusive accordion
+  (`<details name=...>`); opening one closes the others, and the script pins the
+  clicked summary so the page doesn't jump.
 
 ### Copyable Client Cell
 - The client id cell is `cursor: pointer`; clicking copies the IP (for
   `inspect --client`) and flashes a `#16a34a55` green confirmation for ~900ms.
   Uses the async clipboard API with an `execCommand` fallback so it works on
-  `file://` pages.
+  `file://` pages. Pointer-only by design: the id is already selectable text, so
+  keyboard users copy it directly rather than gaining 500 extra tab stops.
 
 ### Inspect Card
 - **Corner:** `10px`. **Border:** 1px `#88888844`. **Padding:** `1rem 1.1rem`.
   **No shadow.** A bordered frame grouping one client's header, rationale,
   robots.txt finding, features table, and request trace.
+
+### Small Screens
+- Wide tables each sit in a horizontal-scroll track (`.tscroll`) so none forces
+  the *page* to scroll sideways; a track becomes keyboard-focusable (a labelled
+  `role="region"`) only while it actually overflows, so non-scrolling tables add
+  no dead tab stops. Below 640px the kind×network cross-tab folds to **Kind | one
+  chosen network | Total**, with a Column picker that swaps the visible network —
+  the same fold-then-reveal pattern as the desktop break-out control. The
+  identity column keeps a `min-width` so it never collapses to a sliver.
 
 ## 6. Do's and Don'ts
 
@@ -392,8 +405,8 @@ native one exists.
   magnitude with the share bar or variable-alpha heat.
 - **Do** keep tables dense — they may exceed prose line-length; that is correct
   here. Use `tabular-nums` on numeric columns.
-- **Do** give any *future* motion a `prefers-reduced-motion: reduce` fallback;
-  the only motion today is the 120ms triangle rotation and the copy flash.
+- **Do** give all motion a `prefers-reduced-motion: reduce` fallback; the only
+  motion today is the 120ms triangle rotation (already gated) and the copy flash.
 
 ### Don't:
 - **Don't** ship **marketing-dashboard slop** — no hero-metric tiles, no

@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-06-27",
+  "title": "Design System: agent-census",
+  "extensions": {
+    "colorMeta": {
+      "interaction-blue": { "role": "primary", "displayName": "Interaction Blue", "canonical": "#2563eb", "tonalRamp": ["#172554", "#1e3a8a", "#1d4ed8", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#dbeafe"] },
+      "verified-green": { "role": "secondary", "displayName": "Verified Green", "canonical": "#16a34a", "tonalRamp": ["#052e16", "#14532d", "#166534", "#15803d", "#16a34a", "#22c55e", "#4ade80", "#bbf7d0"] },
+      "caution-amber": { "role": "secondary", "displayName": "Caution Amber", "canonical": "#b45309", "tonalRamp": ["#451a03", "#7c2d12", "#9a3412", "#b45309", "#d97706", "#f59e0b", "#fbbf24", "#fde68a"] },
+      "threat-red": { "role": "secondary", "displayName": "Threat Red", "canonical": "#dc2626", "tonalRamp": ["#450a0a", "#7f1d1d", "#991b1b", "#b91c1c", "#dc2626", "#ef4444", "#f87171", "#fecaca"] },
+      "datacenter-violet": { "role": "secondary", "displayName": "Datacenter Violet", "canonical": "#9333ea", "tonalRamp": ["#3b0764", "#581c87", "#6b21a8", "#7e22ce", "#9333ea", "#a855f7", "#c084fc", "#e9d5ff"] },
+      "muted-ink": { "role": "neutral", "displayName": "Muted Ink", "canonical": "#6b7280", "tonalRamp": ["#111827", "#1f2937", "#374151", "#4b5563", "#6b7280", "#9ca3af", "#d1d5db", "#f3f4f6"] },
+      "hairline": { "role": "neutral", "displayName": "Adaptive Hairline", "canonical": "#88888844", "tonalRamp": ["#88888811", "#88888822", "#88888833", "#88888844", "#88888866", "#88888899", "#888888cc", "#888888ff"] },
+      "heat-blue": { "role": "neutral", "displayName": "Heat Blue", "canonical": "#60a5fa", "tonalRamp": ["#172554", "#1e40af", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe", "#eff6ff"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display (h1)", "purpose": "Page title, one per page." },
+      "headline": { "displayName": "Headline (h2)", "purpose": "Section headers: summary, cross-tab, per-kind, inspect." },
+      "body": { "displayName": "Body", "purpose": "Report prose, links, list items — the system's narration." },
+      "data": { "displayName": "Data", "purpose": "All tables; tabular-nums on numeric columns; may exceed prose width." },
+      "label": { "displayName": "Label", "purpose": "Kind badges and signal tags." },
+      "mono": { "displayName": "Mono", "purpose": "Verbatim client claims only: IPs, User-Agents, paths, client ids." }
+    },
+    "shadows": [],
+    "motion": [
+      { "name": "tri-rotate", "value": "transform 0.12s", "purpose": "Disclosure triangle rotates 90deg when a folded actor is expanded." },
+      { "name": "copy-flash", "value": "~900ms green confirmation (JS class toggle)", "purpose": "Client-id cell flashes #16a34a55 after a successful copy-to-clipboard." }
+    ],
+    "breakpoints": [],
+    "notes": [
+      "No box-shadow anywhere (Flat-Ledger Rule). Depth is hairlines + tonal washes only.",
+      "No @media breakpoints; layout is a single 1100px-max column. The viewport meta is set; responsiveness comes from fluid tables, not breakpoints.",
+      "No prefers-reduced-motion handling exists yet; add it before introducing any new motion.",
+      "Background/text are CSS system colors (Canvas/CanvasText), so the report follows the OS light/dark theme; do not hardcode them."
+    ]
+  },
+  "components": [
+    {
+      "name": "Kind Badge",
+      "kind": "chip",
+      "refersTo": "kind-badge",
+      "description": "Filled pill stamping a client's classified kind; fill is the kind's hue, links to its section.",
+      "html": "<span class=\"ds-badge\">crawler</span>",
+      "css": ".ds-badge { display: inline-block; padding: 0.08rem 0.5rem; border-radius: 999px; background: #0891b2; color: #fff; font: 600 0.8rem/1.5 -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif; white-space: nowrap; }"
+    },
+    {
+      "name": "Signal Tag",
+      "kind": "chip",
+      "refersTo": "tag-signal",
+      "description": "Verdict-colored evidence chip with white text and a native title tooltip.",
+      "html": "<span class=\"ds-tag-signal\" title=\"Requested known-vulnerable / probe paths.\">probe-paths</span>",
+      "css": ".ds-tag-signal { display: inline-block; padding: 0.05rem 0.45rem; margin: 0 0.2rem 0.2rem 0; border-radius: 6px; background: #dc2626; color: #fff; font: 0.78rem/1.5 -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif; white-space: nowrap; cursor: help; }"
+    },
+    {
+      "name": "Neutral Tag",
+      "kind": "chip",
+      "refersTo": "tag-neutral",
+      "description": "Unsignalled tag on the neutral track, inheriting text color so it works in both OS themes.",
+      "html": "<span class=\"ds-tag\">no-assets</span>",
+      "css": ".ds-tag { display: inline-block; padding: 0.05rem 0.45rem; margin: 0 0.2rem 0.2rem 0; border-radius: 6px; background: #88888833; color: inherit; font: 0.78rem/1.5 -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif; white-space: nowrap; cursor: help; }"
+    },
+    {
+      "name": "Share Bar",
+      "kind": "custom",
+      "refersTo": "share-bar",
+      "description": "Inline magnitude cue (a track filled to a percentage) with a muted percent label beside it. No axis, no chart.",
+      "html": "<span style=\"display:inline-flex;align-items:center;gap:0.4rem\"><span class=\"ds-bar\" style=\"width:64%\"></span><span class=\"ds-bar-label\">64%</span></span>",
+      "css": ".ds-bar { background: #88888833; border-radius: 4px; height: 0.7rem; min-width: 2px; } .ds-bar-label { color: #6b7280; font: 0.92rem/1.5 -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif; }"
+    },
+    {
+      "name": "Filter Input",
+      "kind": "input",
+      "refersTo": "filter-input",
+      "description": "Sticky single search box that filters every client row across every section at once.",
+      "html": "<input class=\"ds-filter\" type=\"search\" placeholder=\"filter all clients by IP, User-Agent, AS name, or tag…\" aria-label=\"filter clients\">",
+      "css": ".ds-filter { display: block; width: 100%; max-width: 30rem; padding: 0.4rem 0.55rem; border: 1px solid #88888866; border-radius: 6px; background: Canvas; color: CanvasText; font: 15px/1.5 -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif; } .ds-filter:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }"
+    },
+    {
+      "name": "Data Table",
+      "kind": "custom",
+      "refersTo": "data",
+      "description": "The report's primary surface: hairline row rules, a 2px header rule, faint row-hover wash, tabular numerals.",
+      "html": "<table class=\"ds-table\"><thead><tr><th>Client</th><th class=\"num\">Requests</th><th>Tags</th></tr></thead><tbody><tr><td class=\"mono\">203.0.113.66</td><td class=\"num\">1,204</td><td><span class=\"ds-tag-signal\" style=\"background:#dc2626\">probe-paths</span></td></tr></tbody></table>",
+      "css": ".ds-table { border-collapse: collapse; width: 100%; font: 0.92rem/1.5 -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif; } .ds-table th, .ds-table td { text-align: left; padding: 0.45rem 0.6rem; border-bottom: 1px solid #88888844; vertical-align: top; } .ds-table th { font-weight: 600; border-bottom: 2px solid #88888866; } .ds-table .num { text-align: right; font-variant-numeric: tabular-nums; } .ds-table tr:hover td { background: #88888811; } .ds-table .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; }"
+    },
+    {
+      "name": "Collapsible Actor Row",
+      "kind": "custom",
+      "refersTo": "kind-badge",
+      "description": "Summary row with an interaction-blue triangle that rotates on expand to reveal member IPs.",
+      "html": "<table class=\"ds-table\"><tbody class=\"ds-actor\"><tr class=\"ds-asum\"><td><span class=\"ds-tri\">▶</span> <span class=\"mono\">8 IPs in AS13335</span></td></tr></tbody></table>",
+      "css": ".ds-asum { cursor: pointer; } .ds-tri { display: inline-block; margin-right: 0.5rem; color: #2563eb; font-size: 1rem; line-height: 1; vertical-align: middle; transition: transform 0.12s; } .ds-actor.open .ds-tri { transform: rotate(90deg); } @media (prefers-reduced-motion: reduce) { .ds-tri { transition: none; } } .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; }"
+    },
+    {
+      "name": "Inspect Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Bordered, shadowless frame grouping one client's full evidence (header, rationale, features, trace).",
+      "html": "<section class=\"ds-card\"><h3 style=\"margin-top:0\">Why this classification</h3><p style=\"color:#6b7280;margin:0\">vuln_scanner · 92% · path-probe classifier</p></section>",
+      "css": ".ds-card { border: 1px solid #88888844; border-radius: 10px; padding: 1rem 1.1rem; font: 15px/1.5 -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Field Ledger",
+    "overview": "agent-census renders one thing: a plain-paper investigator's record where every observation is logged and every verdict is defensible from the entry sitting next to it. No app shell, no nav, no hero, no cards-as-decoration — a stack of dense, scannable tables on the bare substrate of the OS's own light or dark surface, read top-to-bottom like a ledger. The aesthetic is unstyled on purpose; what little visual force the page spends, it spends on meaning. Built on three constraints, each a feature: one file with zero dependencies (opens from file://, renders identically in ten years); deference to the OS (Canvas/CanvasText + a single adaptive gray, legible in light and dark with no toggle); and a hard line between claim and finding (client-asserted strings in monospace, the report's own prose and verdicts in system sans).",
+    "keyCharacteristics": [
+      "Flat. No shadows anywhere; depth is hairlines and tonal washes only.",
+      "System-native: OS light/dark substrate, system font stack, zero assets.",
+      "Dense by intent — tables run wide and long; the operator wants the data.",
+      "Color is a legend, never decoration. Every hue is a documented fact.",
+      "Mono = claim, sans = finding. The two are never visually merged.",
+      "Single, self-contained HTML file; portability is non-negotiable."
+    ],
+    "rules": [
+      { "name": "The System-Color Substrate Rule", "body": "Background and body text are Canvas and CanvasText; structural grays are #888 + alpha. Never replace them with fixed hex — it breaks dark mode and the zero-config promise.", "section": "colors" },
+      { "name": "The Meaning-Only Color Rule", "body": "Every non-neutral hue is in the legend and stands for a fact (a kind, a verdict, an egress type). If a color isn't encoding one of those, it does not belong on the page.", "section": "colors" },
+      { "name": "The White-On-Hue Rule", "body": "Any chip filled with a palette hue carries #ffffff text. Unsignalled tags stay on the neutral #88888833 track with inherited CanvasText.", "section": "colors" },
+      { "name": "The Claim-in-Mono Rule", "body": "Anything the client asserted (IP, User-Agent, requested paths) is set in monospace; the report's own narration and verdicts are set in the system sans. The typeface boundary is the boundary between what the log said and what agent-census concluded.", "section": "typography" },
+      { "name": "The One-Family Rule", "body": "The system sans carries every structural role. No display face, no second sans, no brand font. Mono is the only permitted second family, and only for verbatim strings.", "section": "typography" },
+      { "name": "The Flat-Ledger Rule", "body": "No box-shadow, ever — not on cards, not on hover, not on the sticky filter. Separation uses a hairline or tonal wash; emphasis uses weight or color-heat.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep background and body text on Canvas / CanvasText and structural lines on #888 + alpha, so the single file stays legible in both OS themes.",
+      "Do treat color as a legend: every non-neutral hue must map to a kind, a verdict, or an egress type documented in the Colors section.",
+      "Do set every client-asserted string (IP, UA, path, client id) in monospace and every report finding in the system sans — preserve the Claim-in-Mono Rule.",
+      "Do give colored chips #ffffff text and leave unsignalled tags on the neutral #88888833 track.",
+      "Do convey depth and grouping with hairlines and tonal washes; convey magnitude with the share bar or variable-alpha heat.",
+      "Do keep tables dense — they may exceed prose line-length; use tabular-nums on numeric columns.",
+      "Do give any future motion a prefers-reduced-motion: reduce fallback; the only motion today is the 120ms triangle rotation and the copy flash."
+    ],
+    "donts": [
+      "Don't ship marketing-dashboard slop — no hero-metric tiles, no gradients, no glassmorphism, no identical icon-and-heading card grids.",
+      "Don't ship SOC / security-vendor theatrics — no alarm-red everywhere, no fake threat-level gauges, no dark-cyber cosplay. Red is reserved for documented hostile-conduct signals.",
+      "Don't ship over-chromed enterprise BI — no 3-D bars, no skeuomorphic gauges, no decorative chartjunk.",
+      "Don't add a box-shadow anywhere — the Flat-Ledger Rule is absolute.",
+      "Don't hardcode a background or text hex; never break the System-Color Substrate Rule.",
+      "Don't introduce a web font, a display face, or a second sans. One system sans plus mono, nothing more.",
+      "Don't use color as decoration, render a finding in mono, or set a raw claim in sans.",
+      "Don't add external assets (fonts, images, CSS/JS files). The report is one self-contained file and must stay that way."
+    ]
+  }
+}

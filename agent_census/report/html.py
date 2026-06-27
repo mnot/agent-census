@@ -178,9 +178,15 @@ td.copy.copied { background: #16a34a55; }
 details { margin: .25rem 0 1rem; }
 summary { cursor: pointer; color: var(--muted); font-size: .9rem; padding: .25rem 0; }
 tr.asum { cursor: pointer; }
-tr.asum .tri { display: inline-block; margin-right: .5rem; color: #2563eb;
-  font-size: 1rem; line-height: 1; vertical-align: middle; transition: transform .12s; }
+/* The disclosure triangle is a real <button> so it is focusable and operable
+   with Enter / Space; its click bubbles to the row toggle for mouse users. */
+button.tri { appearance: none; -webkit-appearance: none; background: none; border: 0;
+  display: inline-block; margin: 0 .5rem 0 0; padding: 0; cursor: pointer; color: #2563eb;
+  font: inherit; font-size: 1rem; line-height: 1; vertical-align: middle;
+  transition: transform .12s; }
+button.tri:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; border-radius: 2px; }
 tbody.actor.open tr.asum .tri { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { button.tri { transition: none; } }
 .actor-ua { color: var(--muted); font-size: .82rem; margin-left: .5rem; }
 tbody.actor .amem { display: none; }
 tbody.actor.open .amem { display: table-row; }
@@ -224,7 +230,10 @@ document.addEventListener('click', function (event) {
   var row = event.target.closest('tr.asum');
   if (!row) return;
   var body = row.parentNode;
-  if (body && body.classList.contains('actor')) body.classList.toggle('open');
+  if (!body || !body.classList.contains('actor')) return;
+  var open = body.classList.toggle('open');
+  var tri = row.querySelector('.tri');
+  if (tri) tri.setAttribute('aria-expanded', open ? 'true' : 'false');
 }, false);
 
 document.addEventListener('click', function (event) {
@@ -565,6 +574,17 @@ def _client_row(
     )
 
 
+def _disclosure(label: str) -> str:
+    """The ``▶`` toggle that reveals an actor's hidden member rows. A real button,
+    so it is reachable by Tab and fires on Enter / Space; the click bubbles to the
+    row handler (mouse behaviour unchanged), which flips ``aria-expanded``. The
+    label names what expands, since the glyph alone says nothing to a screen reader."""
+    return (
+        f'<button type="button" class="tri" aria-expanded="false" '
+        f'aria-label="{_esc(label)}">▶</button>'
+    )
+
+
 def _member_tr(profile: ClientProfile, flag: str = "") -> str:
     """A collapsed member as a real table row: IP/AS in Client, its own req/bytes."""
     prefix, _, _ = client_id_parts(profile)
@@ -611,7 +631,8 @@ def _folded_tbody(
         ).lower()
         row_attrs = f"class='asum frow' data-filter=\"{_esc(haystack)}\""
     summary = (
-        f"<tr {row_attrs}><td class='cid'><span class='tri'>▶</span>"
+        f"<tr {row_attrs}><td class='cid'>"
+        f"{_disclosure(f'Show {len(members):,} member IPs of {prefix}')}"
         f"{flag}<span class='mono'>{_esc(prefix)}</span>{org_html}"
         f"<span class='muted'> · {len(members):,} IPs</span>"
         f'<span class="actor-ua mono">{_esc(ua or "–")}</span></td>'
@@ -672,7 +693,8 @@ def _actor_tbody(
         row_attrs = f"class='asum frow' data-filter=\"{_esc(haystack)}\""
     summary = (
         f"<tr {row_attrs}>"
-        f"<td class='cid'><span class='tri'>▶</span>{flag}{_esc(spread)}{asn_html}"
+        f"<td class='cid'>{_disclosure(f'Show {len(actor.members):,} grouped clients')}"
+        f"{flag}{_esc(spread)}{asn_html}"
         f'<span class="actor-ua mono">{_esc(ua or "–")}</span></td>'
         f"<td class='num'>{actor.requests:,}</td>"
         f"<td class='num'>{human_bytes(actor.total_bytes)}</td>"

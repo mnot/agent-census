@@ -186,6 +186,15 @@ def test_ip_outside_only_range_is_impersonator(monkeypatch: pytest.MonkeyPatch) 
     assert BotVerifier().verify("203.0.113.9", "RangeBot/1.0").status is VerificationStatus.IMPERSONATOR
 
 
+def test_subnet_key_is_unverified_not_impersonator(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Under the ip_ua_subnet strategy the identity key's ``ip`` is a CIDR, not a
+    # single address. A range/rDNS check can't run on it, so the verdict must be
+    # inconclusive -- never IMPERSONATOR for a genuine crawler keyed by subnet.
+    _patch_spec(monkeypatch, "RangeBot", CrawlerSpec(ranges=("160.79.104.0/21",)))
+    result = BotVerifier().verify("160.79.104.0/24", "RangeBot/1.0")
+    assert result.status is VerificationStatus.UNVERIFIED
+
+
 def test_out_of_range_is_impostor_before_dns(monkeypatch: pytest.MonkeyPatch) -> None:
     # A definite out-of-range IP fails the range check, which short-circuits to
     # impersonator before reverse DNS is ever consulted.

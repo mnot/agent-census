@@ -13,23 +13,34 @@
 # starting values, MARKED FOR CALIBRATION.
 #
 # Two knobs per kind: `reference` (which pool to compare against; only "browsers"
-# exists today) and `tags` (which metrics emit). `[default]` applies to every kind;
-# add a `[[kind]]` to override. The first slice wires only `rate`; `bytes`,
-# `breadth`, and `duration` are defined here but not yet emitted -- a fast-follow
-# turns them on by adding them to the relevant kinds' `tags`.
+# exists today) and `tags` (which metrics emit -- one of rate / bytes / breadth /
+# duration). `[default]` applies to every kind; add a `[[kind]]` to override. The
+# per-kind `tags` knob is the single lever for suppression: if a metric proves noisy
+# for some kind in calibration, drop it from that kind's list rather than special-
+# casing code.
 
 [params]
 margin = 3.0          # a client must exceed 3x the reference browsers' p95 to fire
 min_reference = 30    # fewer reference browsers than this -> floor-only fallback
-floor_rate = 60       # peak requests/minute (the absolute floor / thin-pool guard)
-floor_bytes = 50_000_000     # total bytes -- placeholder, marked for calibration
-floor_breadth = 0.5          # subtree-changing hop ratio -- placeholder
-floor_duration = 86_400      # session seconds (1 day) -- placeholder
+floor_rate = 60       # peak requests/minute
+floor_bytes = 50_000_000     # total bytes transferred (~50 MB)
+floor_breadth = 0.5          # fraction of hops that change subtree (0..1)
+floor_duration = 86_400      # session span in seconds (1 day)
 
-# Every kind, by default, is measured against the browser pool and emits the rate
-# tag -- a browser running at 50x browser-rate is as interesting as an unknown
-# doing it. Per-kind overrides (e.g. dropping breadth/duration for kinds where they
-# are uninterpretable) come with the bytes/breadth/duration fast-follow.
+# By default every kind is measured against the browser pool and emits all four
+# tags -- a browser running at 50x browser-rate is as interesting as an unknown
+# doing it, and the tags are shown for confident kinds, not just suspicious ones.
 [default]
 reference = "browsers"
-tags = ["rate"]
+tags = ["rate", "bytes", "breadth", "duration"]
+
+# For UNKNOWN and AUTOMATION we have no behavioural expectation, so breadth and
+# session length are uninterpretable (noise); keep only the magnitude signals that
+# stand on their own.
+[[kind]]
+kind = "unknown"
+tags = ["rate", "bytes"]
+
+[[kind]]
+kind = "automation"
+tags = ["rate", "bytes"]

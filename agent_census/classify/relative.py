@@ -14,10 +14,10 @@ would chase the thing it measures. So :func:`is_reference_browser` is built only
 from *absolute* browser evidence (UA shape, asset co-loading, caching / link
 following) and never from rate/bytes/breadth/duration.
 
-This module is metric-agnostic: it knows four metrics but which ones actually emit
-a tag is the per-kind config's job (``data/relative_tags.toml``). The first slice
-wires only ``rate``; ``bytes`` / ``breadth`` / ``duration`` reuse all of this and
-are turned on by listing them in a kind's ``tags``.
+This module is metric-agnostic: it knows four metrics (``rate`` / ``bytes`` /
+``breadth`` / ``duration``) but which ones actually emit a tag for a given kind is
+the per-kind config's job (``data/relative_tags.toml``) -- the single lever for
+suppressing a metric that proves noisy for some kind.
 """
 
 from __future__ import annotations

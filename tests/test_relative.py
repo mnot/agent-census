@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
+from agent_census import identity, pipeline
 from agent_census.classify.relative import (
     MetricThreshold,
     ReferenceCalibration,
@@ -25,6 +27,8 @@ from agent_census.model import (
     ClientProfile,
     Kind,
 )
+from agent_census.parsing import resolve
+from agent_census.parsing.apache import PRESETS
 
 
 def browser(rate: int = 10, *, count: int = 50) -> ClientFeatures:
@@ -79,7 +83,9 @@ def _calibrate(rates: list[int], params: RelativeParams) -> ReferenceCalibration
 
 
 PARAMS = RelativeParams(
-    margin=3.0, min_reference=30, floors={"rate": 60.0, "bytes": 0.0, "breadth": 0.0, "duration": 0.0}
+    margin=3.0,
+    min_reference=30,
+    floors={"rate": 60.0, "bytes": 50_000_000.0, "breadth": 0.5, "duration": 86_400.0},
 )
 
 
@@ -134,11 +140,38 @@ def test_low_volume_client_not_tagged() -> None:
     assert relative_tags(f, Kind.UNKNOWN, load_relative_tags(), cal) == frozenset()
 
 
-def test_metric_not_in_config_not_tagged() -> None:
-    # The default config only emits `rate`; a high byte volume earns nothing yet.
+def test_high_bytes_tagged_for_browser() -> None:
+    cal = _calibrate([10] * 5, PARAMS)  # thin -> floor 50 MB
+    f = replace(browser(10), total_bytes=10**9)  # 1 GB
+    assert "high-bytes" in relative_tags(f, Kind.BROWSER, load_relative_tags(), cal)
+
+
+def test_wide_breadth_tagged_for_browser() -> None:
+    cal = _calibrate([10] * 5, PARAMS)  # thin -> floor 0.5
+    f = replace(browser(10), breadth_ratio=0.8)
+    assert "wide-breadth" in relative_tags(f, Kind.BROWSER, load_relative_tags(), cal)
+
+
+def test_long_session_tagged_for_browser() -> None:
+    cal = _calibrate([10] * 5, PARAMS)  # thin -> floor 1 day
+    f = replace(browser(10), duration_seconds=3 * 86_400.0)
+    assert "long-session" in relative_tags(f, Kind.BROWSER, load_relative_tags(), cal)
+
+
+def test_breadth_and_duration_suppressed_for_unknown() -> None:
+    # UNKNOWN's config is {rate, bytes}: breadth / duration are noise without a
+    # behavioural expectation, so a broad, long-lived unknown earns neither tag.
     cal = _calibrate([10] * 5, PARAMS)
-    f = replace(browser(10), total_bytes=10**12)
-    assert "high-bytes" not in relative_tags(f, Kind.BROWSER, load_relative_tags(), cal)
+    f = replace(browser(10), breadth_ratio=0.9, duration_seconds=5 * 86_400.0)
+    tags = relative_tags(f, Kind.UNKNOWN, load_relative_tags(), cal)
+    assert "wide-breadth" not in tags and "long-session" not in tags
+
+
+def test_automation_keeps_rate_and_bytes() -> None:
+    cal = _calibrate([10] * 5, PARAMS)
+    f = replace(browser(100), total_bytes=10**9, breadth_ratio=0.9)
+    tags = relative_tags(f, Kind.AUTOMATION, load_relative_tags(), cal)
+    assert tags == frozenset({"high-rate", "high-bytes"})
 
 
 def test_tag_profile_preserves_existing_tags() -> None:
@@ -172,7 +205,9 @@ def test_bundled_config_loads() -> None:
     assert cfg.params.margin == 3.0
     assert cfg.params.min_reference == 30
     assert cfg.params.floors["rate"] == 60.0
-    assert cfg.for_kind(Kind.BROWSER).metrics == ("rate",)
+    assert cfg.for_kind(Kind.BROWSER).metrics == ("rate", "bytes", "breadth", "duration")
+    assert cfg.for_kind(Kind.UNKNOWN).metrics == ("rate", "bytes")
+    assert cfg.for_kind(Kind.AUTOMATION).metrics == ("rate", "bytes")
     assert cfg.for_kind(Kind.UNKNOWN).reference == "browsers"
 
 
@@ -231,6 +266,24 @@ def test_parse_rejects_unexpected_top_level_key() -> None:
     data["bogus"] = 1
     with pytest.raises(ConfigError, match="unexpected top-level"):
         parse_relative_tags(data)
+
+
+def test_high_rate_tag_through_pipeline(tmp_path: Path) -> None:
+    # End-to-end: a client bursting 70 requests in one minute clears the 60/min
+    # absolute floor (the browser pool is thin here), so analyze() tags it.
+    when = "[10/Oct/2023:12:00:00 +0000]"
+    line = f'198.51.100.7 - - {when} "GET /api HTTP/1.1" 200 100 "-" "python-requests/2.31"'
+    log = tmp_path / "burst.log"
+    log.write_text("\n".join([line] * 70) + "\n", encoding="utf-8")
+
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
+
+    profile = next(p for p in result.profiles if p.client_id.ip == "198.51.100.7")
+    assert profile.features.peak_requests_per_minute >= 60
+    assert "high-rate" in profile.classification.tags
+    assert result.reference_calibration is not None
+    assert result.reference_calibration.warning() is not None  # thin browser pool
 
 
 def test_warning_threshold_object() -> None:

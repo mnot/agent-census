@@ -385,7 +385,7 @@ _SECTION_HEAD = (
     "<th class='num'>Conf.</th><th>Tags</th><th>Top evidence</th></tr>"
 )
 # Per-kind cap rendered into the HTML (visible rows + the expandable set).
-_EXPAND_LIMIT = 500
+_EXPAND_LIMIT = 200
 
 
 def _flag_html(entry: tuple[str, str] | None) -> str:

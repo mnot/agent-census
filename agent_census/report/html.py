@@ -158,6 +158,14 @@ _TAG_HELP: dict[str, str] = {
     "forged-referer": "Sends a Referer equal to the requested URL — fabricated "
     "navigation, not something a real browser produces.",
     "fetches-non-feeds": "A feed reader that also requested non-feed resources.",
+    "high-rate": "Peak requests-per-minute well above this site's real browsers — a "
+    "request rate no human-driven browser here reaches.",
+    "high-bytes": "Mean response size well above this site's real browsers — pulling large "
+    "objects / heavy downloads, not merely making many requests.",
+    "wide-breadth": "Ranges across the site's structure more widely than its real browsers "
+    "do — broad crawling rather than reading a few areas.",
+    "long-session": "Active over a far longer span than this site's real browsers — a session "
+    "length no human visit reaches.",
 }
 
 

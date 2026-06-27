@@ -143,6 +143,10 @@ a { color: inherit; }
 .meta code { color: CanvasText; }
 .warn { color: var(--warn); }
 table { border-collapse: collapse; width: 100%; margin: .5rem 0 1rem; font-size: .92rem; }
+/* Each table scrolls inside its own track, so a wide one never forces the whole
+   page to scroll sideways on a narrow screen. */
+.tscroll { overflow-x: auto; overscroll-behavior-x: contain; margin: .5rem 0 1rem; }
+.tscroll > table { margin: 0; }
 th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid #8884; vertical-align: top; }
 th { font-weight: 600; border-bottom: 2px solid #8886; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -151,6 +155,18 @@ th.netoff { background: #8881; }
 tr.netall td { border-top: 2px solid #8887; }
 .netctl { font-size: .9rem; color: var(--muted); margin: .25rem 0 .6rem; }
 .netctl select { font: inherit; margin-left: .35rem; }
+/* On a phone the cross-tab can't show every network column at readable width, so
+   it folds to Kind | one chosen network | Total and the picker swaps the column
+   in place (same idea as the desktop "break out" control). Desktop shows all. */
+.netcolctl { display: none; }
+@media (max-width: 640px) {
+  .netcolctl { display: inline; }
+  #nettab th[data-net], #nettab td[data-net] { display: none; }
+  #nettab th[data-net].colshow, #nettab td[data-net].colshow { display: table-cell; }
+  /* Keep the identity column from collapsing to a sliver of break-all mono text
+     when the client table scrolls sideways; it stays readable, the row scrolls. */
+  td.cid { min-width: 11rem; max-width: 16rem; }
+}
 tr:hover td { background: #8881; }
 .badge { display: inline-block; padding: .08rem .5rem; border-radius: 999px;
   color: #fff; font-size: .8rem; font-weight: 600; white-space: nowrap; }
@@ -389,7 +405,8 @@ def _summary_table(result: AnalysisResult) -> str:
             f"<td>{robots}</td></tr>"
         )
     return (
-        f"<h2>Summary by kind</h2>\n<table>{head}{''.join(rows)}</table>\n"
+        f"<h2>Summary by kind</h2>\n"
+        f"<div class='tscroll'><table>{head}{''.join(rows)}</table></div>\n"
         '<p class="muted">Tip: click a client below to copy its id for '
         "<code>inspect --client</code>.</p>"
     )
@@ -426,7 +443,7 @@ def _network_table(result: AnalysisResult, *, breakout_min_share: float) -> str:
     def hd(i: int, net: str) -> str:
         cls = f"num{div(i)}" + ("" if matrix.is_hosting(net) else " netoff")
         hid = " id='netotherhd'" if net == OTHER_HOSTING else ""
-        return f"<th class='{cls}'{hid}{title(net)}>{_esc(net)}</th>"
+        return f"<th class='{cls}'{hid}{title(net)} data-net='{i}'>{_esc(net)}</th>"
 
     head = (
         "<tr><th>Kind</th>"
@@ -453,8 +470,8 @@ def _network_table(result: AnalysisResult, *, breakout_min_share: float) -> str:
     rows = []
     for kind in matrix.kinds:
         cells = "".join(
-            f"<td class='num mxcell{div(i)}{cell_extra(n, kind)}' data-v='{matrix.cell(n, kind)}'>"
-            f"{_num(matrix.cell(n, kind))}</td>"
+            f"<td class='num mxcell{div(i)}{cell_extra(n, kind)}' data-v='{matrix.cell(n, kind)}'"
+            f" data-net='{i}'>{_num(matrix.cell(n, kind))}</td>"
             for i, n in enumerate(nets)
         )
         rows.append(
@@ -467,7 +484,7 @@ def _network_table(result: AnalysisResult, *, breakout_min_share: float) -> str:
         col = matrix.col_totals[net]
         # Only the swappable Other column needs its aggregate stashed for restore.
         tag = f" othertot' data-agg='{col}" if net == OTHER_HOSTING else ""
-        return f"<td class='num{div(i)}{tag}'{red(col, peak_col)}>{col:,}</td>"
+        return f"<td class='num{div(i)}{tag}'{red(col, peak_col)} data-net='{i}'>{col:,}</td>"
 
     totals = "".join(total_cell(i, n) for i, n in enumerate(nets))
     rows.append(
@@ -489,17 +506,30 @@ def _network_table(result: AnalysisResult, *, breakout_min_share: float) -> str:
             "</select></label>"
             f"<script type='application/json' id='netbreakdata'>{blob}</script>"
         )
+    # Phone fallback: a picker for the single network column shown when the matrix
+    # folds (see the .netcolctl media query). Defaults to the busiest network.
+    colpick = ""
+    if len(nets) > 1:
+        default_i = max(range(len(nets)), key=lambda i: matrix.col_totals[nets[i]])
+        col_opts = "".join(
+            f"<option value='{i}'{' selected' if i == default_i else ''}>"
+            f"{_esc(net)} ({matrix.col_totals[net]:,})</option>"
+            for i, net in enumerate(nets)
+        )
+        colpick = (
+            f" <label class='netcolctl'>Column <select id='netcol'>{col_opts}</select></label>"
+        )
     control = (
         "<div class='netctl'><label>Show <select id='netmode'>"
         "<option value='count'>counts</option>"
         "<option value='row'>% of kind</option>"
         "<option value='col'>% of network</option>"
-        "</select></label>" + breakout + "</div>"
+        "</select></label>" + breakout + colpick + "</div>"
     )
     return (
         "<h2>Requests by kind and network</h2>\n"
         + control
-        + f"<table id='nettab'>{head}{''.join(rows)}</table>\n"
+        + f"<div class='tscroll'><table id='nettab'>{head}{''.join(rows)}</table></div>\n"
         + '<p class="muted">Counts default; the toggle switches to row or column shares '
         "(the Total column keeps the raw count). Cell shading tracks the same axis — "
         "across each kind, or down each network. Hosting reads left of the thick rule, "
@@ -726,7 +756,7 @@ def _kind_section(
     shown = "".join(
         _actor_tbody(a, flags=flags, filterable=True, suppress=typical) for a in actors[:top]
     )
-    parts.append(f"<table><thead>{_SECTION_HEAD}</thead>{shown}</table>")
+    parts.append(f"<div class='tscroll'><table><thead>{_SECTION_HEAD}</thead>{shown}</table></div>")
     extra = actors[top:_EXPAND_LIMIT]
     if extra:
         extra_rows = "".join(
@@ -737,7 +767,7 @@ def _kind_section(
             # The page filter (above all sections) suspends the name while active.
             '<details name="kind-extra"><summary>'
             "Show more</summary>"
-            f"<table><thead>{_SECTION_HEAD}</thead>{extra_rows}</table>"
+            f"<div class='tscroll'><table><thead>{_SECTION_HEAD}</thead>{extra_rows}</table></div>"
             "</details>"
         )
     # rollup.clients is the exact total; only the highest-volume ones are detailed.
@@ -845,7 +875,10 @@ def _features_html(profile: ClientProfile) -> str:
         f"<tr><td>{_esc(name)}</td><td>{_esc(value)}</td></tr>"
         for name, value in feature_rows(profile.features)
     )
-    return f"<h3>Features</h3><table><tr><th>Metric</th><th>Value</th></tr>{body}</table>"
+    return (
+        "<h3>Features</h3><div class='tscroll'><table>"
+        f"<tr><th>Metric</th><th>Value</th></tr>{body}</table></div>"
+    )
 
 
 def _trace_html(profile: ClientProfile, limit: int, full: bool) -> str:
@@ -873,7 +906,7 @@ def _trace_html(profile: ClientProfile, limit: int, full: bool) -> str:
         )
     return (
         f"<h3>Request trace ({len(shown)} of {len(entries)})</h3>"
-        f"<table>{head}{''.join(rows)}</table>"
+        f"<div class='tscroll'><table>{head}{''.join(rows)}</table></div>"
     )
 
 
@@ -941,7 +974,7 @@ def _rollup_card(profiles: list[ClientProfile]) -> str:
     return (
         f'<section class="card"><h2 class="mono">{_esc(ip)} — '
         f"{len(profiles):,} clients on one IP</h2>"
-        f"{intro}<table>{head}{''.join(rows)}</table></section>"
+        f"{intro}<div class='tscroll'><table>{head}{''.join(rows)}</table></div></section>"
     )
 
 

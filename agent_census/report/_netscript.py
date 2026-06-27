@@ -54,6 +54,17 @@ NET_SCRIPT = """
       paint(sel.value);
     });
   }
+  // Phone column picker: show only the chosen network column (CSS hides the rest
+  // below the breakpoint; on desktop every column shows and this is a no-op).
+  var colsel=document.getElementById('netcol');
+  if(colsel){
+    var colcells=[].slice.call(tab.querySelectorAll('[data-net]'));
+    function showcol(idx){
+      colcells.forEach(function(c){c.classList.toggle('colshow',c.getAttribute('data-net')===idx);});
+    }
+    colsel.addEventListener('change',function(){showcol(colsel.value);});
+    showcol(colsel.value);
+  }
   sel.addEventListener('change',function(){paint(sel.value);});
   paint('count');
 })();

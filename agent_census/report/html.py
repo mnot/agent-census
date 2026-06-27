@@ -39,6 +39,7 @@ from .format import (
     top_evidence,
     truncate,
 )
+from .geo import CountryFlags
 from .inspect import ROLLUP_MIN_CLIENTS
 
 _KIND_COLORS: dict[Kind, str] = {
@@ -224,6 +225,7 @@ tr:hover td { background: #8881; }
   color: #fff; font-size: .8rem; font-weight: 600; white-space: nowrap; }
 .tag { display: inline-block; padding: .05rem .45rem; margin: 0 .2rem .2rem 0;
   border-radius: 6px; background: #8883; font-size: .78rem; white-space: nowrap; cursor: help; }
+.flag { cursor: help; font-style: normal; }
 .blurb { color: #6b7280; margin: .15rem 0 .6rem; }
 .bar { background: #8883; border-radius: 4px; height: .7rem; min-width: 2px; }
 .card { border: 1px solid #8884; border-radius: 10px; padding: 1rem 1.1rem; margin: 1rem 0; }
@@ -560,21 +562,33 @@ _SECTION_HEAD = (
 _EXPAND_LIMIT = 500
 
 
-def _client_cell(profile: ClientProfile) -> str:
+def _flag_html(entry: tuple[str, str] | None) -> str:
+    """A leading ``'🇩🇪 '`` flag span (country name as the tooltip), or ``''``."""
+    if not entry:
+        return ""
+    emoji, name = entry
+    return f'<span class="flag" title="{_esc(name)}">{emoji}</span> '
+
+
+def _client_cell(profile: ClientProfile, flag: str = "") -> str:
     """Stacked identity cell: IP/network on top, AS org, then the UA (2-line clamp)."""
     prefix, org, ua = client_id_parts(profile)
     org_line = f'<div class="cid-as">{_esc(org)}</div>' if org else ""
     return (
         f'<td class="cid copy" data-copy="{_esc(profile.client_id.ip)}" '
         f'title="Click to copy this id for: inspect --client">'
-        f'<div class="mono cid-id">{_esc(prefix)}</div>'
+        f'<div class="mono cid-id">{flag}{_esc(prefix)}</div>'
         f"{org_line}"
         f'<div class="mono cid-ua">{_esc(ua or "–")}</div></td>'
     )
 
 
 def _client_row(
-    profile: ClientProfile, *, filterable: bool = False, suppress: frozenset[str] = frozenset()
+    profile: ClientProfile,
+    *,
+    flag: str = "",
+    filterable: bool = False,
+    suppress: frozenset[str] = frozenset(),
 ) -> str:
     cls = profile.classification
     evidence = _esc(truncate(top_evidence(profile)))
@@ -586,7 +600,7 @@ def _client_row(
         ).lower()
         attrs = f' class="frow" data-filter="{_esc(haystack)}"'
     return (
-        f"<tr{attrs}>{_client_cell(profile)}"
+        f"<tr{attrs}>{_client_cell(profile, flag)}"
         f"<td class='num'>{profile.features.request_count:,}</td>"
         f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
         f"<td class='num'>{cls.confidence:.0%}</td>"
@@ -594,7 +608,7 @@ def _client_row(
     )
 
 
-def _member_tr(profile: ClientProfile) -> str:
+def _member_tr(profile: ClientProfile, flag: str = "") -> str:
     """A collapsed member as a real table row: IP/AS in Client, its own req/bytes."""
     prefix, _, _ = client_id_parts(profile)
     asn = as_display(profile.features.as_org, profile.features.as_number)
@@ -602,25 +616,30 @@ def _member_tr(profile: ClientProfile) -> str:
     return (
         f"<tr class='amem'><td class='cid copy' data-copy='{_esc(profile.client_id.ip)}' "
         "title='Click to copy this id for: inspect --client'>"
-        f"<span class='mono'>{_esc(prefix)}</span>{asn_html}</td>"
+        f"{flag}<span class='mono'>{_esc(prefix)}</span>{asn_html}</td>"
         f"<td class='num'>{profile.features.request_count:,}</td>"
         f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
         "<td></td><td></td><td></td></tr>"
     )
 
 
-def _ip_member_tr(ip: str) -> str:
+def _ip_member_tr(ip: str, flag: str = "") -> str:
     """A clustered member IP as a row (address only; folded entries keep no per-IP stats)."""
     return (
         f"<tr class='amem'><td class='cid copy' data-copy='{_esc(ip)}' "
         "title='Click to copy this id for: inspect --client'>"
-        f"<span class='mono'>{_esc(ip)}</span></td>"
+        f"{flag}<span class='mono'>{_esc(ip)}</span></td>"
         "<td></td><td></td><td></td><td></td><td></td></tr>"
     )
 
 
 def _folded_tbody(
-    profile: ClientProfile, *, filterable: bool = False, suppress: frozenset[str] = frozenset()
+    profile: ClientProfile,
+    *,
+    flag: str = "",
+    flags: CountryFlags | None = None,
+    filterable: bool = False,
+    suppress: frozenset[str] = frozenset(),
 ) -> str:
     """A single entry that folded many IPs into one (an ASN operator, a verified
     bot, an egress/subnet cluster): a collapsible summary over its clustered IPs."""
@@ -634,7 +653,7 @@ def _folded_tbody(
         row_attrs = f"class='asum frow' data-filter=\"{_esc(haystack)}\""
     summary = (
         f"<tr {row_attrs}><td class='cid'><span class='tri'>▶</span>"
-        f"<span class='mono'>{_esc(prefix)}</span>{org_html}"
+        f"{flag}<span class='mono'>{_esc(prefix)}</span>{org_html}"
         f"<span class='muted'> · {len(members):,} IPs</span>"
         f'<span class="actor-ua mono">{_esc(ua or "–")}</span></td>'
         f"<td class='num'>{profile.features.request_count:,}</td>"
@@ -643,12 +662,17 @@ def _folded_tbody(
         f"<td>{_tags_html(cls.tags - suppress)}</td>"
         f"<td>{_esc(truncate(top_evidence(profile)))}</td></tr>"
     )
-    rows = "".join(_ip_member_tr(ip) for ip in members)
+    cf = flags or CountryFlags()
+    rows = "".join(_ip_member_tr(ip, _flag_html(cf.for_ip(ip))) for ip in members)
     return f"<tbody class='actor'>{summary}{rows}</tbody>"
 
 
 def _actor_tbody(
-    actor: ActorGroup, *, filterable: bool = False, suppress: frozenset[str] = frozenset()
+    actor: ActorGroup,
+    *,
+    flags: CountryFlags | None = None,
+    filterable: bool = False,
+    suppress: frozenset[str] = frozenset(),
 ) -> str:
     """One actor as a ``<tbody>``: a lone client, or a collapsible summary + members.
 
@@ -656,10 +680,18 @@ def _actor_tbody(
     hidden until the summary row is clicked (toggled by the page script). ``suppress``
     drops the kind's baseline conduct tags (shown in the header instead).
     """
+    cf = flags or CountryFlags()
+    flag = _flag_html(cf.for_actor(actor.lead.client_id))
     if not actor.collapsed:
         if len(actor.lead.member_ips) >= 2:
-            return _folded_tbody(actor.lead, filterable=filterable, suppress=suppress)
-        return f"<tbody>{_client_row(actor.lead, filterable=filterable, suppress=suppress)}</tbody>"
+            return _folded_tbody(
+                actor.lead, flag=flag, flags=cf, filterable=filterable, suppress=suppress
+            )
+        return (
+            f"<tbody>"
+            f"{_client_row(actor.lead, flag=flag, filterable=filterable, suppress=suppress)}"
+            f"</tbody>"
+        )
     cls = actor.lead.classification
     _, _, ua = client_id_parts(actor.lead)
     spread = actor_spread(actor.distinct_ips, actor.distinct_asns)
@@ -673,18 +705,25 @@ def _actor_tbody(
         row_attrs = f"class='asum frow' data-filter=\"{_esc(haystack)}\""
     summary = (
         f"<tr {row_attrs}>"
-        f"<td class='cid'><span class='tri'>▶</span>{_esc(spread)}"
+        f"<td class='cid'><span class='tri'>▶</span>{flag}{_esc(spread)}"
         f'<span class="actor-ua mono">{_esc(ua or "–")}</span></td>'
         f"<td class='num'>{actor.requests:,}</td>"
         f"<td class='num'>{human_bytes(actor.total_bytes)}</td>"
         f"<td class='num'>{cls.confidence:.0%}</td>"
         f"<td>{_tags_html(cls.tags - suppress)}</td><td>{evidence}</td></tr>"
     )
-    members = "".join(_member_tr(m) for m in actor.members)
+    members = "".join(_member_tr(m, _flag_html(cf.for_member(m.client_id))) for m in actor.members)
     return f"<tbody class='actor'>{summary}{members}</tbody>"
 
 
-def _kind_section(kind: Kind, group: list[ClientProfile], rollup: KindRollup, top: int) -> str:
+def _kind_section(
+    kind: Kind,
+    group: list[ClientProfile],
+    rollup: KindRollup,
+    top: int,
+    flags: CountryFlags | None = None,
+) -> str:
+    flags = flags or CountryFlags()
     actors = group_actors(group)
     typical = typical_conduct(group)
     title = f"{_kind_badge(kind)} {rollup.clients:,} clients · {rollup.requests:,} requests"
@@ -697,11 +736,13 @@ def _kind_section(kind: Kind, group: list[ClientProfile], rollup: KindRollup, to
         parts.append(f'<p class="muted">Typically: {chips}</p>')
     parts.append(
         f"<table><thead>{_SECTION_HEAD}</thead>"
-        f"{''.join(_actor_tbody(a, suppress=typical) for a in actors[:top])}</table>"
+        f"{''.join(_actor_tbody(a, flags=flags, suppress=typical) for a in actors[:top])}</table>"
     )
     extra = actors[top:_EXPAND_LIMIT]
     if extra:
-        extra_rows = "".join(_actor_tbody(a, filterable=True, suppress=typical) for a in extra)
+        extra_rows = "".join(
+            _actor_tbody(a, flags=flags, filterable=True, suppress=typical) for a in extra
+        )
         parts.append(
             # Shared name -> native exclusive accordion: opening one closes the rest.
             '<details name="kind-extra"><summary>'
@@ -730,8 +771,10 @@ def render_report_html(
     top: int = 5,
     robots_note: str | None = None,
     elapsed: float | None = None,
+    country_flags: CountryFlags | None = None,
 ) -> str:
     """Render the full analysis report as a standalone HTML page."""
+    flags = country_flags or CountryFlags()
     groups = by_kind(result.profiles)
     heading = "Agent Census" + (f" — {result.site}" if result.site else "")
     parts = [
@@ -743,7 +786,7 @@ def render_report_html(
     for kind in KIND_ORDER:
         rollup = result.rollups.get(kind)
         if rollup and rollup.clients:
-            parts.append(_kind_section(kind, groups.get(kind, []), rollup, top))
+            parts.append(_kind_section(kind, groups.get(kind, []), rollup, top, flags))
     return _page(heading, "\n".join(parts))
 
 

@@ -92,6 +92,29 @@ The database is consulted first (it can be fresher than the log) and is remember
 agent-census analyze access.log --mm-asn-db ./GeoLite2-ASN.mmdb
 ```
 
+**Country flags**: point `--mm-country-db` at a [MaxMind country (or city)
+database](https://dev.maxmind.com/geoip/docs/databases/country/) to show a small flag next to
+the highest-traffic non-human clients we *haven't* tied to a specific operator — an unknown
+scraper or an impersonator, where the origin country adds signal (a verified, IP/rDNS-identified
+crawler gets none). For a client spanning many IPs the flag is its **traffic-majority** country;
+a client with no country above 70% of its traffic shows a neutral 🌐 instead. In HTML the flag
+carries the country name as a tooltip and each address gets its own flag on expansion. Also
+remembered between runs:
+
+```
+agent-census analyze access.log --mm-country-db ./GeoLite2-Country.mmdb
+```
+
+**A directory of databases**: if you keep your `.mmdb` files in one place (e.g. a
+[`geoipupdate`](https://github.com/maxmind/geoipupdate) target), point `--mm-db-dir` at it and
+both databases are picked up automatically — by each file's metadata, so it doesn't matter what
+they're named or which vendor they're from. An explicit `--mm-asn-db` / `--mm-country-db` still
+wins for that one role.
+
+```
+agent-census analyze access.log --mm-db-dir /usr/share/GeoIP
+```
+
 ### Remembered settings
 
 Some options are sticky, so you needn't retype them. `--log-format` /

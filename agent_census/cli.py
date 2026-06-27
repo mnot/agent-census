@@ -16,13 +16,21 @@ from .audit import run as run_audit
 from .classify import DEFAULT_UNKNOWN_THRESHOLD
 from .errors import AgentCensusError
 from .identity import ClientKeyStrategy
-from .maxmind import AsnResolver, open_asn_db
+from .maxmind import (
+    AsnResolver,
+    CountryResolver,
+    discover_mm_dir,
+    open_asn_db,
+    open_country_db,
+)
 from .netverify import BotVerifier
 from .parsing import available, resolve
 from .parsing.apache import PRESETS
 from .parsing.base import LogParser
 from .pipeline import AnalysisResult, collect_entries
 from .report import (
+    CountryFlags,
+    country_flags,
     render_calibration,
     render_inspect,
     render_inspect_html,
@@ -148,7 +156,7 @@ def _add_shared(parser: argparse.ArgumentParser) -> None:
         "on the bundled inline ranges)",
     )
 
-    asn_group = parser.add_argument_group("ASN lookup (optional)")
+    asn_group = parser.add_argument_group("MaxMind lookups (optional)")
     asn_group.add_argument(
         "--mm-asn-db",
         type=Path,
@@ -156,6 +164,23 @@ def _add_shared(parser: argparse.ArgumentParser) -> None:
         help="MaxMind-format ASN database (.mmdb) used to resolve each client's "
         "origin AS from its IP. Wins over an AS the log already carries (the "
         "database can be fresher). Remembered between runs.",
+    )
+    asn_group.add_argument(
+        "--mm-country-db",
+        type=Path,
+        metavar="PATH",
+        help="MaxMind-format country (or city) database (.mmdb) used to flag the "
+        "origin country of high-traffic, unidentified non-human clients in the "
+        "report. Remembered between runs.",
+    )
+    asn_group.add_argument(
+        "--mm-db-dir",
+        type=Path,
+        metavar="DIR",
+        help="directory of MaxMind .mmdb files (e.g. a geoipupdate target); the ASN "
+        "and country databases are found by their metadata, whatever they're named. "
+        "An explicit --mm-asn-db / --mm-country-db overrides it for that role. "
+        "Remembered between runs.",
     )
 
     out_group = parser.add_argument_group("output")
@@ -375,6 +400,7 @@ class _RunContext:
     result: AnalysisResult
     robots_note: str | None
     elapsed: float
+    country_flags: CountryFlags
 
 
 def _apply_persisted_settings(args: argparse.Namespace) -> None:
@@ -417,10 +443,29 @@ def _apply_persisted_settings(args: argparse.Namespace) -> None:
         elif "robots_url" in cfg:
             args.robots_url = cfg["robots_url"]
 
+    # A MaxMind source is either a directory (discovered) or explicit per-database paths;
+    # an explicit path overrides the directory for its role. Passing --mm-db-dir this run
+    # drops any restored explicit paths so the directory can take over cleanly, but a
+    # path also passed this run still wins.
+    passed_dir = args.mm_db_dir is not None
+    if passed_dir:
+        cfg["mm_db_dir"], updated = str(args.mm_db_dir), True
+        if args.mm_asn_db is None:
+            cfg.pop("mm_asn_db", None)
+        if args.mm_country_db is None:
+            cfg.pop("mm_country_db", None)
+    elif "mm_db_dir" in cfg:
+        args.mm_db_dir = Path(cfg["mm_db_dir"])
+
     if args.mm_asn_db is not None:
         cfg["mm_asn_db"], updated = str(args.mm_asn_db), True
-    elif "mm_asn_db" in cfg:
+    elif not passed_dir and "mm_asn_db" in cfg:
         args.mm_asn_db = Path(cfg["mm_asn_db"])
+
+    if args.mm_country_db is not None:
+        cfg["mm_country_db"], updated = str(args.mm_country_db), True
+    elif not passed_dir and "mm_country_db" in cfg:
+        args.mm_country_db = Path(cfg["mm_country_db"])
 
     if updated:
         userconfig.save(cfg)
@@ -431,8 +476,14 @@ def _apply_persisted_settings(args: argparse.Namespace) -> None:
 _MAXMIND_SKEW_DAYS = 90  # warn if the DB was built this far outside the log's span
 
 
-def _warn_maxmind_skew(resolver: AsnResolver, result: AnalysisResult) -> None:
-    """Warn loudly when the MaxMind DB was built well outside the log's time span."""
+def _warn_maxmind_skew(
+    resolver: AsnResolver | CountryResolver, result: AnalysisResult, what: str
+) -> None:
+    """Warn loudly when a MaxMind DB was built well outside the log's time span.
+
+    ``what`` names what the database supplies (e.g. ``"AS attributions"``), so the
+    warning points at the database actually responsible.
+    """
     if resolver.build_epoch is None:
         return
     seen = [t for p in result.profiles for t in (p.features.first_seen, p.features.last_seen) if t]
@@ -449,9 +500,24 @@ def _warn_maxmind_skew(resolver: AsnResolver, result: AnalysisResult) -> None:
     if gap > _MAXMIND_SKEW_DAYS:
         print(
             f"agent-census: warning: the MaxMind database was built {gap} days {when} the "
-            "log period; its AS attributions may not match the log's era.",
+            f"log period; its {what} may not match the log's era.",
             file=sys.stderr,
         )
+
+
+def _maxmind_paths(args: argparse.Namespace) -> tuple[Path | None, Path | None]:
+    """Effective (ASN, country) database paths; explicit flags override --mm-db-dir."""
+    asn, country = args.mm_asn_db, args.mm_country_db
+    if args.mm_db_dir is not None:
+        found = discover_mm_dir(args.mm_db_dir)
+        asn = asn or found.asn
+        country = country or found.country
+        if asn is None and country is None:
+            print(
+                f"agent-census: warning: no ASN or country .mmdb found in {args.mm_db_dir}",
+                file=sys.stderr,
+            )
+    return asn, country
 
 
 def _run_pipeline(args: argparse.Namespace) -> _RunContext:
@@ -466,7 +532,8 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
     if args.fetch_ranges:
         iprange.enable_remote()
     quiescent = args.quiescent_hours * 3600 if args.quiescent_hours > 0 else None
-    asn_resolver = open_asn_db(args.mm_asn_db) if args.mm_asn_db else None
+    asn_path, country_path = _maxmind_paths(args)
+    asn_resolver = open_asn_db(asn_path) if asn_path else None
 
     start = time.monotonic()
     try:
@@ -487,10 +554,25 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
         if asn_resolver is not None:
             asn_resolver.close()
     if asn_resolver is not None:
-        _warn_maxmind_skew(asn_resolver, result)
+        _warn_maxmind_skew(asn_resolver, result, "AS attributions")
+
+    flags = CountryFlags()
+    if country_path:
+        country_resolver = open_country_db(country_path)
+        try:
+            flags = country_flags(result.profiles, country_resolver)
+        finally:
+            country_resolver.close()
+        _warn_maxmind_skew(country_resolver, result, "country attributions")
+
     elapsed = time.monotonic() - start
     return _RunContext(
-        parser=parser, strategy=strategy, result=result, robots_note=robots_note, elapsed=elapsed
+        parser=parser,
+        strategy=strategy,
+        result=result,
+        robots_note=robots_note,
+        elapsed=elapsed,
+        country_flags=flags,
     )
 
 
@@ -557,6 +639,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     top=args.top,
                     robots_note=ctx.robots_note,
                     elapsed=ctx.elapsed,
+                    country_flags=ctx.country_flags,
                 )
             else:
                 text = render_report_html(
@@ -565,6 +648,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     top=args.top,
                     robots_note=ctx.robots_note,
                     elapsed=ctx.elapsed,
+                    country_flags=ctx.country_flags,
                 )
         elif args.command == "calibrate":
             text = render_calibration(ctx.result, source=_source_label(args), top=args.top)

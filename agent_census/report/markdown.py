@@ -26,6 +26,7 @@ from .format import (
     top_evidence,
     truncate,
 )
+from .geo import CountryFlag, CountryFlags
 
 
 def _robots_summary(rollup: KindRollup) -> str:
@@ -146,11 +147,17 @@ def _network_table(result: AnalysisResult) -> list[str]:
     return lines
 
 
-def _client_label(profile: ClientProfile) -> str:
-    return md_escape(client_label(profile)[:140])
+def _flag(profile: ClientProfile, flags: CountryFlags) -> str:
+    """A leading ``'🇩🇪 '`` for a flagged client (its actor-level flag), else ``''``."""
+    entry: CountryFlag | None = flags.for_actor(profile.client_id)
+    return f"{entry[0]} " if entry else ""
 
 
-def _actor_label(actor: ActorGroup) -> str:
+def _client_label(profile: ClientProfile, flags: CountryFlags) -> str:
+    return _flag(profile, flags) + md_escape(client_label(profile)[:140])
+
+
+def _actor_label(actor: ActorGroup, flags: CountryFlags) -> str:
     """One-line label: the per-IP client, or a collapsed group's footprint + UA."""
     if not actor.collapsed:
         lead = actor.lead
@@ -159,16 +166,21 @@ def _actor_label(actor: ActorGroup) -> str:
             # an egress/subnet cluster): note the cluster size beside its identity.
             prefix, _, ua = client_id_parts(lead)
             label = f"{prefix} ({len(lead.member_ips):,} IPs) | {ua if ua is not None else '-'}"
-            return md_escape(label[:140])
-        return _client_label(lead)
+            return _flag(lead, flags) + md_escape(label[:140])
+        return _client_label(lead, flags)
     _, _, ua = client_id_parts(actor.lead)
     spread = actor_spread(actor.distinct_ips, actor.distinct_asns)
-    return md_escape(f"{spread} | {ua if ua is not None else '-'}"[:140])
+    return _flag(actor.lead, flags) + md_escape(f"{spread} | {ua if ua is not None else '-'}"[:140])
 
 
 def _kind_section(
-    kind: Kind, group: list[ClientProfile], rollup: KindRollup, top: int
+    kind: Kind,
+    group: list[ClientProfile],
+    rollup: KindRollup,
+    top: int,
+    flags: CountryFlags | None = None,
 ) -> list[str]:
+    flags = flags or CountryFlags()
     actors = group_actors(group)
     typical = typical_conduct(group)
     lines = [
@@ -189,7 +201,7 @@ def _kind_section(
         tags = ", ".join(ordered_tags(cls.tags - typical)) or "–"
         evidence = md_escape(truncate(top_evidence(actor.lead)))
         lines.append(
-            f"| {_actor_label(actor)} | {actor.requests:,} | "
+            f"| {_actor_label(actor, flags)} | {actor.requests:,} | "
             f"{human_bytes(actor.total_bytes)} | {cls.confidence:.0%} | "
             f"{tags} | {evidence} |"
         )
@@ -214,8 +226,10 @@ def render_report(
     top: int = 5,
     robots_note: str | None = None,
     elapsed: float | None = None,
+    country_flags: CountryFlags | None = None,
 ) -> str:
     """Render the full Markdown report for an analysis run."""
+    flags = country_flags or CountryFlags()
     groups = by_kind(result.profiles)
     lines = _header(result, source, robots_note, elapsed)
     lines += _summary_table(result)
@@ -223,5 +237,5 @@ def render_report(
     for kind in KIND_ORDER:
         rollup = result.rollups.get(kind)
         if rollup and rollup.clients:
-            lines += _kind_section(kind, groups.get(kind, []), rollup, top)
+            lines += _kind_section(kind, groups.get(kind, []), rollup, top, flags)
     return "\n".join(lines).rstrip() + "\n"

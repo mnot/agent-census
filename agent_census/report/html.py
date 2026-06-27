@@ -30,6 +30,7 @@ from .format import (
     as_display,
     client_id_parts,
     client_label,
+    count,
     elide_ua,
     feature_rows,
     fmt_ts,
@@ -345,8 +346,8 @@ def _meta_list(
         + (f" · {skips.excluded:,} excluded (--vhost)" if skips.excluded else ""),
         f"<strong>Time range:</strong> {_esc(fmt_ts(start))} → {_esc(fmt_ts(end))}",
         f"<strong>Identity:</strong> <code>{_esc(result.identity_strategy)}</code> "
-        f"({stats.client_count:,} clients; {stats.singletons:,} singletons; "
-        f"{stats.ips_with_multiple_uas:,} IPs with multiple UAs)",
+        f"({count(stats.client_count, 'client')}; {count(stats.singletons, 'singleton')}; "
+        f"{count(stats.ips_with_multiple_uas, 'IP')} with multiple UAs)",
     ]
     if robots_note:
         cls = "warn" if "differ" in robots_note else ""
@@ -660,11 +661,11 @@ def _folded_tbody(
             (prefix, ua or "", org or "", *members, *ordered_tags(cls.tags - suppress))
         ).lower()
         row_attrs = f"class='asum frow' data-filter=\"{_esc(haystack)}\""
+    toggle = _disclosure(f"Show {count(len(members), 'member IP')} of {prefix}")
     summary = (
-        f"<tr {row_attrs}><td class='cid'>"
-        f"{_disclosure(f'Show {len(members):,} member IPs of {prefix}')}"
+        f"<tr {row_attrs}><td class='cid'>{toggle}"
         f"{flag}<span class='mono'>{_esc(prefix)}</span>{org_html}"
-        f"<span class='muted'> · {len(members):,} IPs</span>"
+        f"<span class='muted'> · {count(len(members), 'IP')}</span>"
         f'<span class="actor-ua mono">{_esc(ua or "–")}</span></td>'
         f"<td class='num'>{profile.features.request_count:,}</td>"
         f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
@@ -721,10 +722,10 @@ def _actor_tbody(
             )
         ).lower()
         row_attrs = f"class='asum frow' data-filter=\"{_esc(haystack)}\""
+    toggle = _disclosure(f"Show {count(len(actor.members), 'grouped client')}")
     summary = (
         f"<tr {row_attrs}>"
-        f"<td class='cid'>{_disclosure(f'Show {len(actor.members):,} grouped clients')}"
-        f"{flag}{_esc(spread)}{asn_html}"
+        f"<td class='cid'>{toggle}{flag}{_esc(spread)}{asn_html}"
         f'<span class="actor-ua mono">{_esc(ua or "–")}</span></td>'
         f"<td class='num'>{actor.requests:,}</td>"
         f"<td class='num'>{human_bytes(actor.total_bytes)}</td>"
@@ -745,7 +746,8 @@ def _kind_section(
     flags = flags or CountryFlags()
     actors = group_actors(group)
     typical = typical_conduct(group)
-    title = f"{_kind_badge(kind)} {rollup.clients:,} clients · {rollup.requests:,} requests"
+    footprint = f"{count(rollup.clients, 'client')} · {count(rollup.requests, 'request')}"
+    title = f"{_kind_badge(kind)} {footprint}"
     parts = [
         f'<h2 id="{kind.value}">{title}</h2>',
         f'<p class="blurb">{_esc(KIND_BLURB.get(kind, ""))}</p>',
@@ -967,13 +969,13 @@ def _rollup_card(profiles: list[ClientProfile]) -> str:
         f"<td class='num'>{human_bytes(total_bytes)}</td><td></td></tr>"
     )
     intro = (
-        f"<p>This IP presents {len(profiles):,} distinct user-agents (user-agent rotation). "
+        f"<p>This IP presents {count(len(profiles), 'distinct user-agent')} (user-agent rotation). "
         "Per-client summary below; inspect one by passing a distinctive part of its "
         "user-agent to <code>--client</code>.</p>"
     )
     return (
         f'<section class="card"><h2 class="mono">{_esc(ip)} — '
-        f"{len(profiles):,} clients on one IP</h2>"
+        f"{count(len(profiles), 'client')} on one IP</h2>"
         f"{intro}<div class='tscroll'><table>{head}{''.join(rows)}</table></div></section>"
     )
 

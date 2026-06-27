@@ -234,7 +234,9 @@ def _browser_quality(result: AnalysisResult, top: int) -> list[str]:
         "| Band | Clients | Requests |",
         "| --- | ---: | ---: |",
     ]
-    for band in (*_AGE_TAGS, "browser-ua", "—"):
+    # Cover every shape _shape() can return (incl. generic-ua/bot-ua/no-user-agent),
+    # so the table's Clients/Requests sum to the whole browser-shaped population.
+    for band in (*_SHAPE_TAGS, "—"):
         if bands[band]:
             lines.append(f"| {band} | {bands[band]:,} | {band_req[band]:,} |")
     lines.append("")

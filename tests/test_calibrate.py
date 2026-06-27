@@ -194,6 +194,33 @@ def test_cli_calibrate_runs_end_to_end(tmp_path: Path) -> None:
     assert "probe-paths" in text
 
 
+def test_band_table_counts_non_age_browser_shapes() -> None:
+    # A browser-shaped client (primary BROWSER) whose UA shape resolves to bot-ua
+    # must still appear in the band table; otherwise the table's Clients/Requests
+    # silently understate the browser-shaped population.
+    profiles = (
+        _profile(
+            "1.1.1.1",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+            requests=40,
+            kind=Kind.BROWSER,
+            tags=frozenset({"current-browser-ua"}),
+            browser=True,
+        ),
+        _profile(
+            "2.2.2.2",
+            "curl/8.0 pretending",
+            requests=17,
+            kind=Kind.BROWSER,
+            tags=frozenset({"bot-ua"}),  # browser-shaped but bot-ua, no age band
+        ),
+    )
+    out = render_calibration(_result(profiles), source="x", top=30)
+    table = out.split("## Browser identification quality", 1)[1].split("\n## ", 1)[0]
+    assert "| bot-ua | 1 | 17 |" in table
+
+
 def test_regex_gap_section_lists_only_unreadable_versions() -> None:
     # The "regex gaps" list should hold UAs we genuinely can't version -- not a
     # parseable browser that merely lacks an age band (a middling version age).

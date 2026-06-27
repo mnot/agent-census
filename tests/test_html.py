@@ -164,6 +164,11 @@ def test_network_table_renders_with_providers(
     assert "td class='num mxcell" in html and "data-v=" in html
     assert "id='netmode'" in html and "id='nettab'" in html
     assert "rgba(220,38,38" in html  # red heat on the total row/column
+    # Small-screen fold: every network column is tagged so the picker can show one
+    # at a time, and tables sit in a horizontal-scroll track so none breaks the page.
+    assert "id='netcol'" in html and "netcolctl" in html  # the phone column picker
+    assert "data-net=" in html  # columns tagged for show/hide
+    assert "class='tscroll'" in html  # tables wrapped in a scroll track
 
 
 def test_network_table_offers_breakout_for_folded_datacenters(

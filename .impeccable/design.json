@@ -5,13 +5,13 @@
   "extensions": {
     "colorMeta": {
       "interaction-blue": { "role": "primary", "displayName": "Interaction Blue", "canonical": "#2563eb", "tonalRamp": ["#172554", "#1e3a8a", "#1d4ed8", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#dbeafe"] },
-      "verified-green": { "role": "secondary", "displayName": "Verified Green", "canonical": "#16a34a", "tonalRamp": ["#052e16", "#14532d", "#166534", "#15803d", "#16a34a", "#22c55e", "#4ade80", "#bbf7d0"] },
+      "verified-green": { "role": "secondary", "displayName": "Verified Green", "canonical": "#00862e", "tonalRamp": ["#052e16", "#14532d", "#166534", "#15803d", "#16a34a", "#22c55e", "#4ade80", "#bbf7d0"] },
       "caution-amber": { "role": "secondary", "displayName": "Caution Amber", "canonical": "#b45309", "tonalRamp": ["#451a03", "#7c2d12", "#9a3412", "#b45309", "#d97706", "#f59e0b", "#fbbf24", "#fde68a"] },
       "threat-red": { "role": "secondary", "displayName": "Threat Red", "canonical": "#dc2626", "tonalRamp": ["#450a0a", "#7f1d1d", "#991b1b", "#b91c1c", "#dc2626", "#ef4444", "#f87171", "#fecaca"] },
       "datacenter-violet": { "role": "secondary", "displayName": "Datacenter Violet", "canonical": "#9333ea", "tonalRamp": ["#3b0764", "#581c87", "#6b21a8", "#7e22ce", "#9333ea", "#a855f7", "#c084fc", "#e9d5ff"] },
-      "muted-ink": { "role": "neutral", "displayName": "Muted Ink", "canonical": "#6b7280", "tonalRamp": ["#111827", "#1f2937", "#374151", "#4b5563", "#6b7280", "#9ca3af", "#d1d5db", "#f3f4f6"] },
+      "muted-ink": { "role": "neutral", "displayName": "Muted Ink", "canonical": "color-mix(in srgb, CanvasText 58%, Canvas)", "tonalRamp": ["#111827", "#1f2937", "#374151", "#4b5563", "#6b7280", "#9ca3af", "#d1d5db", "#f3f4f6"] },
       "hairline": { "role": "neutral", "displayName": "Adaptive Hairline", "canonical": "#88888844", "tonalRamp": ["#88888811", "#88888822", "#88888833", "#88888844", "#88888866", "#88888899", "#888888cc", "#888888ff"] },
-      "heat-blue": { "role": "neutral", "displayName": "Heat Blue", "canonical": "#60a5fa", "tonalRamp": ["#172554", "#1e40af", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe", "#eff6ff"] }
+      "heat-blue": { "role": "neutral", "displayName": "Heat Blue (light #60a5fa / dark #2563eb)", "canonical": "#60a5fa", "tonalRamp": ["#172554", "#1e40af", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe", "#eff6ff"] }
     },
     "typographyMeta": {
       "display": { "displayName": "Display (h1)", "purpose": "Page title, one per page." },
@@ -23,14 +23,14 @@
     },
     "shadows": [],
     "motion": [
-      { "name": "tri-rotate", "value": "transform 0.12s", "purpose": "Disclosure triangle rotates 90deg when a folded actor is expanded." },
+      { "name": "tri-rotate", "value": "transform 0.12s", "purpose": "Disclosure triangle rotates 90deg when a folded actor is expanded; gated by prefers-reduced-motion." },
       { "name": "copy-flash", "value": "~900ms green confirmation (JS class toggle)", "purpose": "Client-id cell flashes #16a34a55 after a successful copy-to-clipboard." }
     ],
     "breakpoints": [],
     "notes": [
       "No box-shadow anywhere (Flat-Ledger Rule). Depth is hairlines + tonal washes only.",
-      "No @media breakpoints; layout is a single 1100px-max column. The viewport meta is set; responsiveness comes from fluid tables, not breakpoints.",
-      "No prefers-reduced-motion handling exists yet; add it before introducing any new motion.",
+      "One @media (max-width: 640px) block: the kind\u00d7network cross-tab folds to a single picker-chosen column and tables sit in horizontal-scroll tracks; otherwise a single 1100px-max column.",
+      "prefers-reduced-motion: reduce is honored (the disclosure-triangle rotation is gated); give any new motion the same fallback.",
       "Background/text are CSS system colors (Canvas/CanvasText), so the report follows the OS light/dark theme; do not hardcode them."
     ]
   },

@@ -58,9 +58,10 @@ How they combine for a `ua_substring` agent that presents its token:
   unverified -- absence is never read as impersonation.
 
 The resulting tags: `verified` (DNS/range confirmed), `asn-associated` (AS
-corroborated), or the `impersonator` kind (a definitive mismatch). With
-`--no-verify-bots` the DNS/range tiers don't run, so only `asns` can confirm or
-impeach.
+corroborated), or `unverified` -- its mirror -- whenever a DNS/range check was
+available but didn't confirm (it failed, or was inconclusive); a definitive
+mismatch is also the `impersonator` kind. With `--no-verify-bots` the DNS/range
+tiers don't run, so only `asns` can confirm or impeach.
 
 ## Field summary
 

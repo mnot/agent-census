@@ -67,7 +67,7 @@ _KIND_COLORS: dict[Kind, str] = {
 _TAG_COLORS: dict[str, str] = {
     "verified": "#16a34a",  # confirmed identity -> strong green
     "asn-associated": "#059669",  # origin AS corroborates the declared crawler -> green
-    "rdns-unverified": "#b45309",  # declared crawler we couldn't confirm -> caution amber
+    "unverified": "#b45309",  # declared crawler we had info for but couldn't confirm -> amber
     "impersonator": "#dc2626",
     "ignores-robots": "#d97706",
     "probe-paths": "#dc2626",  # requested known-vulnerable paths -> red
@@ -139,8 +139,9 @@ _TAG_HELP: dict[str, str] = {
     "crawler is configured to use -- corroboration, a lighter check than DNS / IP-range "
     "verification (which take precedence when available).",
     "declares-known-bot": "User-Agent names a known crawler (identity verified separately).",
-    "rdns-unverified": "Declared a verifiable crawler, but reverse DNS was inconclusive and no "
-    "origin AS corroborated it — neither confirmed nor caught as an impersonator.",
+    "unverified": "Declared a crawler we could check by reverse DNS or IP range, but the check "
+    "didn't confirm it — it failed, or was inconclusive (a DNS timeout, unfetchable ranges). "
+    "The mirror of 'verified'; the kind and verdict are unchanged.",
     "asn-attributed": "Identity is the origin AS itself -- an asn_primary network that "
     "crawls behind spoofed User-Agents, recognised by AS number rather than by its UA.",
     "probe-paths": "Requested known-vulnerable / probe paths (.env, /wp-login.php, .git/config…) "

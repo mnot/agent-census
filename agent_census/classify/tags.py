@@ -225,10 +225,15 @@ def _fact_tags(
     if verification is not None and verification.status is VerificationStatus.ASN_ASSOCIATED:
         # UA names a crawler and its origin AS is one that crawler uses -- corroborated.
         tags.add("asn-associated")
-    if verification is not None and verification.status is VerificationStatus.UNVERIFIED:
-        # Declared a verifiable crawler, but reverse DNS was inconclusive and no ASN
-        # corroborated it -- not confirmed, not caught. Surfaced, verdict unchanged.
-        tags.add("rdns-unverified")
+    if (
+        verification is not None
+        and verification.network_checked
+        and verification.status in (VerificationStatus.IMPERSONATOR, VerificationStatus.UNVERIFIED)
+    ):
+        # Had rdns/range info to check the declared identity against, but it failed
+        # or was inconclusive -- the mirror of `verified`. Always surfaced so a
+        # not-confirmed declared crawler is visible; the kind/verdict are unchanged.
+        tags.add("unverified")
     if _declares_known_crawler(features):
         tags.add("declares-known-bot")
     # Only the actionable robots case is tagged; respecting it is the quiet norm.

@@ -332,12 +332,14 @@ class BotVerifier:
                 resolved_host=dns.host or rng.host,
                 expected_domains=spec.domains,
                 evidence=(rng.why, dns.why),
+                network_checked=True,
             )
         return BotVerification(  # nothing failed, but a check was inconclusive
             VerificationStatus.UNVERIFIED,
             resolved_host=dns.host,
             expected_domains=spec.domains,
             evidence=(rng.why, dns.why),
+            network_checked=True,
         )
 
     def _verdict(self, check: _Check, spec: CrawlerSpec) -> BotVerification:
@@ -347,7 +349,11 @@ class BotVerifier:
             _UNKNOWN: VerificationStatus.UNVERIFIED,
         }[check.state]
         return BotVerification(
-            status, resolved_host=check.host, expected_domains=spec.domains, evidence=(check.why,)
+            status,
+            resolved_host=check.host,
+            expected_domains=spec.domains,
+            evidence=(check.why,),
+            network_checked=True,
         )
 
     def verify_all(

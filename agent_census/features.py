@@ -24,7 +24,7 @@ from . import uas
 from .dataload import load_request_signatures, load_vuln_paths
 from .model import ClientFeatures, LogEntry
 
-# Request-line marker lists live in data/request_signatures.toml; this module turns
+# Request-line marker lists live in data/signatures/request_signatures.toml; this module turns
 # them into the sets and regexes the accumulator matches against per request.
 _SIG = load_request_signatures()
 
@@ -100,7 +100,7 @@ def _top_segment(path: str) -> str:
 # Tokens that mark a feed in a URL filename, e.g. /blog/feed/, /index.rss, atom.xml.
 # Matched as a whole dot/dash/underscore-delimited part, not a bare substring, so
 # "feedback.html" / "anatomy.html" don't read as feeds (mirrors the word-anchored
-# UA-side detection in classify/feed_reader.py). See data/request_signatures.toml.
+# UA-side detection in classify/feed_reader.py). See data/signatures/request_signatures.toml.
 _FEED_TOKENS = frozenset(_SIG.feed_filename_tokens)
 _FILENAME_PARTS = re.compile(r"[.\-_]")
 # Common token-less feed filenames -- a stopgap until response media types are

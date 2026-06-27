@@ -25,7 +25,7 @@ from .dataload import (
 
 _P = TypeVar("_P")
 
-# The token lists these regexes are built from live in data/ua_signatures.toml;
+# The token lists these regexes are built from live in data/signatures/ua_signatures.toml;
 # only the structure (the Mozilla anchor, the word-boundary rules) is fixed here.
 _SIG = load_ua_signatures()
 

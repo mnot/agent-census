@@ -12,6 +12,12 @@ There is one file per classifier, named for it (`browser.toml`, `crawler.toml`,
 into one block per signal, so a signal's threshold and its weight sit together; the
 header comment in each file explains the rules of thumb for tuning it.
 
+`relative_tags.toml` is the exception to the flat-per-classifier shape: it holds the
+calibration knobs for the site-relative magnitude tags (`[params]`, `[default]`,
+per-kind `[[kind]]` overrides) and has its own loader/validator in
+`classify/relative.py`. It lives here because it is tuning -- floors, a margin, and
+percentiles, all marked for calibration -- not a list.
+
 `shared.toml` holds the thresholds used by more than one classifier or tag -- the
 browser-shape cutoffs, the cadence bands, the 404-storm and fabricated-referer lines,
 and the unknown-verdict threshold. They live there once so that tuning, say, "what
@@ -21,4 +27,4 @@ private copies. A threshold only one classifier uses stays in that classifier's 
 Every knob a file's classifier reads must be present and numeric; an unexpected table
 or key, a missing knob, or a non-number is rejected at load time, so a file is always
 the complete, accurate list of that classifier's knobs. (The relative-magnitude tags
-keep their own calibration knobs in `../relative_tags.toml`.)
+validate their own richer shape in `relative_tags.toml`, described above.)

@@ -13,7 +13,7 @@ from ..dataload import load_list, load_tuning
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
 
-# Monitoring-service UA tokens live in data/monitor_uas.toml; numeric knobs in
+# Monitoring-service UA tokens live in data/signatures/monitor_uas.toml; numeric knobs in
 # data/tuning/monitor.toml.
 _MONITOR_UA = re.compile("|".join(re.escape(s) for s in load_list("monitor_uas")), re.I)
 _TUNING_SCHEMA = {

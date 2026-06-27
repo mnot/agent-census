@@ -18,7 +18,7 @@ This module is metric-agnostic: it knows four metrics -- ``rate`` (peak req/min)
 ``bytes`` (mean response size, so it isn't a restatement of rate), ``breadth``
 (fraction of hops changing subtree), ``duration`` (session span) -- but which ones
 actually emit a tag for a given kind is the per-kind config's job
-(``data/relative_tags.toml``), the single lever for suppressing a metric that proves
+(``data/tuning/relative_tags.toml``), the single lever for suppressing a metric that proves
 noisy for some kind. The unbounded magnitudes calibrate as ``p95(log) x margin``;
 ``breadth`` is a bounded ratio and uses a high linear percentile instead (see
 :data:`_BOUNDED_METRICS`).
@@ -62,7 +62,7 @@ METRICS: tuple[str, ...] = tuple(_METRIC_TAGS)
 _BOUNDED_METRICS: frozenset[str] = frozenset({"breadth"})
 
 # The bounded-metric percentile and the magnitude-stability request gate are tunable
-# in relative_tags.toml [params]; they are bound to module constants at the end of
+# in tuning/relative_tags.toml [params]; they are bound to module constants at the end of
 # the config section below, where the loader is in scope, so the bare predicates that
 # use them (is_reference_browser / _gated) don't each need the params threaded in.
 
@@ -177,7 +177,7 @@ class KindReference:
 
 @dataclass(frozen=True, slots=True)
 class RelativeTagConfig:
-    """The whole ``relative_tags.toml``: params, a default rule, per-kind overrides."""
+    """The whole ``tuning/relative_tags.toml``: params, a default rule, per-kind overrides."""
 
     params: RelativeParams
     default: KindReference
@@ -195,7 +195,7 @@ _RULE_KEYS = {"reference", "tags"}
 
 def _num(ctx: str, value: object) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ConfigError(f"relative_tags.toml: {ctx} must be a number")
+        raise ConfigError(f"tuning/relative_tags.toml: {ctx} must be a number")
     return float(value)
 
 
@@ -203,20 +203,23 @@ def _rule(ctx: str, table: Mapping[str, object]) -> KindReference:
     extra = set(table) - _RULE_KEYS
     if extra:
         raise ConfigError(
-            f"relative_tags.toml: {ctx}: unexpected key(s) {', '.join(sorted(extra))}"
+            f"tuning/relative_tags.toml: {ctx}: unexpected key(s) {', '.join(sorted(extra))}"
         )
     reference = table.get("reference", "browsers")
     if not isinstance(reference, str) or reference not in _POOLS:
         raise ConfigError(
-            f"relative_tags.toml: {ctx}: 'reference' must be one of {', '.join(sorted(_POOLS))}"
+            f"tuning/relative_tags.toml: {ctx}: 'reference' must be one of "
+            f"{', '.join(sorted(_POOLS))}"
         )
     metrics = table.get("tags", [])
     if not isinstance(metrics, list) or not all(isinstance(m, str) for m in metrics):
-        raise ConfigError(f"relative_tags.toml: {ctx}: 'tags' must be a list of metric names")
+        raise ConfigError(
+            f"tuning/relative_tags.toml: {ctx}: 'tags' must be a list of metric names"
+        )
     bad = [m for m in metrics if m not in METRICS]
     if bad:
         raise ConfigError(
-            f"relative_tags.toml: {ctx}: unknown metric(s) {', '.join(bad)} "
+            f"tuning/relative_tags.toml: {ctx}: unknown metric(s) {', '.join(bad)} "
             f"(allowed: {', '.join(METRICS)})"
         )
     return KindReference(reference=reference, metrics=tuple(metrics))
@@ -224,8 +227,10 @@ def _rule(ctx: str, table: Mapping[str, object]) -> KindReference:
 
 @lru_cache(maxsize=None)
 def load_relative_tags() -> RelativeTagConfig:
-    """Load and validate ``data/relative_tags.toml`` (cached per run)."""
-    text = (files("agent_census.data") / "relative_tags.toml").read_text(encoding="utf-8")
+    """Load and validate ``data/tuning/relative_tags.toml`` (cached per run)."""
+    text = (files("agent_census.data") / "tuning" / "relative_tags.toml").read_text(
+        encoding="utf-8"
+    )
     return parse_relative_tags(tomllib.loads(text))
 
 
@@ -234,25 +239,27 @@ def parse_relative_tags(data: Mapping[str, object]) -> RelativeTagConfig:
     extra = set(data) - {"params", "default", "kind"}
     if extra:
         raise ConfigError(
-            f"relative_tags.toml: unexpected top-level key(s) {', '.join(sorted(extra))}"
+            f"tuning/relative_tags.toml: unexpected top-level key(s) {', '.join(sorted(extra))}"
         )
     raw_params = data.get("params", {})
     if not isinstance(raw_params, dict):
-        raise ConfigError("relative_tags.toml: [params] must be a table")
+        raise ConfigError("tuning/relative_tags.toml: [params] must be a table")
     missing = _PARAMS_KEYS - set(raw_params)
     if missing:
-        raise ConfigError(f"relative_tags.toml: [params] missing {', '.join(sorted(missing))}")
+        raise ConfigError(
+            f"tuning/relative_tags.toml: [params] missing {', '.join(sorted(missing))}"
+        )
     unexpected = set(raw_params) - _PARAMS_KEYS
     if unexpected:
         raise ConfigError(
-            f"relative_tags.toml: [params] unexpected key(s) {', '.join(sorted(unexpected))}"
+            f"tuning/relative_tags.toml: [params] unexpected key(s) {', '.join(sorted(unexpected))}"
         )
     min_ref = raw_params["min_reference"]
     if isinstance(min_ref, bool) or not isinstance(min_ref, int):
-        raise ConfigError("relative_tags.toml: [params] 'min_reference' must be an integer")
+        raise ConfigError("tuning/relative_tags.toml: [params] 'min_reference' must be an integer")
     min_req = raw_params["min_requests"]
     if isinstance(min_req, bool) or not isinstance(min_req, int):
-        raise ConfigError("relative_tags.toml: [params] 'min_requests' must be an integer")
+        raise ConfigError("tuning/relative_tags.toml: [params] 'min_requests' must be an integer")
     params = RelativeParams(
         margin=_num("[params] 'margin'", raw_params["margin"]),
         min_reference=min_ref,
@@ -262,19 +269,21 @@ def parse_relative_tags(data: Mapping[str, object]) -> RelativeTagConfig:
     )
     raw_default = data.get("default", {})
     if not isinstance(raw_default, dict):
-        raise ConfigError("relative_tags.toml: [default] must be a table")
+        raise ConfigError("tuning/relative_tags.toml: [default] must be a table")
     default = _rule("[default]", raw_default)
     overrides: dict[str, KindReference] = {}
     kinds = {k.value for k in Kind}
     raw_kinds = data.get("kind", [])
     if not isinstance(raw_kinds, list):
-        raise ConfigError("relative_tags.toml: [[kind]] must be an array of tables")
+        raise ConfigError("tuning/relative_tags.toml: [[kind]] must be an array of tables")
     for index, table in enumerate(raw_kinds, start=1):
         if not isinstance(table, dict) or "kind" not in table:
-            raise ConfigError(f"relative_tags.toml: [[kind]] #{index} needs a 'kind'")
+            raise ConfigError(f"tuning/relative_tags.toml: [[kind]] #{index} needs a 'kind'")
         name = table["kind"]
         if name not in kinds:
-            raise ConfigError(f"relative_tags.toml: [[kind]] #{index}: unknown kind {name!r}")
+            raise ConfigError(
+                f"tuning/relative_tags.toml: [[kind]] #{index}: unknown kind {name!r}"
+            )
         overrides[name] = _rule(f"[[kind]] {name}", {k: v for k, v in table.items() if k != "kind"})
     return RelativeTagConfig(params=params, default=default, overrides=overrides)
 

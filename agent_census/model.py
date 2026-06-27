@@ -147,6 +147,7 @@ class ClientFeatures:  # pylint: disable=too-many-instance-attributes
     vuln_path_hits: int = 0
     vuln_path_ratio: float = 0.0
     sample_vuln_paths: tuple[str, ...] = ()
+    submit_path_hits: int = 0  # requests to comment/login/xmlrpc submission endpoints
     traversal_hits: int = 0
     evasion_hits: int = 0  # double / overlong encoding -- deliberate WAF evasion
 

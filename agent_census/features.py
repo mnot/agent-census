@@ -21,7 +21,7 @@ from datetime import datetime
 from typing import TypeVar
 
 from . import uas
-from .dataload import load_request_signatures, load_vuln_paths
+from .dataload import load_list, load_request_signatures, load_vuln_paths
 from .model import ClientFeatures, LogEntry
 
 # Request-line marker lists live in data/signatures/request_signatures.toml; this module turns
@@ -56,6 +56,10 @@ def _compile_paths(patterns: tuple[str, ...]) -> re.Pattern[str] | None:
 
 _ALWAYS_RE = _compile_paths(_ALWAYS_PATHS)
 _CONTEXTUAL_RE = _compile_paths(_CONTEXTUAL_PATHS)
+# Submission-endpoint substrings (comment/login/xmlrpc). Counted here against the
+# client's actual request paths so the spam-bot classifier can read a hit count,
+# rather than scanning the vuln-probe sample (which holds different paths).
+_SUBMIT_RE = _compile_paths(load_list("submit_paths"))
 # Statuses that mean "this path isn't here" -- the signal that a contextual hit is a
 # probe. 401/403/2xx/3xx all mean the path exists (just gated), so they don't count.
 _ABSENT_STATUSES = frozenset({404, 410})
@@ -235,7 +239,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
 
     __slots__ = (
         "_disallowed_check", "count", "total_bytes", "status_counts", "count_404",
-        "paths_404", "vuln_hits", "vuln_sample", "traversal_hits", "evasion_hits", "methods",
+        "paths_404", "vuln_hits", "vuln_sample", "submit_hits", "traversal_hits", "evasion_hits", "methods",
         "distinct_paths", "static_count", "fetched_robots", "user_agent", "as_org",
         "as_number", "first_seen",
         "last_seen", "_has_prev", "_prev_top", "breadth_changes",
@@ -254,6 +258,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         self.total_bytes = 0
         self.count_404 = 0
         self.vuln_hits = 0
+        self.submit_hits = 0
         self.traversal_hits = 0
         self.evasion_hits = 0
         self.static_count = 0
@@ -335,6 +340,8 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
                 self.vuln_sample = []
             if len(self.vuln_sample) < 5 and path not in self.vuln_sample:
                 self.vuln_sample.append(path)
+        if _SUBMIT_RE is not None and _SUBMIT_RE.search(low):
+            self.submit_hits += 1
         haystack = low + (entry.query or "").lower()
         if _TRAVERSAL_RE.search(haystack):
             self.traversal_hits += 1
@@ -479,6 +486,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         self.total_bytes += other.total_bytes
         self.count_404 += other.count_404
         self.vuln_hits += other.vuln_hits
+        self.submit_hits += other.submit_hits
         self.traversal_hits += other.traversal_hits
         self.evasion_hits += other.evasion_hits
         self.static_count += other.static_count
@@ -579,6 +587,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
             vuln_path_hits=self.vuln_hits,
             vuln_path_ratio=_ratio(self.vuln_hits, self.count),
             sample_vuln_paths=tuple(self.vuln_sample or ()),
+            submit_path_hits=self.submit_hits,
             traversal_hits=self.traversal_hits,
             evasion_hits=self.evasion_hits,
             inter_arrival_mean=timing["mean"],

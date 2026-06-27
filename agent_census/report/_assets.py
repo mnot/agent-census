@@ -189,6 +189,17 @@ document.addEventListener('input', function (event) {
     var live = boxes[b].querySelectorAll('tr.frow:not([style*="none"])');
     boxes[b].style.display = (!on || live.length) ? '' : 'none';
   }
+  // When a query hides every client, say so -- otherwise the client area just
+  // collapses to nothing and the reader can't tell a narrow query from a bug.
+  var msg = document.getElementById('nomatch');
+  if (msg) {
+    if (on && !document.querySelector('tr.frow:not([style*="none"])')) {
+      msg.textContent = 'No clients match \\u201c' + input.value.trim() + '\\u201d.';
+      msg.hidden = false;
+    } else {
+      msg.hidden = true;
+    }
+  }
   markScrollables();  // hiding rows can change a table's width and overflow
 }, false);
 

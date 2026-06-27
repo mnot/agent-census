@@ -640,6 +640,8 @@ def render_report_html(
         '<input class="filter" type="search" '
         'placeholder="filter all clients by IP, User-Agent, AS name, or tag…" '
         'aria-label="filter clients">',
+        # Filled and shown by the filter script when a query hides every client.
+        '<p id="nomatch" class="muted" role="status" hidden></p>',
     ]
     for kind in KIND_ORDER:
         rollup = result.rollups.get(kind)

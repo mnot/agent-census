@@ -89,6 +89,14 @@ examples:
 """
 
 
+def _percent(value: str) -> float:
+    """An argparse type for a 0-100 percentage, rejecting out-of-range input upfront."""
+    pct = float(value)
+    if not 0.0 <= pct <= 100.0:
+        raise argparse.ArgumentTypeError(f"must be between 0 and 100, got {pct:g}")
+    return pct
+
+
 def _add_shared(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "logfiles",
@@ -277,6 +285,14 @@ def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argumen
         default=1,
         metavar="N",
         help="ignore clients below N requests (default: 1)",
+    )
+    analyze_out.add_argument(
+        "--breakout-min-pct",
+        type=_percent,
+        default=5.0,
+        metavar="PCT",
+        help="HTML report: smallest folded datacentre offered in the network "
+        "table's break-out selector, as a %% of total traffic (default: 5)",
     )
 
     calibrate = sub.add_parser(
@@ -649,6 +665,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     robots_note=ctx.robots_note,
                     elapsed=ctx.elapsed,
                     country_flags=ctx.country_flags,
+                    breakout_min_share=args.breakout_min_pct / 100,
                 )
         elif args.command == "calibrate":
             text = render_calibration(ctx.result, source=_source_label(args), top=args.top)

@@ -166,6 +166,39 @@ def test_network_table_renders_with_providers(
     assert "rgba(220,38,38" in html  # red heat on the total row/column
 
 
+def test_network_table_offers_breakout_for_folded_datacenters(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Eight distinct datacenter providers (one per /8) so two fold into Other;
+    # the HTML should offer a break-out selector and tag the Other column.
+    monkeypatch.setattr(pipeline, "datacenter_subnet", lambda ip: None)
+    monkeypatch.setattr(
+        pipeline, "datacenter_provider", lambda ip: f"Provider {int(ip.split('.')[0])}"
+    )
+    # One provider per /8 (octets 11..18). Volume decreases with the octet so the
+    # two smallest providers (17, 18) are the ones that fold into Other.
+    weighted = []
+    for rank, octet in enumerate(range(11, 19)):
+        line = (
+            f"{octet}.0.0.1 - - [10/Oct/2023:12:00:00 +0000] "
+            '"GET /p HTTP/1.1" 200 100 "-" "curl/8.0"'
+        )
+        weighted.extend([line] * (10 - rank))
+    log = tmp_path / "netmany.log"
+    log.write_text("\n".join(weighted) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
+    html = render_report_html(result, source="x")
+
+    assert "id='netbreakout'" in html  # the selector
+    assert "id='netbreakdata'" in html  # embedded per-provider data
+    assert "id='netotherhd'" in html  # Other header is tagged for relabelling
+    assert "othercol" in html and "othertot" in html  # Other cells are tagged
+    assert "data-kind=" in html and "data-agg=" in html  # break-out lookup data
+    # A folded provider appears as an option in the selector.
+    assert "<option value='Provider 18'>" in html
+
+
 def test_filter_haystack_includes_as_name() -> None:
     # A filterable (disclosure) row carries the shown AS name in data-filter so the
     # search box matches on it, alongside IP and User-Agent.

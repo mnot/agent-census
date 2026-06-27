@@ -10,7 +10,7 @@ from agent_census.model import (
     Kind,
 )
 from agent_census.pipeline import AnalysisResult, IdentityStats, SkipStats
-from agent_census.report import select_profiles
+from agent_census.report import render_inspect, render_inspect_html, select_profiles
 
 
 def _profile(ip: str, kind: Kind, network: str) -> ClientProfile:
@@ -52,3 +52,43 @@ def test_network_and_kind_compose_to_one_cell() -> None:
 def test_network_filter_matches_residential() -> None:
     sel = select_profiles(RESULT, client=None, kind=None, network="residential")
     assert [p.client_id.ip for p in sel] == ["b"]
+
+
+def _classified() -> ClientProfile:
+    """A client whose features earn several tags, classified as inspect would see it."""
+    from agent_census.classify import classify_client
+
+    feats = ClientFeatures(
+        request_count=40,
+        distinct_paths=10,
+        status_counts={200: 40},
+        rate_regularity=0.05,
+        head_ratio=0.5,
+        ua_empty=False,
+        user_agent="python-requests/2.31.0",
+    )
+    cls = classify_client(feats, datacenter=True, keep_signals=True)
+    return ClientProfile(
+        client_id=ClientId(ip="203.0.113.9", user_agent=feats.user_agent),
+        entries=(),
+        features=feats,
+        classification=cls,
+        network="Example Hosting",
+    )
+
+
+def test_inspect_shows_evidence_for_every_tag() -> None:
+    # The whole point of inspect: each tag a client carries must be backed by a
+    # concrete, visible reason -- in both renderers.
+    profile = _classified()
+    assert profile.classification.tags  # the fixture earns some tags
+
+    md = render_inspect([profile])
+    for tag in profile.classification.tags:
+        line = next((ln for ln in md.splitlines() if ln.startswith(f"- `{tag}`")), None)
+        assert line is not None, f"{tag} missing from inspect output"
+        assert "—" in line and line.split("—", 1)[1].strip(), f"{tag} shown without evidence"
+
+    html = render_inspect_html([profile])
+    for tag in profile.classification.tags:
+        assert f">{tag}</span>" in html  # rendered as a tag chip in the Tags section

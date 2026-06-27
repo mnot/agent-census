@@ -354,6 +354,53 @@ def make_collector() -> ReferenceCollector:
     return ReferenceCollector(_POOLS)
 
 
+def _fmt_metric(metric: str, value: float) -> str:
+    """A site-relative metric value rendered for inspect evidence."""
+    if metric == "rate":
+        return f"peak {value:,.0f} req/min"
+    if metric == "bytes":
+        return f"mean {value:,.0f} B/response"
+    if metric == "breadth":
+        return f"breadth {value:.0%}"
+    if metric == "duration":
+        return f"span {value:,.0f}s"
+    return f"{value:g}"  # pragma: no cover
+
+
+def _relative_evidence(metric: str, value: float, threshold: MetricThreshold, pool_n: int) -> str:
+    """Why a site-relative tag fired: this client's value vs. the site's browser bar."""
+    val, bound = _fmt_metric(metric, value), _fmt_metric(metric, threshold.value)
+    if threshold.fallback:
+        return f"{val} exceeds the absolute floor {bound} (too few reference browsers to calibrate)"
+    return f"{val} exceeds this site's browser bar {bound} (from {pool_n:,} reference browser(s))"
+
+
+def relative_tag_evidence(
+    features: ClientFeatures,
+    kind: Kind,
+    config: RelativeTagConfig,
+    calibration: ReferenceCalibration,
+) -> dict[str, str]:
+    """Site-relative tags a client of ``kind`` earns, each paired with its evidence.
+
+    The single source for both :func:`relative_tags` and inspect mode's per-tag
+    rationale, so the tag and the value-vs-threshold reason can't drift apart.
+    """
+    rule = config.for_kind(kind)
+    pool_n = calibration.pool_sizes.get(rule.reference, 0)
+    out: dict[str, str] = {}
+    for metric in rule.metrics:
+        if not _gated(features, metric):
+            continue
+        threshold = calibration.threshold(rule.reference, metric)
+        if threshold is None:
+            continue
+        value = _metric_value(features, metric)
+        if value > threshold.value:
+            out[_METRIC_TAGS[metric]] = _relative_evidence(metric, value, threshold, pool_n)
+    return out
+
+
 def relative_tags(
     features: ClientFeatures,
     kind: Kind,
@@ -361,34 +408,34 @@ def relative_tags(
     calibration: ReferenceCalibration,
 ) -> frozenset[str]:
     """The site-relative tags a client of ``kind`` earns, per its class config."""
-    rule = config.for_kind(kind)
-    out: set[str] = set()
-    for metric in rule.metrics:
-        if not _gated(features, metric):
-            continue
-        threshold = calibration.threshold(rule.reference, metric)
-        if threshold is None:
-            continue
-        if _metric_value(features, metric) > threshold.value:
-            out.add(_METRIC_TAGS[metric])
-    return frozenset(out)
+    return frozenset(relative_tag_evidence(features, kind, config, calibration))
 
 
 def tag_profile(
     profile: ClientProfile,
     config: RelativeTagConfig,
     calibration: ReferenceCalibration,
+    *,
+    keep_evidence: bool = True,
 ) -> ClientProfile:
     """Return ``profile`` with any site-relative tags folded into its classification.
 
     A multi-client display fold (``profile.is_aggregate``) is left untouched: its
     rate / bytes / breadth / duration are the union of many independent clients,
     not one client's magnitudes, so a site-relative tag on it would be an artifact.
+
+    ``keep_evidence`` carries the per-tag rationale onto the classification for
+    inspect mode; the bulk ``analyze`` path passes ``False`` to hold no extra
+    strings, mirroring the combiner's ``keep_signals``.
     """
     if profile.is_aggregate:
         return profile
-    extra = relative_tags(profile.features, profile.classification.primary, config, calibration)
+    extra = relative_tag_evidence(
+        profile.features, profile.classification.primary, config, calibration
+    )
     if not extra:
         return profile
-    classification = replace(profile.classification, tags=profile.classification.tags | extra)
+    cls = profile.classification
+    tag_evidence = cls.tag_evidence + (tuple(extra.items()) if keep_evidence else ())
+    classification = replace(cls, tags=cls.tags | set(extra), tag_evidence=tag_evidence)
     return replace(profile, classification=classification)

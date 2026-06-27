@@ -16,6 +16,7 @@ from agent_census.classify.relative import (
     load_relative_tags,
     make_collector,
     parse_relative_tags,
+    relative_tag_evidence,
     relative_tags,
     tag_profile,
 )
@@ -144,6 +145,17 @@ def test_high_rate_tagged_above_threshold() -> None:
     )
 
 
+def test_relative_tag_evidence_matches_tags_and_cites_threshold() -> None:
+    # Inspect mode needs a reason for each magnitude tag; the evidence keys must be
+    # exactly the tags, and each reason names the client's value and the bar it cleared.
+    cal = _calibrate([10] * 5, PARAMS)  # thin -> floor 60 req/min
+    evidence = relative_tag_evidence(browser(100), Kind.UNKNOWN, load_relative_tags(), cal)
+    assert set(evidence) == relative_tags(browser(100), Kind.UNKNOWN, load_relative_tags(), cal)
+    assert "high-rate" in evidence
+    why = evidence["high-rate"]
+    assert "100" in why and "60" in why  # the client's peak vs. the floor it exceeded
+
+
 def test_below_floor_not_tagged() -> None:
     cal = _calibrate([10] * 5, PARAMS)
     assert relative_tags(browser(50), Kind.UNKNOWN, load_relative_tags(), cal) == frozenset()
@@ -208,7 +220,9 @@ def test_tag_profile_preserves_existing_tags() -> None:
         client_id=ClientId(ip="192.0.2.9"),
         entries=(),
         features=browser(100),
-        classification=Classification(primary=Kind.UNKNOWN, confidence=0.5, tags=frozenset({"datacenter"})),
+        classification=Classification(
+            primary=Kind.UNKNOWN, confidence=0.5, tags=frozenset({"datacenter"})
+        ),
     )
     tagged = tag_profile(profile, load_relative_tags(), cal)
     assert tagged.classification.tags == frozenset({"datacenter", "high-rate"})

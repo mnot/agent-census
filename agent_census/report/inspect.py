@@ -7,7 +7,7 @@ robots-compliance finding, and the actual requests.
 
 from __future__ import annotations
 
-from ..model import ClientProfile, Kind
+from ..model import Classification, ClientProfile, Kind
 from ..pipeline import AnalysisResult
 from .format import (
     client_label,
@@ -18,6 +18,7 @@ from .format import (
     human_duration,
     kind_label,
     md_escape,
+    ordered_tags,
     truncate,
 )
 
@@ -62,7 +63,6 @@ def _identity_block(profile: ClientProfile) -> list[str]:
         f"## {md_escape(client_label(profile))}",
         "",
         f"- **Classified:** `{kind_label(cls.primary)}` (confidence {cls.confidence:.0%})",
-        f"- **Tags:** {', '.join(sorted(cls.tags)) or '–'}",
         f"- **IP:** {profile.client_id.ip}"
         + (f" ({len(profile.member_ips)} IPs merged)" if profile.member_ips else ""),
         f"- **Network:** {profile.network}" if profile.network else "- **Network:** –",
@@ -77,20 +77,34 @@ def _identity_block(profile: ClientProfile) -> list[str]:
 
 
 def _rationale_block(profile: ClientProfile) -> list[str]:
+    cls = profile.classification
     lines = ["### Why this classification", ""]
-    signals = sorted(profile.classification.all_signals, key=lambda s: s.confidence, reverse=True)
+    signals = sorted(cls.all_signals, key=lambda s: s.confidence, reverse=True)
     if not signals:
         lines.append("No classifier produced a signal — left UNKNOWN.")
-        lines.append("")
-        return lines
     for signal in signals:
-        marker = "→" if signal.kind is profile.classification.primary else " "
+        marker = "→" if signal.kind is cls.primary else " "
         lines.append(
             f"- {marker} **{kind_label(signal.kind)}** ({signal.confidence:.0%}) "
             f"— {signal.classifier}"
         )
         for item in signal.evidence:
             lines.append(f"    - {md_escape(item)}")
+    lines.append("")
+    lines += _tags_evidence_block(cls)
+    return lines
+
+
+def _tags_evidence_block(cls: Classification) -> list[str]:
+    """Every tag with the concrete measurement that earned it (the second axis of
+    the verdict, alongside the kind signals above)."""
+    if not cls.tags:
+        return ["**Tags:** –", ""]
+    evidence = dict(cls.tag_evidence)
+    lines = ["**Tags**", ""]
+    for tag in ordered_tags(cls.tags):
+        why = evidence.get(tag)
+        lines.append(f"- `{tag}` — {md_escape(why)}" if why else f"- `{tag}`")
     lines.append("")
     return lines
 

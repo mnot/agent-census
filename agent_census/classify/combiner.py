@@ -18,7 +18,7 @@ from ..model import (
     Kind,
     Signal,
 )
-from .tags import derive_tags, impersonation, looks_like_fake_browser
+from .tags import derive_tag_evidence, impersonation, looks_like_fake_browser
 
 # Tie-break order when two kinds share the top confidence: earlier wins.
 _PRIORITY: tuple[Kind, ...] = (
@@ -98,10 +98,13 @@ def combine(
     if datacenter and Kind.BROWSER in by_label:
         by_label[Kind.BROWSER] = round(max(0.0, by_label[Kind.BROWSER] - 0.1), 3)
 
-    tags = derive_tags(
+    tag_ev = derive_tag_evidence(
         features, compliance, verification, datacenter=datacenter, aggregate=aggregate
     )
+    tags = set(tag_ev)
     stored = tuple(signals) if keep_signals else ()
+    # Per-tag evidence is inspect-only detail, held on the same terms as signals.
+    tag_evidence = tuple(tag_ev.items()) if keep_signals else ()
 
     # Impersonation is decisive: a client faking a declared identity is an
     # impersonator, whatever else it looks like.
@@ -113,14 +116,21 @@ def combine(
             tags=frozenset(tags),
             evidence=why,
             all_signals=stored,
+            tag_evidence=tag_evidence,
         )
 
     if not by_label or max(by_label.values()) < unknown_threshold:
-        return _below_threshold(features, tags, tuple(signals), stored, datacenter, by_label)
+        return _below_threshold(
+            features, tags, tag_evidence, tuple(signals), stored, datacenter, by_label
+        )
 
     primary = _pick(by_label)
     if primary is Kind.FEED_READER and _fetches_non_feeds(features):
         tags.add("fetches-non-feeds")
+        if keep_signals:
+            tag_evidence += (
+                ("fetches-non-feeds", "a feed reader that also requested non-feed resources"),
+            )
     evidence = tuple(e for s in signals if s.kind is primary for e in s.evidence)
     return Classification(
         primary=primary,
@@ -128,12 +138,14 @@ def combine(
         tags=frozenset(tags),
         evidence=evidence,
         all_signals=stored,
+        tag_evidence=tag_evidence,
     )
 
 
 def _below_threshold(
     features: ClientFeatures,
     tags: set[str],
+    tag_evidence: tuple[tuple[str, str], ...],
     signals: tuple[Signal, ...],
     stored: tuple[Signal, ...],
     datacenter: bool,
@@ -148,6 +160,7 @@ def _below_threshold(
             tags=frozenset(tags),
             evidence=(evidence,),
             all_signals=stored,
+            tag_evidence=tag_evidence,
         )
 
     # A browser UA from a hosting IP with no browser behaviour is automation in disguise.
@@ -180,6 +193,7 @@ def _below_threshold(
         tags=frozenset(tags),
         evidence=_top_evidence(signals),
         all_signals=stored,
+        tag_evidence=tag_evidence,
     )
 
 

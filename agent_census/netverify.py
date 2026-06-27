@@ -121,6 +121,15 @@ def _reverse_dns(ip: str) -> tuple[str | None, bool]:
     return result if result is not None else (None, False)
 
 
+def _is_ip(value: str) -> bool:
+    """Whether ``value`` is a single parseable IP address (not a subnet/CIDR)."""
+    try:
+        ipaddress.ip_address(value)
+        return True
+    except ValueError:
+        return False
+
+
 def _norm_ip(ip: str) -> str:
     """Canonical text form of an IP, so non-canonical IPv6 spellings (e.g.
     ``2001:0db8:0:0:0:0:0:1`` vs ``2001:db8::1``) compare equal. Returns the
@@ -298,6 +307,14 @@ class BotVerifier:
         if known is None:
             return BotVerification(VerificationStatus.NOT_APPLICABLE)
         substring, spec = known
+        if not _is_ip(ip):
+            # The identity key is not a single address -- e.g. the ip_ua_subnet
+            # strategy keys by subnet. Range and rDNS checks can't run on a CIDR,
+            # so report it inconclusive rather than failing it as an impersonator.
+            return BotVerification(
+                VerificationStatus.UNVERIFIED,
+                evidence=(f"cannot verify {substring}: {ip!r} is not a single IP address",),
+            )
         has_ranges = bool(spec.ranges or spec.ranges_url)
         has_domains = bool(spec.domains)
         if not (has_ranges or has_domains):

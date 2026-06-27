@@ -175,8 +175,11 @@ def _fingerprint_tags(features: ClientFeatures, aggregate: bool) -> dict[str, st
             "makes conditional requests"
         )
     elif features.holds_no_cache:
+        # holds_no_cache fires on re-fetches-without-304s or sheer volume-without-304s,
+        # so lead with the 304 fact -- it reads right even when re-fetches are 0.
         tags["lacks-cache"] = (
-            f"{count - features.distinct_paths:,} re-fetches across {count:,} requests, no 304s"
+            f"never a 304 across {count:,} requests "
+            f"({count - features.distinct_paths:,} re-fetched)"
         )
 
     # A headless / automation-driven browser engine: renders (so it can load

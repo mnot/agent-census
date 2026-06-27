@@ -30,7 +30,7 @@ NET_SCRIPT = """
         var v=c._v;
         c.textContent = (mode==='count') ? (v?v.toLocaleString():'\\u2013')
                                          : ((v&&tot)?Math.round(v/tot*100)+'%':'\\u2013');
-        if(v>0&&mx>0) c.style.background='rgba(96,165,250,'+(v/mx*0.8).toFixed(3)+')';
+        if(v>0&&mx>0) c.style.background='rgb(var(--heat) / '+(v/mx*0.8).toFixed(3)+')';
         if(v>0&&v===mx) c.style.fontWeight='500';
       });
     });

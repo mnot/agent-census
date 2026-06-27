@@ -130,6 +130,31 @@ def test_folded_single_entry_shows_ips_and_sample_ua() -> None:
     assert "Sberbank (3 IPs)" in text and "inspect --kind ai_crawler" in text
 
 
+def test_collapsed_group_names_single_shared_asn() -> None:
+    # Every member with an ASN shares the same one -> name it instead of "1 ASNs".
+    profiles = [
+        _profile("9.9.9.1", "bot/1", requests=6, as_org="Acme", as_number="64500"),
+        _profile("9.9.9.2", "bot/1", requests=4, as_org="Acme", as_number="64500"),
+    ]
+    md = "\n".join(md_section(Kind.SCRAPER, profiles, _rollup(2, 10), top=5))
+    assert "2 IPs · Acme (AS64500)" in md
+    assert "1 ASNs" not in md  # the bare count is replaced by the AS name
+
+    html = html_section(Kind.SCRAPER, profiles, _rollup(2, 10), top=5)
+    assert "2 IPs" in html and "Acme (AS64500)" in html
+    assert "1 ASNs" not in html
+
+
+def test_collapsed_group_with_several_asns_keeps_the_count() -> None:
+    profiles = [
+        _profile("9.9.9.1", "bot/1", requests=6, as_org="Acme", as_number="64500"),
+        _profile("9.9.9.2", "bot/1", requests=4, as_org="Other", as_number="64501"),
+    ]
+    md = "\n".join(md_section(Kind.SCRAPER, profiles, _rollup(2, 10), top=5))
+    assert "2 IPs · 2 ASNs" in md  # no single AS to name -> the count stays
+    assert "AS64500" not in md
+
+
 def test_typical_conduct_hoisted_to_header_and_dropped_from_rows() -> None:
     from agent_census.report.aggregate import typical_conduct
 

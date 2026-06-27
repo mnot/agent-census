@@ -694,7 +694,10 @@ def _actor_tbody(
         )
     cls = actor.lead.classification
     _, _, ua = client_id_parts(actor.lead)
-    spread = actor_spread(actor.distinct_ips, actor.distinct_asns)
+    shared = actor.shared_asn
+    spread = actor_spread(actor.distinct_ips, 0 if shared else actor.distinct_asns)
+    # One AS across the fold -> name it (greyed, like the per-client AS) instead of "1 ASNs".
+    asn_html = f" <span class='cid-as'>{_esc(as_display(*shared))}</span>" if shared else ""
     evidence = _esc(truncate(top_evidence(actor.lead)))
     row_attrs = "class='asum'"
     if filterable:
@@ -705,7 +708,7 @@ def _actor_tbody(
         row_attrs = f"class='asum frow' data-filter=\"{_esc(haystack)}\""
     summary = (
         f"<tr {row_attrs}>"
-        f"<td class='cid'><span class='tri'>▶</span>{flag}{_esc(spread)}"
+        f"<td class='cid'><span class='tri'>▶</span>{flag}{_esc(spread)}{asn_html}"
         f'<span class="actor-ua mono">{_esc(ua or "–")}</span></td>'
         f"<td class='num'>{actor.requests:,}</td>"
         f"<td class='num'>{human_bytes(actor.total_bytes)}</td>"

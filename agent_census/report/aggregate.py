@@ -104,6 +104,24 @@ class ActorGroup:
     def distinct_asns(self) -> int:
         return len({m.features.as_number for m in self.members if m.features.as_number})
 
+    @property
+    def shared_asn(self) -> tuple[str | None, str | None] | None:
+        """The one ``(org, number)`` every member with an ASN shares, else ``None``.
+
+        ``None`` unless the members carrying an AS all carry the *same* one -- so a
+        collapsed group can name its origin AS when it has just one, but stays silent
+        when they span several (or none).
+        """
+        numbers = {m.features.as_number for m in self.members if m.features.as_number}
+        if len(numbers) != 1:
+            return None
+        (number,) = numbers
+        org = next(
+            (m.features.as_org for m in self.members if m.features.as_number == number),
+            None,
+        )
+        return org, number
+
 
 def typical_conduct(
     profiles: Sequence[ClientProfile], *, min_clients: int = 3, threshold: float = 0.8

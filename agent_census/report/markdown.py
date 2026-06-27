@@ -16,6 +16,7 @@ from .aggregate import (
 )
 from .format import (
     actor_spread,
+    as_display,
     client_id_parts,
     client_label,
     fmt_ts,
@@ -169,7 +170,10 @@ def _actor_label(actor: ActorGroup, flags: CountryFlags) -> str:
             return _flag(lead, flags) + md_escape(label[:140])
         return _client_label(lead, flags)
     _, _, ua = client_id_parts(actor.lead)
-    spread = actor_spread(actor.distinct_ips, actor.distinct_asns)
+    shared = actor.shared_asn
+    spread = actor_spread(actor.distinct_ips, 0 if shared else actor.distinct_asns)
+    if shared:  # one AS across the fold -> name it instead of the bare "1 ASNs" count
+        spread += f" · {as_display(*shared)}"
     return _flag(actor.lead, flags) + md_escape(f"{spread} | {ua if ua is not None else '-'}"[:140])
 
 

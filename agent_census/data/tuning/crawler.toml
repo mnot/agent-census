@@ -1,0 +1,37 @@
+# Generic crawler tuning (see classify/crawler.py). A crawler walks the site
+# following links at a steady pace, without a browser's sub-resource co-loading.
+# Each block adds its `weight` when its threshold is met; co-load and link-following
+# cutoffs come from shared.toml.
+
+[broad_coverage]
+# Many distinct paths, most of them unique: a wide walk over the site.
+distinct_paths_min = 20
+coverage_min = 0.7
+weight = 0.3
+
+[steady_cadence]
+# Regular spacing over enough requests to judge it -- a crawler's even pace.
+regularity_max = 0.5
+min_requests = 10
+weight = 0.2
+
+[follows_links]
+# Requests follow on-site links (above shared.toml browser_shape.follow_ratio_min).
+weight = 0.15
+
+[declared_bot]
+# A self-declared bot ("MyBot/1.0 (+url)"). On its own it earns `weight`; if it also
+# fetches pages with no browser co-loading (below shared.toml browser_shape
+# .no_coload_max) over at least `min_requests`, it earns the broad or modest bonus
+# depending on whether it walks `broad_distinct_paths_min` distinct paths.
+weight = 0.15
+min_requests = 4
+broad_distinct_paths_min = 20
+broad_weight = 0.3
+modest_weight = 0.2
+
+[successful_pages]
+# Mostly successful page fetches with no browser co-loading: page-fetching, not
+# browsing. Co-load cutoff from shared.toml browser_shape.no_coload_max.
+ratio_2xx_min = 0.7
+weight = 0.1

@@ -1,0 +1,47 @@
+# Thresholds used by more than one classifier or tag. They live here, once, so that
+# tuning "what counts as browser-like" or "what counts as a 404 storm" moves every
+# consumer together instead of drifting between private copies. A threshold only one
+# classifier uses stays in that classifier's own file; this file is strictly the
+# genuinely-shared ones.
+
+[verdict]
+# The confidence a kind must reach to win; below it the honest answer is UNKNOWN.
+# Also the level a clean browser-shaped client is floored to, so a brief visit still
+# clears the bar. (Used by the combiner and the browser classifier.)
+unknown_threshold = 0.45
+
+[browser_shape]
+# What counts as browser-like behaviour, defined once for the browser classifier,
+# the loads-assets / follows-links / no-assets / cold tags, the generic crawler and
+# scraper, and the reference-browser predicate that calibrates the relative tags.
+coload_ratio_min = 0.4   # at/above this share of pages co-load sub-resources: browser-like
+no_coload_max = 0.1      # below this: essentially no sub-resource co-loading
+follow_ratio_min = 0.3   # at/above this share follow on-site links: browser-like
+no_follow_max = 0.1      # below this: hits URLs cold, no on-site link-following
+
+[cadence]
+# Inter-arrival regularity (coefficient of variation) bands, shared by the browser
+# classifier and the metronomic / bursty / steady tags. Below `metronomic_max` is
+# clockwork automation; above `bursty_min` is human-irregular; between is steady.
+metronomic_max = 0.15
+bursty_min = 0.6
+
+[head_traffic]
+# A HEAD share above this is notable -- browsers issue GET, so it argues against a
+# browser and earns the uses-HEAD tag. (Feed readers and monitors set their own,
+# higher, HEAD thresholds in their files; this is the generic "notable" line.)
+notable_ratio = 0.1
+
+[fabricated_referer]
+# A Referer equal to the requested URL is impossible from real navigation. At or
+# above this share, with at least `min_requests` requests, it reads as faked organic
+# traffic -- caps the browser verdict and earns the forged-referer tag.
+self_referer_min = 0.5
+min_requests = 4
+
+[storm_404]
+# A 404 rate above `ratio_min` spread across at least `distinct_paths_min` distinct
+# missing paths is probing, not a few broken links. Used by the vuln-scanner
+# classifier and the 404-storm tag.
+ratio_min = 0.6
+distinct_paths_min = 15

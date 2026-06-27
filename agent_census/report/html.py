@@ -1,20 +1,23 @@
 """Render analysis results and inspection traces as a self-contained HTML page.
 
 The page is built from the same structured data the Markdown renderer uses, with
-a small built-in template (:data:`_CSS` + :func:`_page`) so the output is one
-file you can open in a browser -- no external assets, no dependencies.
+a small built-in template (:func:`_page`, styled and scripted from the CSS/JS in
+:mod:`._assets`) so the output is one file you can open in a browser -- no
+external assets, no dependencies.
 """
 
 from __future__ import annotations
 
 import html
-from functools import lru_cache
+import json
 
 from .. import __version__
-from ..dataload import load_egress_networks
-from ..model import ClientProfile, Kind
+from ..model import Classification, ClientProfile, Kind
 from ..pipeline import OTHER_HOSTING, RESIDENTIAL_NETWORK, AnalysisResult, KindRollup
+from ._assets import CSS, SCRIPT
+from ._netscript import NET_SCRIPT
 from .aggregate import (
+    BREAKOUT_MIN_SHARE,
     KIND_BLURB,
     KIND_ORDER,
     ActorGroup,
@@ -29,6 +32,7 @@ from .format import (
     as_display,
     client_id_parts,
     client_label,
+    count,
     elide_ua,
     feature_rows,
     fmt_ts,
@@ -36,154 +40,62 @@ from .format import (
     human_duration,
     kind_label,
     ordered_tags,
+    tag_title,
     top_evidence,
     truncate,
 )
 from .geo import CountryFlags
 from .inspect import ROLLUP_MIN_CLIENTS
 
+# Kind badge fills. White-text badges, so each fill is held at >=4.5:1 against
+# white (deepened along OKLCH lightness from its original hue where needed);
+# the hue family -- the actual signal -- is preserved.
 _KIND_COLORS: dict[Kind, str] = {
     Kind.BROWSER: "#2563eb",
-    Kind.APP: "#6366f1",
-    Kind.CRAWLER: "#0891b2",
-    Kind.SEARCH_ENGINE: "#16a34a",
+    Kind.APP: "#6062ed",
+    Kind.CRAWLER: "#007d9e",
+    Kind.SEARCH_ENGINE: "#00862e",
     Kind.ARCHIVER: "#047857",
-    Kind.SOCIAL_PREVIEW: "#0ea5e9",
+    Kind.SOCIAL_PREVIEW: "#0079bb",
     Kind.AI_CRAWLER: "#7c3aed",
-    Kind.SEO_MARKETING: "#ca8a04",
+    Kind.SEO_MARKETING: "#a36600",
     Kind.DATA_HARVESTER: "#a16207",
     Kind.IMPERSONATOR: "#b91c1c",
-    Kind.SCRAPER: "#d97706",
+    Kind.SCRAPER: "#b85900",
     Kind.VULN_SCANNER: "#dc2626",
-    Kind.SPOOFED_BROWSER: "#ea580c",
-    Kind.SPAM_BOT: "#db2777",
-    Kind.FEED_READER: "#65a30d",
-    Kind.MONITOR: "#0d9488",
+    Kind.SPOOFED_BROWSER: "#d14000",
+    Kind.SPAM_BOT: "#d92476",
+    Kind.FEED_READER: "#478200",
+    Kind.MONITOR: "#008277",
     Kind.AUTOMATION: "#78716c",
     Kind.UNKNOWN: "#6b7280",
 }
 
 # Tags that deserve a non-neutral colour.
+# Signal-tag fills. White text again, so each colour is held at >=4.5:1 against
+# white; hues match their kind-badge counterparts (e.g. 'verified' shares the
+# search-engine green, 'vpn' the monitor teal) so the wheel stays coherent.
 _TAG_COLORS: dict[str, str] = {
-    "verified": "#16a34a",  # confirmed identity -> strong green
-    "asn-associated": "#059669",  # origin AS corroborates the declared crawler -> green
+    "verified": "#00862e",  # confirmed identity -> strong green
+    "asn-associated": "#008459",  # origin AS corroborates the declared crawler -> green
     "unverified": "#b45309",  # declared crawler we had info for but couldn't confirm -> amber
     "impersonator": "#dc2626",
-    "ignores-robots": "#d97706",
+    "ignores-robots": "#b85900",
     "probe-paths": "#dc2626",  # requested known-vulnerable paths -> red
     "traversal": "#dc2626",  # path-traversal / injection markers -> red
     "encoding-evasion": "#b91c1c",  # deliberate encoding evasion -> deep red
-    "404-storm": "#d97706",
+    "404-storm": "#b85900",
     "ancient-browser-ua": "#dc2626",  # years-stale browser version -> almost certainly spoofed
     "impossible-browser-ua": "#dc2626",  # version newer than exists -> forged UA
     "datacenter": "#9333ea",  # origin is hosting, not an eyeball network -> purple
-    "ua-rotating": "#d97706",  # many UAs from a hosting/non-browser source -> amber
+    "ua-rotating": "#b85900",  # many UAs from a hosting/non-browser source -> amber
     "forged-referer": "#dc2626",  # Referer faked to mimic navigation -> red
-    "icloud-private-relay": "#0284c7",  # privacy relay; a positive browser signal -> blue
+    "icloud-private-relay": "#0079bc",  # privacy relay; a positive browser signal -> blue
     "tor-exit": "#6d28d9",  # Tor exit node; anonymised egress -> violet
-    "vpn": "#0d9488",  # consumer VPN egress -> teal
+    "vpn": "#008277",  # consumer VPN egress -> teal
     "corporate-proxy": "#7c3aed",  # SASE / corporate egress -> violet
     # 'shared-ip' is left neutral (grey): many UAs but a benign shared egress.
 }
-
-# Hover descriptions for the tags (rendered as a native title= tooltip). Egress
-# network tags are described from the data file, so new networks get tooltips
-# without touching this table.
-_TAG_HELP: dict[str, str] = {
-    "datacenter": "Source IP is in a known datacenter / cloud hosting range, "
-    "not a consumer or ISP network.",
-    "bursty": "Irregular, bursty request timing — human-like, not clockwork.",
-    "steady": "Moderately regular request timing.",
-    "loads-assets": "After fetching pages it pulled their sub-resources (CSS/JS/images) — "
-    "the browser fingerprint.",
-    "no-assets": "Fetched HTML pages but never their sub-resources — not rendering them "
-    "like a browser.",
-    "follows-links": "Often arrives at a page via a Referer it fetched earlier — on-site "
-    "navigation.",
-    "cold": "Requests pages cold, without following on-site links.",
-    "browser-ua": "User-Agent matches a real browser profile (Mozilla + a layout engine), but "
-    "carries no readable version to age.",
-    "generic-ua": "User-Agent is a generic HTTP library/tool (curl, python-requests…), not a "
-    "named agent.",
-    "bot-ua": "User-Agent self-identifies as a bot, but not one we recognise — obscure, new, "
-    "or fabricated.",
-    "post-heavy": "Most requests are POSTs — form/submission traffic, e.g. comment or login spam.",
-    "has-cache": "Received 304 Not Modified responses — makes conditional requests "
-    "and holds a real cache, the mark of a browser or a polite poller.",
-    "lacks-cache": "Re-fetches the same URLs (or makes many requests) yet never receives "
-    "a 304 — makes no use of HTTP caching / revalidation, unlike a browser or polite poller.",
-    "singleton": "Made exactly one request — too little on its own to characterise, "
-    "so the kind leans on its UA and origin alone.",
-    "headless-browser": "User-Agent names a headless / automation-driven browser engine "
-    "(HeadlessChrome, PhantomJS, Puppeteer…) — a real engine, but machine-driven.",
-    "uses-HEAD": "Issues HEAD requests for more than an incidental share of its traffic "
-    "— browsers fetch with GET, so this points to a monitor, link-checker, or other bot.",
-    "current-browser-ua": "Browser User-Agent whose version is current for when the client "
-    "was active — consistent with a real, auto-updating browser.",
-    "stale-browser-ua": "Browser User-Agent whose version is well behind the release cadence "
-    "for its active period; unusual for an auto-updating browser.",
-    "ancient-browser-ua": "Browser User-Agent whose version is years out of date. Chromium and "
-    "Firefox auto-update, so this is almost always a frozen, spoofed User-Agent.",
-    "impossible-browser-ua": "Browser User-Agent claiming a version newer than any that has "
-    "been released for its active period — a forged User-Agent.",
-    "checked-robots": "Requested /robots.txt at some point.",
-    "no-user-agent": "Sent no User-Agent header.",
-    "ua-rotating": "Many distinct User-Agents from one IP, paired with a hosting origin "
-    "or non-browser behaviour — likely UA rotation to evade limits.",
-    "shared-ip": "Many distinct User-Agents from one IP but behaving normally — a shared "
-    "egress such as NAT, VPN, proxy, or carrier gateway.",
-    "ignores-robots": "Requested paths disallowed by the applicable robots.txt group.",
-    "verified": "Reverse/forward DNS or a published IP range confirmed the declared "
-    "crawler identity.",
-    "asn-associated": "User-Agent names a known crawler and its origin AS is one that "
-    "crawler is configured to use -- corroboration, a lighter check than DNS / IP-range "
-    "verification (which take precedence when available).",
-    "declares-known-bot": "User-Agent names a known crawler (identity verified separately).",
-    "unverified": "Declared a crawler we could check by reverse DNS or IP range, but the check "
-    "didn't confirm it — it failed, or was inconclusive (a DNS timeout, unfetchable ranges). "
-    "The mirror of 'verified'; the kind and verdict are unchanged.",
-    "asn-attributed": "Identity is the origin AS itself -- an asn_primary network that "
-    "crawls behind spoofed User-Agents, recognised by AS number rather than by its UA.",
-    "probe-paths": "Requested known-vulnerable / probe paths (.env, /wp-login.php, .git/config…) "
-    "— a burst of them, or a meaningful share of its traffic.",
-    "traversal": "Used path-traversal or injection markers in the request path (../, injection "
-    "patterns) — no legitimate use.",
-    "encoding-evasion": "Used double or overlong percent-encoding — a deliberate attempt to slip "
-    "past filters / a WAF.",
-    "exotic-method": "Used uncommon HTTP methods (PUT/DELETE/PROPFIND/CONNECT…) — typical of "
-    "scanners and WebDAV probes, not browsers.",
-    "404-storm": "A high share of 404s spread across many distinct paths — scanning for "
-    "content, or a broken integration.",
-    "metronomic": "Near-constant intervals between requests — clockwork timing characteristic "
-    "of automation, not a human.",
-    "forged-referer": "Sends a Referer equal to the requested URL — fabricated "
-    "navigation, not something a real browser produces.",
-    "fetches-non-feeds": "A feed reader that also requested non-feed resources.",
-    "high-rate": "Peak requests-per-minute well above this site's real browsers — a "
-    "request rate no human-driven browser here reaches.",
-    "high-bytes": "Mean response size well above this site's real browsers — pulling large "
-    "objects / heavy downloads, not merely making many requests.",
-    "wide-breadth": "Ranges across the site's structure more widely than its real browsers "
-    "do — broad crawling rather than reading a few areas.",
-    "long-session": "Active over a far longer span than this site's real browsers — a session "
-    "length no human visit reaches.",
-}
-
-
-@lru_cache(maxsize=None)
-def _egress_tag_help() -> dict[str, str]:
-    return {
-        net.tag: f"{net.name}: a shared-egress network (privacy relay / proxy). "
-        "Its requests are folded into one entry per User-Agent."
-        for net in load_egress_networks()
-        if net.tag
-    }
-
-
-def _tag_title(tag: str) -> str:
-    """Hover description for a tag, or '' if none is known."""
-    return _TAG_HELP.get(tag) or _egress_tag_help().get(tag, "")
-
 
 # Hover descriptions for the cross-tab column headers. The egress buckets group
 # several networks, so spell out their members; the catch-all columns get a note.
@@ -207,150 +119,6 @@ def _network_title(name: str, category: str) -> str:
     return ""
 
 
-_CSS = """
-:root { color-scheme: light dark; }
-* { box-sizing: border-box; }
-body { margin: 0; background: Canvas; color: CanvasText;
-  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-.container { max-width: 1100px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
-h1 { font-size: 1.7rem; margin: 0 0 .25rem; }
-h2 { font-size: 1.25rem; margin: 2.25rem 0 .5rem; }
-a { color: inherit; }
-.meta { list-style: none; padding: 0; margin: .5rem 0 1.5rem; color: #6b7280; font-size: .92rem; }
-.meta li { margin: .15rem 0; }
-.meta code { color: CanvasText; }
-.warn { color: #b45309; }
-table { border-collapse: collapse; width: 100%; margin: .5rem 0 1rem; font-size: .92rem; }
-th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid #8884; vertical-align: top; }
-th { font-weight: 600; border-bottom: 2px solid #8886; }
-td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-.netdiv { border-left: 2px solid #8887; }
-th.netoff { background: #8881; }
-tr.netall td { border-top: 2px solid #8887; }
-.netctl { font-size: .9rem; color: #6b7280; margin: .25rem 0 .6rem; }
-.netctl select { font: inherit; margin-left: .35rem; }
-tr:hover td { background: #8881; }
-.badge { display: inline-block; padding: .08rem .5rem; border-radius: 999px;
-  color: #fff; font-size: .8rem; font-weight: 600; white-space: nowrap; }
-.tag { display: inline-block; padding: .05rem .45rem; margin: 0 .2rem .2rem 0;
-  border-radius: 6px; background: #8883; font-size: .78rem; white-space: nowrap; cursor: help; }
-.flag { cursor: help; font-style: normal; }
-.blurb { color: #6b7280; margin: .15rem 0 .6rem; }
-.bar { background: #8883; border-radius: 4px; height: .7rem; min-width: 2px; }
-.card { border: 1px solid #8884; border-radius: 10px; padding: 1rem 1.1rem; margin: 1rem 0; }
-.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem;
-  word-break: break-all; }
-td.cid { max-width: 26rem; }
-.cid-id { font-weight: 600; }
-.cid-as { color: #6b7280; font-size: .8rem; word-break: break-word; margin: 1px 0; }
-.cid-ua { color: #6b7280; font-size: .82rem; margin-top: 1px;
-  display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3;
-  -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
-.muted { color: #6b7280; }
-.evlist { margin: .25rem 0 .25rem 1rem; padding: 0; }
-.evlist li { margin: .1rem 0; }
-.primary-sig { font-weight: 600; }
-td.copy { cursor: pointer; }
-td.copy:hover { background: #8882; }
-td.copy.copied { background: #16a34a55; }
-details { margin: .25rem 0 1rem; }
-summary { cursor: pointer; color: #6b7280; font-size: .9rem; padding: .25rem 0; }
-tr.asum { cursor: pointer; }
-tr.asum .tri { display: inline-block; margin-right: .5rem; color: #2563eb;
-  font-size: 1rem; line-height: 1; vertical-align: middle; transition: transform .12s; }
-tbody.actor.open tr.asum .tri { transform: rotate(90deg); }
-.actor-ua { color: #6b7280; font-size: .82rem; margin-left: .5rem; }
-tbody.actor .amem { display: none; }
-tbody.actor.open .amem { display: table-row; }
-tr.amem td.cid { padding-left: 1.6rem; }
-tr.amem .cid-as { color: #6b7280; font-size: .82rem; }
-input.filter { display: block; width: 100%; max-width: 30rem; margin: .5rem 0;
-  padding: .4rem .55rem; border: 1px solid #8886; border-radius: 6px;
-  background: Canvas; color: CanvasText; font: inherit;
-  position: sticky; top: .5rem; z-index: 1; }
-footer { margin-top: 3rem; color: #6b7280; font-size: .85rem; }
-""".strip()
-
-# Click a client cell to copy its id (the value for `inspect --client`).
-# Uses the async clipboard API where available, with an execCommand fallback
-# that works on file:// pages where the API is blocked.
-_SCRIPT = """
-document.addEventListener('click', function (event) {
-  var cell = event.target.closest('[data-copy]');
-  if (!cell) return;
-  var text = cell.getAttribute('data-copy');
-  var flash = function () {
-    cell.classList.add('copied');
-    setTimeout(function () { cell.classList.remove('copied'); }, 900);
-  };
-  function fallback() {
-    var ta = document.createElement('textarea');
-    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
-    document.body.appendChild(ta); ta.focus(); ta.select();
-    try { document.execCommand('copy'); } catch (e) {}
-    document.body.removeChild(ta); flash();
-  }
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).then(flash, fallback);
-  } else {
-    fallback();
-  }
-}, false);
-
-document.addEventListener('click', function (event) {
-  if (event.target.closest('[data-copy]')) return;  // a copy cell, not a toggle
-  var row = event.target.closest('tr.asum');
-  if (!row) return;
-  var body = row.parentNode;
-  if (body && body.classList.contains('actor')) body.classList.toggle('open');
-}, false);
-
-document.addEventListener('click', function (event) {
-  // Opening an exclusive accordion (shared name=) closes whichever one was open,
-  // possibly above the click -- the page collapses and the reader loses their
-  // place. Pin the clicked summary: note its viewport offset, then correct the
-  // scroll once the DOM has settled so it stays put.
-  var summary = event.target.closest('summary');
-  if (!summary) return;
-  var details = summary.parentElement;
-  if (!details || !details.hasAttribute('name') || details.open) return;
-  var before = summary.getBoundingClientRect().top;
-  requestAnimationFrame(function () {
-    window.scrollBy(0, summary.getBoundingClientRect().top - before);
-  });
-}, false);
-
-document.addEventListener('input', function (event) {
-  var input = event.target;
-  if (!input.classList || !input.classList.contains('filter')) return;
-  var query = input.value.trim().toLowerCase();
-  var on = query.length > 0;
-  // While filtering, force every "Show more" disclosure open so hidden matches
-  // surface, and suspend the exclusive-accordion name= so all stay open at once;
-  // restore both (name re-applied, disclosures re-collapsed) when cleared.
-  var details = document.querySelectorAll('details');
-  for (var d = 0; d < details.length; d++) {
-    var det = details[d], from = on ? 'name' : 'data-name', to = on ? 'data-name' : 'name';
-    if (det.hasAttribute(from)) { det.setAttribute(to, det.getAttribute(from)); det.removeAttribute(from); }
-    det.open = on;
-  }
-  // Toggle every client row across every kind against the one query.
-  var rows = document.querySelectorAll('tr.frow');
-  for (var i = 0; i < rows.length; i++) {
-    var hay = rows[i].getAttribute('data-filter') || '';
-    rows[i].style.display = hay.indexOf(query) === -1 ? 'none' : '';
-  }
-  // Collapse a section (header and all) or an emptied disclosure when no client
-  // row in it survives the filter; restore when cleared.
-  var boxes = document.querySelectorAll('section.kind, details');
-  for (var b = 0; b < boxes.length; b++) {
-    var live = boxes[b].querySelectorAll('tr.frow:not([style*="none"])');
-    boxes[b].style.display = (!on || live.length) ? '' : 'none';
-  }
-}, false);
-""".strip()
-
-
 def _esc(text: str) -> str:
     return html.escape(text, quote=True)
 
@@ -359,11 +127,11 @@ def _page(title: str, content: str) -> str:
     return (
         '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
-        f"<title>{_esc(title)}</title>\n<style>{_CSS}</style>\n"
+        f"<title>{_esc(title)}</title>\n<style>{CSS}</style>\n"
         f'</head>\n<body>\n<main class="container">\n{content}\n'
         '<footer>Generated by <a href="https://pypi.org/project/agent-census">'
         f"agent-census</a> {_esc(__version__)}.</footer>\n</main>\n"
-        f"<script>{_SCRIPT}</script>\n</body>\n</html>\n"
+        f"<script>{SCRIPT}</script>\n</body>\n</html>\n"
     )
 
 
@@ -379,7 +147,7 @@ def _tags_html(tags: frozenset[str]) -> str:
     for tag in ordered_tags(tags):
         color = _TAG_COLORS.get(tag)
         style = f' style="background:{color};color:#fff"' if color else ""
-        description = _tag_title(tag)
+        description = tag_title(tag)
         title = f' title="{_esc(description)}"' if description else ""
         spans.append(f'<span class="tag"{style}{title}>{_esc(tag)}</span>')
     return "".join(spans)
@@ -398,8 +166,8 @@ def _meta_list(
         + (f" · {skips.excluded:,} excluded (--vhost)" if skips.excluded else ""),
         f"<strong>Time range:</strong> {_esc(fmt_ts(start))} → {_esc(fmt_ts(end))}",
         f"<strong>Identity:</strong> <code>{_esc(result.identity_strategy)}</code> "
-        f"({stats.client_count:,} clients; {stats.singletons:,} singletons; "
-        f"{stats.ips_with_multiple_uas:,} IPs with multiple UAs)",
+        f"({count(stats.client_count, 'client')}; {count(stats.singletons, 'singleton')}; "
+        f"{count(stats.ips_with_multiple_uas, 'IP')} with multiple UAs)",
     ]
     if robots_note:
         cls = "warn" if "differ" in robots_note else ""
@@ -458,7 +226,8 @@ def _summary_table(result: AnalysisResult) -> str:
             f"<td>{robots}</td></tr>"
         )
     return (
-        f"<h2>Summary by kind</h2>\n<table>{head}{''.join(rows)}</table>\n"
+        f"<h2>Summary by kind</h2>\n"
+        f"<div class='tscroll'><table>{head}{''.join(rows)}</table></div>\n"
         '<p class="muted">Tip: click a client below to copy its id for '
         "<code>inspect --client</code>.</p>"
     )
@@ -468,46 +237,16 @@ def _summary_table(result: AnalysisResult) -> str:
 # cell carries data-v (its raw count); the script reformats text, shades a pale-blue
 # heat by share of the row (counts / % of kind) or column (% of network) max, and
 # bolds that group's leader. The Total column and All-kinds row stay raw counts.
-_NET_SCRIPT = """
-<script>
-(function(){
-  var tab=document.getElementById('nettab'); if(!tab) return;
-  var sel=document.getElementById('netmode'); if(!sel) return;
-  var cells=[].slice.call(tab.querySelectorAll('td.mxcell'));
-  var byRow={}, byCol={};
-  cells.forEach(function(c){
-    var r=c.parentNode.rowIndex, col=c.cellIndex; c._v=+c.getAttribute('data-v');
-    (byRow[r]=byRow[r]||[]).push(c);
-    (byCol[col]=byCol[col]||[]).push(c);
-  });
-  function paint(mode){
-    var groups=(mode==='col')?byCol:byRow;
-    cells.forEach(function(c){c.style.background='';c.style.fontWeight='';});
-    Object.keys(groups).forEach(function(k){
-      var g=groups[k], tot=0, mx=0;
-      g.forEach(function(c){tot+=c._v; if(c._v>mx)mx=c._v;});
-      g.forEach(function(c){
-        var v=c._v;
-        c.textContent = (mode==='count') ? (v?v.toLocaleString():'\\u2013')
-                                         : ((v&&tot)?Math.round(v/tot*100)+'%':'\\u2013');
-        if(v>0&&mx>0) c.style.background='rgba(96,165,250,'+(v/mx*0.8).toFixed(3)+')';
-        if(v>0&&v===mx) c.style.fontWeight='500';
-      });
-    });
-  }
-  sel.addEventListener('change',function(){paint(sel.value);});
-  paint('count');
-})();
-</script>
-""".strip()
-
-
 def _num(value: int) -> str:
     return f"{value:,}" if value else "–"
 
 
-def _network_table(result: AnalysisResult) -> str:
-    matrix = network_matrix(result.network_rollups, result.network_categories)
+def _network_table(result: AnalysisResult, *, breakout_min_share: float) -> str:
+    matrix = network_matrix(
+        result.network_rollups,
+        result.network_categories,
+        min_breakout_share=breakout_min_share,
+    )
     if matrix is None:
         return ""
     nets = matrix.networks
@@ -522,13 +261,14 @@ def _network_table(result: AnalysisResult) -> str:
         desc = _network_title(net, matrix.categories.get(net, ""))
         return f' title="{_esc(desc)}"' if desc else ""
 
+    def hd(i: int, net: str) -> str:
+        cls = f"num{div(i)}" + ("" if matrix.is_hosting(net) else " netoff")
+        hid = " id='netotherhd'" if net == OTHER_HOSTING else ""
+        return f"<th class='{cls}'{hid}{title(net)} data-net='{i}'>{_esc(net)}</th>"
+
     head = (
         "<tr><th>Kind</th>"
-        + "".join(
-            f"<th class='num{div(i)}{'' if matrix.is_hosting(n) else ' netoff'}'{title(n)}>"
-            f"{_esc(n)}</th>"
-            for i, n in enumerate(nets)
-        )
+        + "".join(hd(i, n) for i, n in enumerate(nets))
         + "<th class='num netdiv'>Total</th></tr>"
     )
 
@@ -542,11 +282,17 @@ def _network_table(result: AnalysisResult) -> str:
             return ""
         return f' style="background:rgba(220,38,38,{value / peak * 0.8:.3f})"'
 
+    def cell_extra(net: str, kind: Kind) -> str:
+        # Tag the Other-datacentre cells so the break-out control can rewrite them.
+        if net != OTHER_HOSTING:
+            return ""
+        return f" othercol' data-kind='{kind.value}' data-agg='{matrix.cell(net, kind)}"
+
     rows = []
     for kind in matrix.kinds:
         cells = "".join(
-            f"<td class='num mxcell{div(i)}' data-v='{matrix.cell(n, kind)}'>"
-            f"{_num(matrix.cell(n, kind))}</td>"
+            f"<td class='num mxcell{div(i)}{cell_extra(n, kind)}' data-v='{matrix.cell(n, kind)}'"
+            f" data-net='{i}'>{_num(matrix.cell(n, kind))}</td>"
             for i, n in enumerate(nets)
         )
         rows.append(
@@ -557,7 +303,9 @@ def _network_table(result: AnalysisResult) -> str:
 
     def total_cell(i: int, net: str) -> str:
         col = matrix.col_totals[net]
-        return f"<td class='num{div(i)}'{red(col, peak_col)}>{col:,}</td>"
+        # Only the swappable Other column needs its aggregate stashed for restore.
+        tag = f" othertot' data-agg='{col}" if net == OTHER_HOSTING else ""
+        return f"<td class='num{div(i)}{tag}'{red(col, peak_col)} data-net='{i}'>{col:,}</td>"
 
     totals = "".join(total_cell(i, n) for i, n in enumerate(nets))
     rows.append(
@@ -565,22 +313,70 @@ def _network_table(result: AnalysisResult) -> str:
         f"{totals}<td class='num netdiv' style=\"background:rgba(220,38,38,0.8)\">"
         f"{matrix.total:,}</td></tr>"
     )
+    breakout = ""
+    if matrix.collapsed:
+        data = {name: {k.value: v for k, v in counts.items()} for name, counts in matrix.collapsed}
+        blob = json.dumps(data, separators=(",", ":")).replace("<", "\\u003c")
+        opts = "".join(
+            f"<option value='{_esc(name)}'>{_esc(name)} ({sum(counts.values()):,})</option>"
+            for name, counts in matrix.collapsed
+        )
+        breakout = (
+            " <label>Break out <select id='netbreakout'>"
+            f"<option value=''>{_esc(OTHER_HOSTING)} (all)</option>{opts}"
+            "</select></label>"
+            f"<script type='application/json' id='netbreakdata'>{blob}</script>"
+        )
+    # Phone fallback: a picker for the single network column shown when the matrix
+    # folds (see the .netcolctl media query). Defaults to the busiest network.
+    colpick = ""
+    if len(nets) > 1:
+        default_i = max(range(len(nets)), key=lambda i: matrix.col_totals[nets[i]])
+        col_opts = "".join(
+            f"<option value='{i}'{' selected' if i == default_i else ''}>"
+            f"{_esc(net)} ({matrix.col_totals[net]:,})</option>"
+            for i, net in enumerate(nets)
+        )
+        colpick = (
+            f" <label class='netcolctl'>Column <select id='netcol'>{col_opts}</select></label>"
+        )
     control = (
         "<div class='netctl'><label>Show <select id='netmode'>"
         "<option value='count'>counts</option>"
         "<option value='row'>% of kind</option>"
         "<option value='col'>% of network</option>"
-        "</select></label></div>"
+        "</select></label>" + breakout + colpick + "</div>"
+    )
+    # The spatial guidance only makes sense with every column visible (desktop);
+    # on a phone the table folds to one network, so swap in a note about the picker.
+    spatial = (
+        "Hosting reads left of the thick rule, off-network "
+        "(relays / Tor / residential) to its right; smallest hosters fold into "
+        f"“{_esc(OTHER_HOSTING)}”"
+        + (
+            ", and the break-out control swaps that column to show one of them on its own."
+            if matrix.collapsed
+            else "."
+        )
+    )
+    narrow = (
+        " <span class='netnarrow'>On a narrow screen the table folds to one network — "
+        "choose which with the Column control above.</span>"
+        if len(nets) > 1
+        else ""
+    )
+    caption = (
+        '<p class="muted">Counts default; the toggle switches to row or column shares '
+        "(the Total column keeps the raw count). Cell shading tracks the same axis — "
+        "across each kind, or down each network. "
+        f"<span class='netwide'>{spatial}</span>{narrow}</p>"
     )
     return (
         "<h2>Requests by kind and network</h2>\n"
         + control
-        + f"<table id='nettab'>{head}{''.join(rows)}</table>\n"
-        + '<p class="muted">Counts default; the toggle switches to row or column shares '
-        "(the Total column keeps the raw count). Cell shading tracks the same axis — "
-        "across each kind, or down each network. Hosting reads left of the thick rule, "
-        f"off-network (relays / Tor / residential) to its right; smallest hosters fold into "
-        f"“{_esc(OTHER_HOSTING)}”.</p>" + _NET_SCRIPT
+        + f"<div class='tscroll'><table id='nettab'>{head}{''.join(rows)}</table></div>\n"
+        + caption
+        + NET_SCRIPT
     )
 
 
@@ -643,6 +439,17 @@ def _client_row(
     )
 
 
+def _disclosure(label: str) -> str:
+    """The ``▶`` toggle that reveals an actor's hidden member rows. A real button,
+    so it is reachable by Tab and fires on Enter / Space; the click bubbles to the
+    row handler (mouse behaviour unchanged), which flips ``aria-expanded``. The
+    label names what expands, since the glyph alone says nothing to a screen reader."""
+    return (
+        f'<button type="button" class="tri" aria-expanded="false" '
+        f'aria-label="{_esc(label)}">▶</button>'
+    )
+
+
 def _member_tr(profile: ClientProfile, flag: str = "") -> str:
     """A collapsed member as a real table row: IP/AS in Client, its own req/bytes."""
     prefix, _, _ = client_id_parts(profile)
@@ -688,10 +495,11 @@ def _folded_tbody(
             (prefix, ua or "", org or "", *members, *ordered_tags(cls.tags - suppress))
         ).lower()
         row_attrs = f"class='asum frow' data-filter=\"{_esc(haystack)}\""
+    toggle = _disclosure(f"Show {count(len(members), 'member IP')} of {prefix}")
     summary = (
-        f"<tr {row_attrs}><td class='cid'><span class='tri'>▶</span>"
+        f"<tr {row_attrs}><td class='cid'>{toggle}"
         f"{flag}<span class='mono'>{_esc(prefix)}</span>{org_html}"
-        f"<span class='muted'> · {len(members):,} IPs</span>"
+        f"<span class='muted'> · {count(len(members), 'IP')}</span>"
         f'<span class="actor-ua mono">{_esc(ua or "–")}</span></td>'
         f"<td class='num'>{profile.features.request_count:,}</td>"
         f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
@@ -748,9 +556,10 @@ def _actor_tbody(
             )
         ).lower()
         row_attrs = f"class='asum frow' data-filter=\"{_esc(haystack)}\""
+    toggle = _disclosure(f"Show {count(len(actor.members), 'grouped client')}")
     summary = (
         f"<tr {row_attrs}>"
-        f"<td class='cid'><span class='tri'>▶</span>{flag}{_esc(spread)}{asn_html}"
+        f"<td class='cid'>{toggle}{flag}{_esc(spread)}{asn_html}"
         f'<span class="actor-ua mono">{_esc(ua or "–")}</span></td>'
         f"<td class='num'>{actor.requests:,}</td>"
         f"<td class='num'>{human_bytes(actor.total_bytes)}</td>"
@@ -771,7 +580,8 @@ def _kind_section(
     flags = flags or CountryFlags()
     actors = group_actors(group)
     typical = typical_conduct(group)
-    title = f"{_kind_badge(kind)} {rollup.clients:,} clients · {rollup.requests:,} requests"
+    footprint = f"{count(rollup.clients, 'client')} · {count(rollup.requests, 'request')}"
+    title = f"{_kind_badge(kind)} {footprint}"
     parts = [
         f'<h2 id="{kind.value}">{title}</h2>',
         f'<p class="blurb">{_esc(KIND_BLURB.get(kind, ""))}</p>',
@@ -782,7 +592,7 @@ def _kind_section(
     shown = "".join(
         _actor_tbody(a, flags=flags, filterable=True, suppress=typical) for a in actors[:top]
     )
-    parts.append(f"<table><thead>{_SECTION_HEAD}</thead>{shown}</table>")
+    parts.append(f"<div class='tscroll'><table><thead>{_SECTION_HEAD}</thead>{shown}</table></div>")
     extra = actors[top:_EXPAND_LIMIT]
     if extra:
         extra_rows = "".join(
@@ -793,7 +603,7 @@ def _kind_section(
             # The page filter (above all sections) suspends the name while active.
             '<details name="kind-extra"><summary>'
             "Show more</summary>"
-            f"<table><thead>{_SECTION_HEAD}</thead>{extra_rows}</table>"
+            f"<div class='tscroll'><table><thead>{_SECTION_HEAD}</thead>{extra_rows}</table></div>"
             "</details>"
         )
     # rollup.clients is the exact total; only the highest-volume ones are detailed.
@@ -816,6 +626,7 @@ def render_report_html(
     robots_note: str | None = None,
     elapsed: float | None = None,
     country_flags: CountryFlags | None = None,
+    breakout_min_share: float = BREAKOUT_MIN_SHARE,
 ) -> str:
     """Render the full analysis report as a standalone HTML page."""
     flags = country_flags or CountryFlags()
@@ -825,10 +636,12 @@ def render_report_html(
         f"<h1>{_esc(heading)}</h1>",
         _meta_list(result, source, robots_note, elapsed),
         _summary_table(result),
-        _network_table(result),
+        _network_table(result, breakout_min_share=breakout_min_share),
         '<input class="filter" type="search" '
         'placeholder="filter all clients by IP, User-Agent, AS name, or tag…" '
         'aria-label="filter clients">',
+        # Filled and shown by the filter script when a query hides every client.
+        '<p id="nomatch" class="muted" role="status" hidden></p>',
     ]
     for kind in KIND_ORDER:
         rollup = result.rollups.get(kind)
@@ -841,20 +654,41 @@ def render_report_html(
 
 
 def _rationale_html(profile: ClientProfile) -> str:
-    signals = sorted(profile.classification.all_signals, key=lambda s: s.confidence, reverse=True)
-    if not signals:
-        return "<p>No classifier produced a signal — left UNKNOWN.</p>"
-    items = []
-    for signal in signals:
-        primary = signal.kind is profile.classification.primary
-        klass = ' class="primary-sig"' if primary else ""
-        ev = "".join(f"<li>{_esc(item)}</li>" for item in signal.evidence)
-        items.append(
-            f"<li{klass}>{_kind_badge(signal.kind)} "
-            f"<span class='muted'>{signal.confidence:.0%} · {_esc(signal.classifier)}</span>"
-            f'<ul class="evlist">{ev}</ul></li>'
+    cls = profile.classification
+    signals = sorted(cls.all_signals, key=lambda s: s.confidence, reverse=True)
+    if signals:
+        items = []
+        for signal in signals:
+            primary = signal.kind is cls.primary
+            klass = ' class="primary-sig"' if primary else ""
+            ev = "".join(f"<li>{_esc(item)}</li>" for item in signal.evidence)
+            items.append(
+                f"<li{klass}>{_kind_badge(signal.kind)} "
+                f"<span class='muted'>{signal.confidence:.0%} · {_esc(signal.classifier)}</span>"
+                f'<ul class="evlist">{ev}</ul></li>'
+            )
+        rationale = f"<h3>Why this classification</h3><ul>{''.join(items)}</ul>"
+    else:
+        rationale = (
+            "<h3>Why this classification</h3>"
+            "<p>No classifier produced a signal — left UNKNOWN.</p>"
         )
-    return f"<h3>Why this classification</h3><ul>{''.join(items)}</ul>"
+    return rationale + _tags_evidence_html(cls)
+
+
+def _tags_evidence_html(cls: Classification) -> str:
+    """Every tag with the concrete measurement that earned it — the second axis of
+    the verdict, shown alongside the kind signals."""
+    if not cls.tags:
+        return ""
+    evidence = dict(cls.tag_evidence)
+    items = []
+    for tag in ordered_tags(cls.tags):
+        why = evidence.get(tag)
+        chip = f'<span class="tag" title="{_esc(tag_title(tag))}">{_esc(tag)}</span>'
+        detail = f" <span class='muted'>{_esc(why)}</span>" if why else ""
+        items.append(f"<li>{chip}{detail}</li>")
+    return f'<h3>Tags</h3><ul class="evlist">{"".join(items)}</ul>'
 
 
 def _compliance_html(profile: ClientProfile) -> str:
@@ -879,7 +713,10 @@ def _features_html(profile: ClientProfile) -> str:
         f"<tr><td>{_esc(name)}</td><td>{_esc(value)}</td></tr>"
         for name, value in feature_rows(profile.features)
     )
-    return f"<h3>Features</h3><table><tr><th>Metric</th><th>Value</th></tr>{body}</table>"
+    return (
+        "<h3>Features</h3><div class='tscroll'><table>"
+        f"<tr><th>Metric</th><th>Value</th></tr>{body}</table></div>"
+    )
 
 
 def _trace_html(profile: ClientProfile, limit: int, full: bool) -> str:
@@ -907,7 +744,7 @@ def _trace_html(profile: ClientProfile, limit: int, full: bool) -> str:
         )
     return (
         f"<h3>Request trace ({len(shown)} of {len(entries)})</h3>"
-        f"<table>{head}{''.join(rows)}</table>"
+        f"<div class='tscroll'><table>{head}{''.join(rows)}</table></div>"
     )
 
 
@@ -921,7 +758,6 @@ def _profile_card(profile: ClientProfile, limit: int, full: bool) -> str:
         f'<h2 class="mono">{_esc(client_label(profile)[:100])}</h2>'
         f'<ul class="meta">'
         f"<li>{_kind_badge(cls.primary)} {conf}</li>"
-        f"<li><strong>Tags:</strong> {_tags_html(cls.tags)}</li>"
         f"<li><strong>IP:</strong> <code>{_esc(profile.client_id.ip)}</code></li>"
         + (f"<li><strong>Network:</strong> {_esc(profile.network)}</li>" if profile.network else "")
         + f'<li><strong>User-Agent:</strong> <span class="mono">{ua}</span></li>'
@@ -969,14 +805,14 @@ def _rollup_card(profiles: list[ClientProfile]) -> str:
         f"<td class='num'>{human_bytes(total_bytes)}</td><td></td></tr>"
     )
     intro = (
-        f"<p>This IP presents {len(profiles):,} distinct user-agents (user-agent rotation). "
+        f"<p>This IP presents {count(len(profiles), 'distinct user-agent')} (user-agent rotation). "
         "Per-client summary below; inspect one by passing a distinctive part of its "
         "user-agent to <code>--client</code>.</p>"
     )
     return (
         f'<section class="card"><h2 class="mono">{_esc(ip)} — '
-        f"{len(profiles):,} clients on one IP</h2>"
-        f"{intro}<table>{head}{''.join(rows)}</table></section>"
+        f"{count(len(profiles), 'client')} on one IP</h2>"
+        f"{intro}<div class='tscroll'><table>{head}{''.join(rows)}</table></div></section>"
     )
 
 

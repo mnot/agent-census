@@ -13,7 +13,8 @@ from agent_census.parsing.apache import PRESETS
 from agent_census.model import Classification, ClientFeatures, ClientId, ClientProfile, Kind
 from agent_census.report import render_inspect_html, render_report_html, select_profiles
 from agent_census.classify.relative import _METRIC_TAGS
-from agent_census.report.html import _TAG_HELP, _client_row, _esc
+from agent_census.report.format import _TAG_HELP
+from agent_census.report.html import _client_row, _esc
 
 DATA = Path(__file__).parent / "data"
 
@@ -64,15 +65,14 @@ def test_report_html_client_cells_are_copyable() -> None:
     assert "navigator.clipboard" in html  # copy script present
     assert "inspect --client" in html  # the tip
     # The cell is stacked: identity line + UA line (clamped) under one copy target.
-    assert "<div class=\"mono cid-id\">203.0.113.66</div>" in html
+    assert '<div class="mono cid-id">203.0.113.66</div>' in html
     assert 'class="mono cid-ua"' in html
 
 
 def test_kind_section_disclosure_and_filter(tmp_path: Path) -> None:
     # 8 one-off clients -> one 'unknown' kind; top 5 shown, 3 behind a disclosure.
     lines = [
-        f"10.0.0.{i} - - [10/Oct/2023:12:00:0{i} +0000] "
-        f'"GET / HTTP/1.1" 200 10 "-" "agent-{i}"'
+        f"10.0.0.{i} - - [10/Oct/2023:12:00:0{i} +0000] " f'"GET / HTTP/1.1" 200 10 "-" "agent-{i}"'
         for i in range(8)
     ]
     log = tmp_path / "many.log"
@@ -87,6 +87,7 @@ def test_kind_section_disclosure_and_filter(tmp_path: Path) -> None:
     # One page-level filter sits above the sections (not inside the disclosure)…
     assert html.count('class="filter"') == 1
     assert "filter all clients" in html
+    assert 'id="nomatch"' in html  # the no-match empty state the filter script fills
     # …and every detailed client row is filterable: 5 shown + 3 in the disclosure.
     assert html.count('class="frow"') == 8
 
@@ -164,6 +165,45 @@ def test_network_table_renders_with_providers(
     assert "td class='num mxcell" in html and "data-v=" in html
     assert "id='netmode'" in html and "id='nettab'" in html
     assert "rgba(220,38,38" in html  # red heat on the total row/column
+    # Small-screen fold: every network column is tagged so the picker can show one
+    # at a time, and tables sit in a horizontal-scroll track so none breaks the page.
+    assert "id='netcol'" in html and "netcolctl" in html  # the phone column picker
+    assert "data-net=" in html  # columns tagged for show/hide
+    assert "class='tscroll'" in html  # tables wrapped in a scroll track
+    assert "markScrollables" in html  # overflowing tracks are made keyboard-scrollable
+
+
+def test_network_table_offers_breakout_for_folded_datacenters(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Eight distinct datacenter providers (one per /8) so two fold into Other;
+    # the HTML should offer a break-out selector and tag the Other column.
+    monkeypatch.setattr(pipeline, "datacenter_subnet", lambda ip: None)
+    monkeypatch.setattr(
+        pipeline, "datacenter_provider", lambda ip: f"Provider {int(ip.split('.')[0])}"
+    )
+    # One provider per /8 (octets 11..18). Volume decreases with the octet so the
+    # two smallest providers (17, 18) are the ones that fold into Other.
+    weighted = []
+    for rank, octet in enumerate(range(11, 19)):
+        line = (
+            f"{octet}.0.0.1 - - [10/Oct/2023:12:00:00 +0000] "
+            '"GET /p HTTP/1.1" 200 100 "-" "curl/8.0"'
+        )
+        weighted.extend([line] * (10 - rank))
+    log = tmp_path / "netmany.log"
+    log.write_text("\n".join(weighted) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
+    html = render_report_html(result, source="x")
+
+    assert "id='netbreakout'" in html  # the selector
+    assert "id='netbreakdata'" in html  # embedded per-provider data
+    assert "id='netotherhd'" in html  # Other header is tagged for relabelling
+    assert "othercol" in html and "othertot" in html  # Other cells are tagged
+    assert "data-kind=" in html and "data-agg=" in html  # break-out lookup data
+    # A folded provider appears as an option in the selector.
+    assert "<option value='Provider 18'>" in html
 
 
 def test_filter_haystack_includes_as_name() -> None:
@@ -206,7 +246,7 @@ def test_filter_haystack_includes_visible_tags() -> None:
 def test_tags_have_hover_descriptions() -> None:
     # The 203.0.113.66 zgrab scanner is tagged 'probe-paths'; it should carry a tooltip.
     html = render_report_html(_run(), source="sample")
-    assert "<span class=\"tag\"" in html
+    assert '<span class="tag"' in html
     assert 'title="Requested known-vulnerable' in html
 
 

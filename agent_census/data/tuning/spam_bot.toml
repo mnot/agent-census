@@ -1,0 +1,19 @@
+# Comment / form spam and credential-stuffing tuning (see classify/spam_bot.py).
+# The tell is a POST-heavy request mix aimed at a few submission endpoints, usually
+# with no browser sub-resource loading. Each block adds its `weight`.
+
+[post_volume]
+# A POST-heavy mix of at least `min_posts` POSTs. The `post_ratio_min` cutoff is
+# reused by the no-assets signal below.
+post_ratio_min = 0.3
+min_posts = 3
+weight = 0.4
+
+[post_no_assets]
+# POST-heavy with no browser co-loading (below shared.toml browser_shape
+# .no_coload_max): submitting forms, not browsing.
+weight = 0.15
+
+[submission_endpoint]
+# Targets a known comment / login / xmlrpc endpoint (see data/submit_paths.toml).
+weight = 0.15

@@ -20,19 +20,31 @@ from .dataload import (
     load_asn_agents,
     load_browser_releases,
     load_tokens,
+    load_ua_signatures,
 )
 
 _P = TypeVar("_P")
 
-# A real browser UA starts with a Mozilla token and names a layout engine.
-_BROWSER_RE = re.compile(r"mozilla/\d.*(gecko|applewebkit|trident|presto|khtml)", re.I)
+# The token lists these regexes are built from live in data/ua_signatures.toml;
+# only the structure (the Mozilla anchor, the word-boundary rules) is fixed here.
+_SIG = load_ua_signatures()
 
-# Self-identified automation: crawlers, libraries, and scripted clients.
+# A real browser UA starts with a Mozilla token and names a layout engine.
+_BROWSER_RE = re.compile(
+    r"mozilla/\d.*(" + "|".join(re.escape(e) for e in _SIG.browser_engines) + r")", re.I
+)
+
+# Self-identified automation: crawlers, libraries, and scripted clients. Distinctive
+# substrings match anywhere; the short words are anchored so they don't fire inside
+# unrelated tokens (whole word for "feed", word-ending for "bot" -> "Googlebot").
 _BOT_RE = re.compile(
-    r"bot\b|bot/|spider|crawl|slurp|scrapy|python-requests|httpx|aiohttp|"
-    r"libwww|java/|go-http|okhttp|node-fetch|axios|curl|wget|"
-    r"headless|phantomjs|selenium|facebookexternalhit|feedfetcher|"
-    r"\bfeed\b|rss|monitor|uptime|pingdom",
+    "|".join(
+        [
+            *(re.escape(t) for t in _SIG.automation_substrings),
+            *(r"\b" + re.escape(w) + r"\b" for w in _SIG.automation_standalone_words),
+            *(re.escape(w) + r"\b" for w in _SIG.automation_suffix_words),
+        ]
+    ),
     re.I,
 )
 
@@ -70,7 +82,7 @@ def declares_bot(ua: str | None) -> bool:
 
 # Browser engines driven by automation frameworks. They render like a real browser
 # (so they load assets), but the UA names the harness -- a deliberate tell.
-_HEADLESS_RE = re.compile(r"headless|phantomjs|slimerjs|electron|puppeteer|playwright", re.I)
+_HEADLESS_RE = re.compile("|".join(re.escape(e) for e in _SIG.headless_engines), re.I)
 
 
 @lru_cache(maxsize=16384)
@@ -82,10 +94,7 @@ def is_headless(ua: str | None) -> bool:
 
 
 # Anonymous HTTP clients: a library/tool name with no product identity of its own.
-_LIBRARY_RE = re.compile(
-    r"python-requests|httpx|aiohttp|scrapy|libwww|java/|go-http|okhttp|node-fetch|axios|curl|wget",
-    re.I,
-)
+_LIBRARY_RE = re.compile("|".join(re.escape(n) for n in _SIG.library_names), re.I)
 
 
 @lru_cache(maxsize=16384)

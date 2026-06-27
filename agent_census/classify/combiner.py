@@ -10,6 +10,7 @@ falsely-claimed good-bot identity.
 from __future__ import annotations
 
 from .. import uas
+from ..dataload import load_shared_tuning, load_tuning
 from ..model import (
     BotVerification,
     Classification,
@@ -18,7 +19,23 @@ from ..model import (
     Kind,
     Signal,
 )
-from .tags import derive_tags, impersonation, looks_like_fake_browser
+from .tags import derive_tag_evidence, impersonation, looks_like_fake_browser
+
+# Numeric knobs: this module's own in data/tuning/combiner.toml, the unknown
+# threshold in data/tuning/shared.toml.
+_TUNING_SCHEMA = {
+    "round_digits": "round_digits",
+    "dc_browser_penalty": "datacenter.browser_penalty",
+    "dc_scraper_min_requests": "datacenter.scraper_min_requests",
+    "dc_scraper_min_distinct": "datacenter.scraper_min_distinct_paths",
+    "fallback_spoofed_browser": "fallback.spoofed_browser",
+    "fallback_scraper": "fallback.scraper",
+    "fallback_automation": "fallback.automation",
+    "impersonator_confidence": "impersonator.confidence",
+}
+_T = load_tuning("combiner", _TUNING_SCHEMA)
+_S = load_shared_tuning()
+_ROUND = int(_T["round_digits"])
 
 # Tie-break order when two kinds share the top confidence: earlier wins.
 _PRIORITY: tuple[Kind, ...] = (
@@ -42,7 +59,7 @@ _PRIORITY: tuple[Kind, ...] = (
 )
 _RANK = {kind: i for i, kind in enumerate(_PRIORITY)}
 
-DEFAULT_UNKNOWN_THRESHOLD = 0.45
+DEFAULT_UNKNOWN_THRESHOLD = _S["unknown_threshold"]
 
 # Positive "this is a machine" tells (tags). A would-be-unknown client carrying one
 # is automation of an unidentified kind, not a true unknown -- characterisable even
@@ -90,18 +107,25 @@ def combine(
         # increments, and float error (0.3 + 0.15 == 0.44999999996) would otherwise
         # drop a sum that equals the threshold just below it -- misfiling a clear
         # client as UNKNOWN while it still displays as the rounded percentage.
-        by_label[signal.kind] = max(by_label.get(signal.kind, 0.0), round(signal.confidence, 3))
+        by_label[signal.kind] = max(
+            by_label.get(signal.kind, 0.0), round(signal.confidence, _ROUND)
+        )
 
     # A person rarely browses from hosting infrastructure, so nudge a datacenter
     # "browser" verdict down a little -- enough to tip a borderline one, not to
     # overrule a strongly-behaving real browser.
     if datacenter and Kind.BROWSER in by_label:
-        by_label[Kind.BROWSER] = round(max(0.0, by_label[Kind.BROWSER] - 0.1), 3)
+        by_label[Kind.BROWSER] = round(
+            max(0.0, by_label[Kind.BROWSER] - _T["dc_browser_penalty"]), _ROUND
+        )
 
-    tags = derive_tags(
+    tag_ev = derive_tag_evidence(
         features, compliance, verification, datacenter=datacenter, aggregate=aggregate
     )
+    tags = set(tag_ev)
     stored = tuple(signals) if keep_signals else ()
+    # Per-tag evidence is inspect-only detail, held on the same terms as signals.
+    tag_evidence = tuple(tag_ev.items()) if keep_signals else ()
 
     # Impersonation is decisive: a client faking a declared identity is an
     # impersonator, whatever else it looks like.
@@ -109,18 +133,25 @@ def combine(
     if faking:
         return Classification(
             primary=Kind.IMPERSONATOR,
-            confidence=0.9,
+            confidence=_T["impersonator_confidence"],
             tags=frozenset(tags),
             evidence=why,
             all_signals=stored,
+            tag_evidence=tag_evidence,
         )
 
     if not by_label or max(by_label.values()) < unknown_threshold:
-        return _below_threshold(features, tags, tuple(signals), stored, datacenter, by_label)
+        return _below_threshold(
+            features, tags, tag_evidence, tuple(signals), stored, datacenter, by_label
+        )
 
     primary = _pick(by_label)
     if primary is Kind.FEED_READER and _fetches_non_feeds(features):
         tags.add("fetches-non-feeds")
+        if keep_signals:
+            tag_evidence += (
+                ("fetches-non-feeds", "a feed reader that also requested non-feed resources"),
+            )
     evidence = tuple(e for s in signals if s.kind is primary for e in s.evidence)
     return Classification(
         primary=primary,
@@ -128,12 +159,14 @@ def combine(
         tags=frozenset(tags),
         evidence=evidence,
         all_signals=stored,
+        tag_evidence=tag_evidence,
     )
 
 
 def _below_threshold(
     features: ClientFeatures,
     tags: set[str],
+    tag_evidence: tuple[tuple[str, str], ...],
     signals: tuple[Signal, ...],
     stored: tuple[Signal, ...],
     datacenter: bool,
@@ -148,20 +181,23 @@ def _below_threshold(
             tags=frozenset(tags),
             evidence=(evidence,),
             all_signals=stored,
+            tag_evidence=tag_evidence,
         )
 
     # A browser UA from a hosting IP with no browser behaviour is automation in disguise.
     if datacenter and looks_like_fake_browser(features):
         return verdict(
             Kind.SPOOFED_BROWSER,
-            0.6,
+            _T["fallback_spoofed_browser"],
             "browser User-Agent from a datacenter IP, without browser behaviour",
         )
     # A generic HTTP library (or no UA) fetching several pages from hosting infrastructure
     # is harvesting content -- a scraper. The datacenter origin is what tips it.
     if datacenter and _looks_like_datacenter_scraper(features):
         return verdict(
-            Kind.SCRAPER, 0.5, "generic HTTP client harvesting pages from a datacenter IP"
+            Kind.SCRAPER,
+            _T["fallback_scraper"],
+            "generic HTTP client harvesting pages from a datacenter IP",
         )
     # A positive machine tell with no purpose behind it: automation, kind
     # unidentified. A self-declared bot / library / headless engine names itself;
@@ -169,10 +205,16 @@ def _below_threshold(
     # person rarely browses from infrastructure. Either way it is not a true unknown.
     if tags & _AUTOMATION_TELLS:
         return verdict(
-            Kind.AUTOMATION, 0.5, "a machine tell is present, but no purpose could be identified"
+            Kind.AUTOMATION,
+            _T["fallback_automation"],
+            "a machine tell is present, but no purpose could be identified",
         )
     if datacenter:
-        return verdict(Kind.AUTOMATION, 0.5, "from datacenter infrastructure, with no human signal")
+        return verdict(
+            Kind.AUTOMATION,
+            _T["fallback_automation"],
+            "from datacenter infrastructure, with no human signal",
+        )
     confidence = max(by_label.values()) if by_label else 0.0
     return Classification(
         primary=Kind.UNKNOWN,
@@ -180,14 +222,15 @@ def _below_threshold(
         tags=frozenset(tags),
         evidence=_top_evidence(signals),
         all_signals=stored,
+        tag_evidence=tag_evidence,
     )
 
 
 def _looks_like_datacenter_scraper(features: ClientFeatures) -> bool:
     """A generic-library / UA-less client harvesting several pages, benignly."""
     return (
-        features.request_count >= 2
-        and features.distinct_paths >= 2
+        features.request_count >= _T["dc_scraper_min_requests"]
+        and features.distinct_paths >= _T["dc_scraper_min_distinct"]
         and (uas.is_library(features.user_agent) or features.ua_empty)
         and features.vuln_path_hits == 0
         and features.traversal_hits == 0

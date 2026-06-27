@@ -6,16 +6,22 @@ import pytest
 
 from agent_census.dataload import (
     _AGENT_SCHEMA,
+    _SHARED_TUNING,
+    KNOWN_AGENT_CATEGORIES,
     _bad_format,
     _check_top_level,
+    _grouped_lists,
     _require_agent,
     _validate_records,
-    KNOWN_AGENT_CATEGORIES,
     load_asn_agents,
     load_egress_networks,
     load_list,
     load_range_sources,
+    load_request_signatures,
+    load_shared_tuning,
     load_tokens,
+    load_tuning,
+    load_ua_signatures,
     load_vuln_paths,
 )
 from agent_census.errors import ConfigError
@@ -48,6 +54,104 @@ def test_browser_releases_load() -> None:
 def test_flat_lists_load() -> None:
     assert "sqlmap" in load_list("scanner_ua")
     assert "NetNewsWire" in load_list("feed_readers")
+    assert "uptimerobot" in load_list("monitor_uas")
+    assert "wp-login" in load_list("submit_paths")
+
+
+def test_ua_signatures_load() -> None:
+    sig = load_ua_signatures()
+    assert "applewebkit" in sig.browser_engines
+    assert "scrapy" in sig.automation_substrings
+    assert sig.automation_standalone_words == ("feed",)
+    assert sig.automation_suffix_words == ("bot",)
+    assert "puppeteer" in sig.headless_engines
+    assert "curl" in sig.library_names
+    assert "podcast" in sig.feed_terms
+
+
+def test_request_signatures_load() -> None:
+    sig = load_request_signatures()
+    assert "css" in sig.static_extensions
+    assert "html" in sig.page_extensions
+    assert "/etc/passwd" in sig.traversal_markers
+    assert "%252e" in sig.evasion_markers
+    assert "PROPFIND" in sig.uncommon_methods
+    assert "rss" in sig.feed_filename_tokens
+    assert "index.xml" in sig.feed_filenames
+
+
+def test_grouped_lists_rejects_unknown_table() -> None:
+    with pytest.raises(ConfigError, match="unexpected top-level key"):
+        _grouped_lists("x.toml", {"browser": {}, "bogus": {}}, {"browser": {"layout_engines"}})
+
+
+def test_grouped_lists_rejects_unknown_key() -> None:
+    with pytest.raises(ConfigError, match=r"\[browser\] unexpected key"):
+        _grouped_lists("x.toml", {"browser": {"engines": []}}, {"browser": {"layout_engines"}})
+
+
+def test_grouped_lists_rejects_bad_type() -> None:
+    with pytest.raises(ConfigError, match="must be a list of strings"):
+        _grouped_lists(
+            "x.toml", {"browser": {"layout_engines": [1]}}, {"browser": {"layout_engines"}}
+        )
+
+
+def test_grouped_lists_rejects_non_table_section() -> None:
+    with pytest.raises(ConfigError, match=r"\[browser\] must be a table"):
+        _grouped_lists(
+            "x.toml", {"browser": ["not", "a", "table"]}, {"browser": {"layout_engines"}}
+        )
+
+
+def test_grouped_lists_rejects_empty_list() -> None:
+    # An empty list would compile to a match-everything regex downstream.
+    with pytest.raises(ConfigError, match="must not be empty"):
+        _grouped_lists(
+            "x.toml", {"browser": {"layout_engines": []}}, {"browser": {"layout_engines"}}
+        )
+
+
+def test_load_list_rejects_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    import agent_census.dataload as dl
+
+    monkeypatch.setattr(dl, "_load", lambda name, subdir="": {"empty_thing": []})
+    with pytest.raises(ConfigError, match="must not be empty"):
+        dl.load_list("empty_thing")
+
+
+def test_shared_tuning_load() -> None:
+    shared = load_shared_tuning()
+    assert shared["unknown_threshold"] == 0.45
+    assert shared["browser_coload_min"] == 0.4
+    assert shared["storm_404_distinct_paths_min"] == 15
+
+
+def test_all_tuning_files_validate() -> None:
+    # Importing the classifiers loads (and so validates) every per-classifier tuning
+    # file at module import; a bad file would raise here. This guards the shared one.
+    from agent_census.classify.registry import all_classifiers
+
+    assert all_classifiers()
+    assert load_shared_tuning()
+
+
+def test_load_tuning_widens_int_to_float() -> None:
+    # storm_404_distinct_paths_min is written as 15 (int) but returned as a float.
+    assert load_shared_tuning()["storm_404_distinct_paths_min"] == 15.0
+
+
+def test_load_tuning_rejects_missing_key() -> None:
+    # Full real schema (so every table is accounted for) plus one knob the file lacks.
+    schema = {**_SHARED_TUNING, "extra": "verdict.absent"}
+    with pytest.raises(ConfigError, match="missing 'verdict.absent'"):
+        load_tuning("shared", schema)
+
+
+def test_load_tuning_rejects_unexpected_table() -> None:
+    # A schema that names only [verdict] leaves the file's other tables unexpected.
+    with pytest.raises(ConfigError, match="unexpected top-level key"):
+        load_tuning("shared", {"x": "verdict.unknown_threshold"})
 
 
 def test_vuln_paths_split_into_two_buckets() -> None:
@@ -83,7 +187,7 @@ def test_range_source_asns_parse_as_ints() -> None:
 
 def test_all_bundled_data_files_validate() -> None:
     # A guard: every shipped data file passes validation (no unknown keys etc.).
-    for name in ("scanner_ua", "feed_readers"):
+    for name in ("scanner_ua", "feed_readers", "monitor_uas", "submit_paths"):
         assert load_list(name)
     assert load_vuln_paths()
     for category in KNOWN_AGENT_CATEGORIES:
@@ -91,6 +195,8 @@ def test_all_bundled_data_files_validate() -> None:
         load_asn_agents(category)
     assert load_range_sources("datacenter_ranges")
     assert load_egress_networks()
+    assert load_ua_signatures().browser_engines
+    assert load_request_signatures().static_extensions
 
 
 def test_validate_rejects_unknown_key() -> None:
@@ -112,9 +218,7 @@ def test_validate_rejects_missing_required() -> None:
         _validate_records("x.toml", "agent", [{"domains": ["a"]}], _AGENT_SCHEMA, _require_agent)
     # asn_primary without an asns list has no identity either.
     with pytest.raises(ConfigError, match="'asn_primary' needs an 'asns'"):
-        _validate_records(
-            "x.toml", "agent", [{"asn_primary": True}], _AGENT_SCHEMA, _require_agent
-        )
+        _validate_records("x.toml", "agent", [{"asn_primary": True}], _AGENT_SCHEMA, _require_agent)
 
 
 def test_validate_rejects_non_table_entry() -> None:

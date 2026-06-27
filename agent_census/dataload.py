@@ -10,11 +10,12 @@ hold an ``[[agent]]`` array of tables, each with a ``ua_substring`` and optional
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date
 from functools import lru_cache
 from importlib.resources import files
+from types import MappingProxyType
 from typing import Any
 
 from .errors import ConfigError
@@ -54,6 +55,86 @@ def _check_top_level(filename: str, data: dict[str, Any], allowed: set[str]) -> 
             f"{filename}: unexpected top-level key(s) {', '.join(sorted(extra))} "
             f"(expected {', '.join(sorted(allowed))})"
         )
+
+
+def _check_table(filename: str, table: str, section: object, allowed: set[str]) -> dict[str, Any]:
+    """Confirm ``[table]`` is a table with no keys outside ``allowed``; return it."""
+    if not isinstance(section, dict):
+        raise ConfigError(f"{filename}: [{table}] must be a table")
+    extra = set(section) - allowed
+    if extra:
+        raise ConfigError(
+            f"{filename}: [{table}] unexpected key(s) {', '.join(sorted(extra))} "
+            f"(allowed: {', '.join(sorted(allowed))})"
+        )
+    return section
+
+
+def _grouped_lists(
+    filename: str, data: dict[str, Any], schema: dict[str, set[str]]
+) -> dict[tuple[str, str], tuple[str, ...]]:
+    """Validate a file of ``[table]`` sections, each holding named ``str[]`` arrays.
+
+    ``schema`` maps each expected table to the keys it must contain. Returns a
+    ``{(table, key): tuple}`` mapping. Unexpected tables or keys, non-table sections,
+    non-``str[]`` values, and empty/missing arrays are all ``ConfigError`` -- an
+    empty list would silently compile to a match-everything regex downstream, so a
+    file is required to actually carry every list it declares.
+    """
+    _check_top_level(filename, data, set(schema))
+    out: dict[tuple[str, str], tuple[str, ...]] = {}
+    for table, keys in schema.items():
+        section = _check_table(filename, table, data.get(table, {}), keys)
+        for key in keys:
+            value = section.get(key, [])
+            if not _type_ok(value, "str[]"):
+                raise ConfigError(f"{filename}: [{table}] '{key}' must be a list of strings")
+            if not value:
+                raise ConfigError(f"{filename}: [{table}] '{key}' must not be empty")
+            out[(table, key)] = tuple(value)
+    return out
+
+
+def _is_number(value: object) -> bool:
+    # bool is an int subclass in Python; exclude it so `true` isn't a valid number.
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def load_tuning(name: str, schema: Mapping[str, str]) -> Mapping[str, float]:
+    """Load a numeric tuning file (``data/tuning/<name>.toml``) into a flat mapping.
+
+    ``schema`` maps each output knob name to its location in the file: either a
+    top-level scalar (``"clean_browser_floor"``) or a ``table.key`` path
+    (``"asset_coload.weight"``). The grouping exists for the file's readability; the
+    returned mapping is flat, keyed by the schema's names. Every listed knob must be
+    present and numeric, and any unexpected table or key in the file is rejected --
+    so the file is always the complete, accurate list of a classifier's knobs. An
+    integer in the file is accepted and widened to float.
+    """
+    filename = f"tuning/{name}.toml"
+    data = _load(name, "tuning")
+    scalars: set[str] = set()
+    tables: dict[str, set[str]] = {}
+    for path in schema.values():
+        if "." in path:
+            table, key = path.split(".", 1)
+            tables.setdefault(table, set()).add(key)
+        else:
+            scalars.add(path)
+    _check_top_level(filename, data, scalars | set(tables))
+    for table, keys in tables.items():
+        _check_table(filename, table, data.get(table, {}), keys)
+    values: dict[str, float] = {}
+    for field, path in schema.items():
+        table, _, key = path.partition(".")
+        section = data.get(table) if key else data
+        raw = section.get(key or table) if isinstance(section, dict) else None
+        if raw is None:
+            raise ConfigError(f"{filename}: missing '{path}'")
+        if not _is_number(raw):
+            raise ConfigError(f"{filename}: '{path}' must be a number")
+        values[field] = float(raw)
+    return MappingProxyType(values)
 
 
 def _validate_records(
@@ -184,6 +265,44 @@ class BrowserRelease:
     days_per_major: int
 
 
+@dataclass(frozen=True, slots=True)
+class UaSignatures:
+    """Syntactic User-Agent markers, grouped by what they recognise.
+
+    Each tuple is a list of case-insensitive tokens from ``ua_signatures.toml``. The
+    matchers in :mod:`agent_census.uas` compile these into the regexes that decide
+    whether a UA looks like a browser, declares itself a bot, names a headless
+    engine, is a bare HTTP library, or names a feed reader.
+    """
+
+    browser_engines: tuple[str, ...] = ()
+    # Automation tokens, split by how they must sit in the string (see the data file).
+    automation_substrings: tuple[str, ...] = ()  # matched anywhere
+    automation_standalone_words: tuple[str, ...] = ()  # word boundary both sides
+    automation_suffix_words: tuple[str, ...] = ()  # word boundary on the right only
+    headless_engines: tuple[str, ...] = ()
+    library_names: tuple[str, ...] = ()
+    feed_terms: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class RequestSignatures:
+    """Request-line markers (path / query / method) from ``request_signatures.toml``.
+
+    Consumed by feature extraction to count static assets, page fetches, probing
+    attempts, uncommon methods, and feed polls. Plain token lists; the regex/set
+    machinery that uses them lives in :mod:`agent_census.features`.
+    """
+
+    static_extensions: tuple[str, ...] = ()
+    page_extensions: tuple[str, ...] = ()
+    traversal_markers: tuple[str, ...] = ()
+    evasion_markers: tuple[str, ...] = ()
+    uncommon_methods: tuple[str, ...] = ()
+    feed_filename_tokens: tuple[str, ...] = ()
+    feed_filenames: tuple[str, ...] = ()
+
+
 @lru_cache(maxsize=None)
 def _load(name: str, subdir: str = "") -> dict[str, Any]:
     root = files("agent_census.data")
@@ -193,12 +312,19 @@ def _load(name: str, subdir: str = "") -> dict[str, Any]:
 
 @lru_cache(maxsize=None)
 def load_list(name: str) -> tuple[str, ...]:
-    """Return the flat array from ``<name>.toml`` (keyed by ``name``)."""
+    """Return the flat array from ``<name>.toml`` (keyed by ``name``).
+
+    The array must be present and non-empty: an empty list would compile to a
+    match-everything regex at the call sites, so a missing/empty list is a
+    ``ConfigError`` rather than a silently over-broad matcher.
+    """
     data = _load(name)
     _check_top_level(f"{name}.toml", data, {name})
     value = data.get(name, [])
     if not _type_ok(value, "str[]"):
         raise ConfigError(f"{name}.toml: '{name}' must be a list of strings")
+    if not value:
+        raise ConfigError(f"{name}.toml: '{name}' must not be empty")
     return tuple(value)
 
 
@@ -382,3 +508,78 @@ def load_browser_releases() -> tuple[BrowserRelease, ...]:
         )
         for entry in entries
     )
+
+
+_UA_SIGNATURE_SCHEMA: dict[str, set[str]] = {
+    "browser": {"layout_engines"},
+    "automation": {"substrings", "standalone_words", "suffix_words"},
+    "headless": {"engines"},
+    "http_library": {"names"},
+    "feed_reader": {"generic_terms"},
+}
+
+
+@lru_cache(maxsize=None)
+def load_ua_signatures() -> UaSignatures:
+    """Return the grouped UA-string token lists from ``ua_signatures.toml``."""
+    groups = _grouped_lists("ua_signatures.toml", _load("ua_signatures"), _UA_SIGNATURE_SCHEMA)
+    return UaSignatures(
+        browser_engines=groups[("browser", "layout_engines")],
+        automation_substrings=groups[("automation", "substrings")],
+        automation_standalone_words=groups[("automation", "standalone_words")],
+        automation_suffix_words=groups[("automation", "suffix_words")],
+        headless_engines=groups[("headless", "engines")],
+        library_names=groups[("http_library", "names")],
+        feed_terms=groups[("feed_reader", "generic_terms")],
+    )
+
+
+_REQUEST_SIGNATURE_SCHEMA: dict[str, set[str]] = {
+    "static_assets": {"extensions"},
+    "pages": {"extensions"},
+    "path_traversal": {"markers"},
+    "encoding_evasion": {"markers"},
+    "methods": {"uncommon"},
+    "feed_urls": {"filename_tokens", "filenames"},
+}
+
+
+@lru_cache(maxsize=None)
+def load_request_signatures() -> RequestSignatures:
+    """Return the grouped request-line token lists from ``request_signatures.toml``."""
+    groups = _grouped_lists(
+        "request_signatures.toml", _load("request_signatures"), _REQUEST_SIGNATURE_SCHEMA
+    )
+    return RequestSignatures(
+        static_extensions=groups[("static_assets", "extensions")],
+        page_extensions=groups[("pages", "extensions")],
+        traversal_markers=groups[("path_traversal", "markers")],
+        evasion_markers=groups[("encoding_evasion", "markers")],
+        uncommon_methods=groups[("methods", "uncommon")],
+        feed_filename_tokens=groups[("feed_urls", "filename_tokens")],
+        feed_filenames=groups[("feed_urls", "filenames")],
+    )
+
+
+# Numeric thresholds shared by more than one classifier or tag (data/tuning/shared.toml),
+# keyed by the names the consumers look them up under.
+_SHARED_TUNING: dict[str, str] = {
+    "unknown_threshold": "verdict.unknown_threshold",
+    "browser_coload_min": "browser_shape.coload_ratio_min",
+    "browser_no_coload_max": "browser_shape.no_coload_max",
+    "browser_follow_min": "browser_shape.follow_ratio_min",
+    "browser_no_follow_max": "browser_shape.no_follow_max",
+    "cadence_metronomic_max": "cadence.metronomic_max",
+    "cadence_bursty_min": "cadence.bursty_min",
+    "head_notable_ratio": "head_traffic.notable_ratio",
+    "fabricated_self_referer_min": "fabricated_referer.self_referer_min",
+    "fabricated_min_requests": "fabricated_referer.min_requests",
+    "storm_404_ratio_min": "storm_404.ratio_min",
+    "storm_404_distinct_paths_min": "storm_404.distinct_paths_min",
+}
+
+
+@lru_cache(maxsize=None)
+def load_shared_tuning() -> Mapping[str, float]:
+    """Return the cross-classifier numeric thresholds from ``tuning/shared.toml``."""
+    return load_tuning("shared", _SHARED_TUNING)

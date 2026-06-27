@@ -47,6 +47,7 @@ colors:
   hairline-strong: "#88888866"       # th bottom border, input border
   wash: "#88888811"                  # row-hover / column-off background tint
   chip-neutral: "#88888833"          # unsignalled tags, share-bar track
+  on-chip: "#ffffff"                 # text on colored kind badges and signal tags
   heat-blue: "96 165 250 (light) / 37 99 235 (dark)"  # cross-tab cell heat; deeper in dark for light text
 
 typography:
@@ -81,6 +82,7 @@ typography:
     fontSize: "0.85rem"
     fontWeight: 400
 rounded:
+  focus: "2px"
   bar: "4px"
   control: "6px"
   card: "10px"

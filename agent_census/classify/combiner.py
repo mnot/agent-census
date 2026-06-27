@@ -45,6 +45,7 @@ _PRIORITY: tuple[Kind, ...] = (
     Kind.ARCHIVER,
     Kind.AI_CRAWLER,
     Kind.SEO_MARKETING,
+    Kind.DATA_HARVESTER,
     Kind.VULN_SCANNER,
     Kind.SPAM_BOT,
     Kind.FEED_READER,

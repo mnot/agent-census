@@ -266,7 +266,8 @@ tr.amem td.cid { padding-left: 1.6rem; }
 tr.amem .cid-as { color: #6b7280; font-size: .82rem; }
 input.filter { display: block; width: 100%; max-width: 30rem; margin: .5rem 0;
   padding: .4rem .55rem; border: 1px solid #8886; border-radius: 6px;
-  background: Canvas; color: CanvasText; font: inherit; }
+  background: Canvas; color: CanvasText; font: inherit;
+  position: sticky; top: .5rem; z-index: 1; }
 footer { margin-top: 3rem; color: #6b7280; font-size: .85rem; }
 """.strip()
 
@@ -322,12 +323,29 @@ document.addEventListener('click', function (event) {
 document.addEventListener('input', function (event) {
   var input = event.target;
   if (!input.classList || !input.classList.contains('filter')) return;
-  var scope = input.closest('details') || document;
   var query = input.value.trim().toLowerCase();
-  var rows = scope.querySelectorAll('tr.frow');
+  var on = query.length > 0;
+  // While filtering, force every "Show more" disclosure open so hidden matches
+  // surface, and suspend the exclusive-accordion name= so all stay open at once;
+  // restore both (name re-applied, disclosures re-collapsed) when cleared.
+  var details = document.querySelectorAll('details');
+  for (var d = 0; d < details.length; d++) {
+    var det = details[d], from = on ? 'name' : 'data-name', to = on ? 'data-name' : 'name';
+    if (det.hasAttribute(from)) { det.setAttribute(to, det.getAttribute(from)); det.removeAttribute(from); }
+    det.open = on;
+  }
+  // Toggle every client row across every kind against the one query.
+  var rows = document.querySelectorAll('tr.frow');
   for (var i = 0; i < rows.length; i++) {
     var hay = rows[i].getAttribute('data-filter') || '';
     rows[i].style.display = hay.indexOf(query) === -1 ? 'none' : '';
+  }
+  // Collapse a section (header and all) or an emptied disclosure when no client
+  // row in it survives the filter; restore when cleared.
+  var boxes = document.querySelectorAll('section.kind, details');
+  for (var b = 0; b < boxes.length; b++) {
+    var live = boxes[b].querySelectorAll('tr.frow:not([style*="none"])');
+    boxes[b].style.display = (!on || live.length) ? '' : 'none';
   }
 }, false);
 """.strip()
@@ -761,10 +779,10 @@ def _kind_section(
     if typical:
         chips = "".join(f'<span class="tag">{_esc(t)}</span>' for t in ordered_tags(typical))
         parts.append(f'<p class="muted">Typically: {chips}</p>')
-    parts.append(
-        f"<table><thead>{_SECTION_HEAD}</thead>"
-        f"{''.join(_actor_tbody(a, flags=flags, suppress=typical) for a in actors[:top])}</table>"
+    shown = "".join(
+        _actor_tbody(a, flags=flags, filterable=True, suppress=typical) for a in actors[:top]
     )
+    parts.append(f"<table><thead>{_SECTION_HEAD}</thead>{shown}</table>")
     extra = actors[top:_EXPAND_LIMIT]
     if extra:
         extra_rows = "".join(
@@ -772,11 +790,9 @@ def _kind_section(
         )
         parts.append(
             # Shared name -> native exclusive accordion: opening one closes the rest.
+            # The page filter (above all sections) suspends the name while active.
             '<details name="kind-extra"><summary>'
             "Show more</summary>"
-            '<input class="filter" type="search" '
-            'placeholder="filter these by IP, User-Agent, AS name, or tag…" '
-            'aria-label="filter clients">'
             f"<table><thead>{_SECTION_HEAD}</thead>{extra_rows}</table>"
             "</details>"
         )
@@ -788,7 +804,8 @@ def _kind_section(
             f'<p class="muted">…and {remaining:,} more — '
             f"<code>agent-census inspect --kind {kind.value}</code></p>"
         )
-    return "\n".join(parts)
+    body = "\n".join(parts)
+    return f'<section class="kind">{body}</section>'
 
 
 def render_report_html(
@@ -809,6 +826,9 @@ def render_report_html(
         _meta_list(result, source, robots_note, elapsed),
         _summary_table(result),
         _network_table(result),
+        '<input class="filter" type="search" '
+        'placeholder="filter all clients by IP, User-Agent, AS name, or tag…" '
+        'aria-label="filter clients">',
     ]
     for kind in KIND_ORDER:
         rollup = result.rollups.get(kind)

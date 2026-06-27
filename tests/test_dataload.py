@@ -16,6 +16,7 @@ from agent_census.dataload import (
     load_list,
     load_range_sources,
     load_tokens,
+    load_vuln_paths,
 )
 from agent_census.errors import ConfigError
 
@@ -45,9 +46,17 @@ def test_browser_releases_load() -> None:
 
 
 def test_flat_lists_load() -> None:
-    assert "/.env" in load_list("vuln_paths")
     assert "sqlmap" in load_list("scanner_ua")
     assert "NetNewsWire" in load_list("feed_readers")
+
+
+def test_vuln_paths_split_into_two_buckets() -> None:
+    always, contextual = load_vuln_paths()
+    # Secret-file / RCE targets are always probes; CMS surfaces are contextual.
+    assert "/.env" in always
+    assert "/wp-login.php" in contextual
+    # No substring belongs to both buckets.
+    assert not set(always) & set(contextual)
 
 
 def test_asn_recognised_agents_loaded() -> None:
@@ -74,8 +83,9 @@ def test_range_source_asns_parse_as_ints() -> None:
 
 def test_all_bundled_data_files_validate() -> None:
     # A guard: every shipped data file passes validation (no unknown keys etc.).
-    for name in ("vuln_paths", "scanner_ua", "feed_readers"):
+    for name in ("scanner_ua", "feed_readers"):
         assert load_list(name)
+    assert load_vuln_paths()
     for category in KNOWN_AGENT_CATEGORIES:
         load_tokens(category)
         load_asn_agents(category)

@@ -106,6 +106,29 @@ def test_vuln_and_traversal_signals() -> None:
     assert feats.traversal_hits >= 1
 
 
+def test_contextual_path_counts_only_when_absent() -> None:
+    # /wp-login.php is a real path on a WordPress site: a 200 means it belongs here
+    # (not a probe), a 404 means the client is guessing at WordPress we don't run.
+    served = extract_features([entry("/wp-login.php", status=200, offset=0)])
+    assert served.vuln_path_hits == 0
+    missing = extract_features([entry("/wp-login.php", status=404, offset=0)])
+    assert missing.vuln_path_hits == 1
+
+
+def test_contextual_path_existing_but_gated_not_a_probe() -> None:
+    # 401/403 mean the path exists (just access-controlled) -- still site surface.
+    for code in (401, 403, 301):
+        feats = extract_features([entry("/wp-admin", status=code, offset=0)])
+        assert feats.vuln_path_hits == 0, code
+
+
+def test_always_probe_path_counts_regardless_of_status() -> None:
+    # A 200 on /.env is the leaked-secret case -- the most alarming, never benign.
+    for code in (200, 403, 404):
+        feats = extract_features([entry("/.env", status=code, offset=0)])
+        assert feats.vuln_path_hits == 1, code
+
+
 def test_encoding_evasion_signal() -> None:
     # Double-encoded traversal (WAF-bypass) is counted as evasion, not plain
     # traversal: %252e%252e does not contain the single-encoded %2e%2e marker.

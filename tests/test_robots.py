@@ -37,6 +37,19 @@ def test_matched_group_and_crawl_delay() -> None:
     assert rules.crawl_delay("BadBot") == 10.0
 
 
+def test_matched_group_is_stable_document_order_heuristic() -> None:
+    # matched_group is a stable, text-derived display heuristic: document-order
+    # first match, independent of the CPython robotparser version. With 'Google'
+    # before 'Googlebot', token 'Googlebot' reports 'Google'. This is intentionally
+    # NOT reconciled with can_fetch's verdict (which uses longest-match on newer,
+    # RFC 9309 interpreters) -- see the note on RobotsRules.matched_group. Do not
+    # rewrite this to assert verdict-consistency; that is version-dependent.
+    rules = RobotsRules(
+        "User-agent: Google\nDisallow: /a\n\nUser-agent: Googlebot\nDisallow: /b\n"
+    )
+    assert rules.matched_group("Googlebot") == "Google"
+
+
 def test_compliance_ignores_when_disallowed_requested() -> None:
     rules = RobotsRules(ROBOTS)
     entries = [entry("/private/secret", offset=i) for i in range(3)]

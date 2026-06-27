@@ -204,6 +204,13 @@ def fetch_ranges_text(url: str, name: str | None = None) -> str | None:
         return None
 
 
+def _as_list(value: object) -> list[object]:
+    """A JSON array as a list, or ``[]`` for any non-array value. Guards iteration
+    against a malformed/hostile feed whose expected-array field is a scalar (which
+    would otherwise raise TypeError and abort the whole run)."""
+    return value if isinstance(value, list) else []
+
+
 def parse_prefixes(text: str) -> tuple[str, ...]:
     """A ``{"prefixes": [...]}`` object whose entries are either CIDR strings
     (e.g. Yandex Cloud) or ``{"ipv4Prefix"|"ipv6Prefix"}`` dicts (Google / GCP)."""
@@ -211,7 +218,7 @@ def parse_prefixes(text: str) -> tuple[str, ...]:
         data = json.loads(text)
     except (ValueError, TypeError):
         return ()
-    prefixes = data.get("prefixes", []) if isinstance(data, dict) else []
+    prefixes = _as_list(data.get("prefixes")) if isinstance(data, dict) else []
     out: list[str] = []
     for prefix in prefixes:
         if isinstance(prefix, str):
@@ -232,10 +239,10 @@ def parse_aws(text: str) -> tuple[str, ...]:
     if not isinstance(data, dict):
         return ()
     out: list[str] = []
-    for prefix in data.get("prefixes", []):
+    for prefix in _as_list(data.get("prefixes")):
         if isinstance(prefix, dict) and prefix.get("ip_prefix"):
             out.append(prefix["ip_prefix"])
-    for prefix in data.get("ipv6_prefixes", []):
+    for prefix in _as_list(data.get("ipv6_prefixes")):
         if isinstance(prefix, dict) and prefix.get("ipv6_prefix"):
             out.append(prefix["ipv6_prefix"])
     return tuple(out)
@@ -247,11 +254,11 @@ def parse_azure(text: str) -> tuple[str, ...]:
         data = json.loads(text)
     except (ValueError, TypeError):
         return ()
-    values = data.get("values", []) if isinstance(data, dict) else []
+    values = _as_list(data.get("values")) if isinstance(data, dict) else []
     out: list[str] = []
     for value in values:
         props = value.get("properties", {}) if isinstance(value, dict) else {}
-        for cidr in props.get("addressPrefixes", []) if isinstance(props, dict) else []:
+        for cidr in _as_list(props.get("addressPrefixes")) if isinstance(props, dict) else []:
             if isinstance(cidr, str):
                 out.append(cidr)
     return tuple(out)
@@ -283,7 +290,7 @@ def parse_subnets(text: str) -> tuple[str, ...]:
         data = json.loads(text)
     except (ValueError, TypeError):
         return ()
-    subnets = data.get("subnets", []) if isinstance(data, dict) else []
+    subnets = _as_list(data.get("subnets")) if isinstance(data, dict) else []
     out: list[str] = []
     for subnet in subnets:
         if isinstance(subnet, dict) and subnet.get("ip_prefix"):
@@ -302,7 +309,7 @@ def parse_ripestat(text: str) -> tuple[str, ...]:
     except (ValueError, TypeError):
         return ()
     block = data.get("data", {}) if isinstance(data, dict) else {}
-    prefixes = block.get("prefixes", []) if isinstance(block, dict) else []
+    prefixes = _as_list(block.get("prefixes")) if isinstance(block, dict) else []
     out: list[str] = []
     for entry in prefixes:
         if isinstance(entry, dict) and entry.get("prefix"):
@@ -316,10 +323,10 @@ def parse_oracle(text: str) -> tuple[str, ...]:
         data = json.loads(text)
     except (ValueError, TypeError):
         return ()
-    regions = data.get("regions", []) if isinstance(data, dict) else []
+    regions = _as_list(data.get("regions")) if isinstance(data, dict) else []
     out: list[str] = []
     for region in regions:
-        cidrs = region.get("cidrs", []) if isinstance(region, dict) else []
+        cidrs = _as_list(region.get("cidrs")) if isinstance(region, dict) else []
         for entry in cidrs:
             if isinstance(entry, dict) and entry.get("cidr"):
                 out.append(entry["cidr"])

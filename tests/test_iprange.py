@@ -79,6 +79,26 @@ def test_unknown_format_falls_back_to_prefixes() -> None:
     assert extract_cidrs(text, "bogus") == ("9.9.9.0/24",)
 
 
+@pytest.mark.parametrize(
+    "text,fmt",
+    [
+        ('{"prefixes": 5}', "prefixes"),
+        ('{"prefixes": "nope"}', "aws"),
+        ('{"prefixes": [], "ipv6_prefixes": 7}', "aws"),
+        ('{"values": 1}', "azure"),
+        ('{"values": [{"properties": {"addressPrefixes": 2}}]}', "azure"),
+        ('{"subnets": 3}', "subnets"),
+        ('{"data": {"prefixes": 4}}', "ripestat"),
+        ('{"regions": 6}', "oracle"),
+        ('{"regions": [{"cidrs": 8}]}', "oracle"),
+    ],
+)
+def test_malformed_array_field_degrades_to_empty(text: str, fmt: str) -> None:
+    # A field that should be a JSON array but arrives as a scalar (corrupted or
+    # hostile feed) must yield no CIDRs, never raise TypeError and abort the run.
+    assert extract_cidrs(text, fmt) == ()
+
+
 def test_range_index_membership() -> None:
     idx = RangeIndex.from_networks(parse_networks(("10.0.0.0/8", "192.168.0.0/16", "2001:db8::/32")))
     assert idx.contains("10.1.2.3")

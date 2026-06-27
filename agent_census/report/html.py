@@ -537,8 +537,9 @@ def _network_table(result: AnalysisResult, *, breakout_min_share: float) -> str:
 
     def total_cell(i: int, net: str) -> str:
         col = matrix.col_totals[net]
-        extra = " othertot" if net == OTHER_HOSTING else ""
-        return f"<td class='num{div(i)}{extra}' data-agg='{col}'{red(col, peak_col)}>{col:,}</td>"
+        # Only the swappable Other column needs its aggregate stashed for restore.
+        tag = f" othertot' data-agg='{col}" if net == OTHER_HOSTING else ""
+        return f"<td class='num{div(i)}{tag}'{red(col, peak_col)}>{col:,}</td>"
 
     totals = "".join(total_cell(i, n) for i, n in enumerate(nets))
     rows.append(

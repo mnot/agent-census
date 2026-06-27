@@ -11,38 +11,43 @@ colors:
   interaction-blue: "#2563eb"        # disclosure triangles; doubles as the Browser kind hue
 
   # --- Secondary: the verdict / signal palette (the opinionated layer) ---
-  verified-green: "#16a34a"          # confirmed identity, search-engine kind
-  asn-associated-green: "#059669"    # origin AS corroborates the declared crawler
-  caution-amber: "#b45309"           # unverified declared crawler; the page-level warn color
-  alert-amber: "#d97706"             # ignores-robots, ua-rotating, 404-storm
+  # All carry white text, so each is held at >=4.5:1 against white (deepened
+  # along OKLCH lightness from its original hue; the hue -- the signal -- is kept).
+  verified-green: "#00862e"          # confirmed identity, search-engine kind
+  asn-associated-green: "#008459"    # origin AS corroborates the declared crawler
+  caution-amber: "#b45309"           # unverified declared crawler; the page-level warn color (light)
+  alert-amber: "#b85900"             # ignores-robots, ua-rotating, 404-storm
   threat-red: "#dc2626"              # probe-paths, traversal, impersonator, forged-referer, vuln-scanner
   deep-red: "#b91c1c"                # encoding-evasion, impersonator kind
   datacenter-violet: "#9333ea"       # origin is hosting, not an eyeball network
-  relay-blue: "#0284c7"              # iCloud Private Relay — a positive browser signal
+  relay-blue: "#0079bc"              # iCloud Private Relay — a positive browser signal
   tor-violet: "#6d28d9"              # Tor exit node
   proxy-violet: "#7c3aed"            # corporate / SASE proxy; also the AI-crawler kind
-  egress-teal: "#0d9488"            # consumer VPN egress; also the Monitor kind
+  egress-teal: "#008277"            # consumer VPN egress; also the Monitor kind
 
-  # --- Tertiary: the categorical "kind" badge wheel ---
-  kind-app: "#6366f1"
-  kind-crawler: "#0891b2"
+  # --- Tertiary: the categorical "kind" badge wheel (white text, all >=4.5:1) ---
+  kind-app: "#6062ed"
+  kind-crawler: "#007d9e"
   kind-archiver: "#047857"
-  kind-social-preview: "#0ea5e9"
-  kind-seo-marketing: "#ca8a04"
+  kind-social-preview: "#0079bb"
+  kind-seo-marketing: "#a36600"
   kind-data-harvester: "#a16207"
-  kind-scraper: "#d97706"
-  kind-spoofed-browser: "#ea580c"
-  kind-spam-bot: "#db2777"
-  kind-feed-reader: "#65a30d"
+  kind-scraper: "#b85900"
+  kind-spoofed-browser: "#d14000"
+  kind-spam-bot: "#d92476"
+  kind-feed-reader: "#478200"
   kind-automation: "#78716c"
 
   # --- Neutral ---
-  muted-ink: "#6b7280"               # meta lines, blurbs, AS names, secondary text
+  # Secondary text is a color-mix of the system ink/paper so it tracks the OS
+  # theme and clears 4.5:1 in both modes; the warn ink is a light-dark() pair.
+  muted-ink: "color-mix(in srgb, CanvasText 58%, Canvas)"  # meta, blurbs, AS names, secondary text
+  warn-ink: "light-dark(#b45309, #d97706)"  # calibration / robots notices, legible in both modes
   hairline: "#88888844"              # td bottom borders, card border (mode-adaptive gray + alpha)
   hairline-strong: "#88888866"       # th bottom border, input border
   wash: "#88888811"                  # row-hover / column-off background tint
   chip-neutral: "#88888833"          # unsignalled tags, share-bar track
-  heat-blue: "#60a5fa"               # cross-tab cell heat (row/column share)
+  heat-blue: "96 165 250 (light) / 37 99 235 (dark)"  # cross-tab cell heat; deeper in dark for light text
 
 typography:
   display:
@@ -176,15 +181,20 @@ documented meaning.
 
 ### Secondary — The Verdict Palette
 The opinionated layer. These hues appear on tags and encode agent-census's
-*stance* on a client, not just its category.
-- **Verified Green** (`#16a34a`): identity confirmed by rDNS or published IP
+*stance* on a client, not just its category. Every one carries white text, so
+each is held at **≥4.5:1 against white**: where a hue was too light it was
+deepened along its OKLCH lightness axis, keeping the hue (the actual signal)
+intact.
+- **Verified Green** (`#00862e`): identity confirmed by rDNS or published IP
   range (`verified` tag); also the Search-Engine kind.
-- **ASN-Associated Green** (`#059669`): a lighter corroboration — origin AS
+- **ASN-Associated Green** (`#008459`): a corroboration — origin AS
   matches the declared crawler (`asn-associated`).
 - **Caution Amber** (`#b45309`): a declared crawler that *could* be checked but
-  wasn't confirmed (`unverified`). Also the page-level `.warn` color (robots.txt
-  mismatches, calibration warnings). The mirror of Verified Green.
-- **Alert Amber** (`#d97706`): conduct worth a second look — `ignores-robots`,
+  wasn't confirmed (`unverified`). Mirror of Verified Green. The page-level
+  `.warn` color (robots.txt mismatches, calibration warnings) is a `light-dark()`
+  pair built on it — `#b45309` on light paper, `#d97706` on dark so the notice
+  stays legible either way.
+- **Alert Amber** (`#b85900`): conduct worth a second look — `ignores-robots`,
   `ua-rotating`, `404-storm`. Also the Scraper kind.
 - **Threat Red** (`#dc2626`): hostile intent — `probe-paths`, `traversal`,
   `forged-referer`, `impersonator`, spoofed/impossible browser UAs. Also the
@@ -193,35 +203,41 @@ The opinionated layer. These hues appear on tags and encode agent-census's
   also the Impersonator kind.
 - **Datacenter Violet** (`#9333ea`): origin is hosting, not an eyeball network
   (`datacenter`).
-- **Egress hues** — Relay Blue (`#0284c7`, iCloud Private Relay, a *positive*
+- **Egress hues** — Relay Blue (`#0079bc`, iCloud Private Relay, a *positive*
   browser signal), Tor Violet (`#6d28d9`, Tor exit), Proxy Violet (`#7c3aed`,
-  corporate/SASE proxy), Egress Teal (`#0d9488`, consumer VPN). These mark *how*
+  corporate/SASE proxy), Egress Teal (`#008277`, consumer VPN). These mark *how*
   a client reached you, not whether it's bad.
 
 ### Tertiary — The Kind Wheel
-Eighteen categorical hues for the kind badges. These are **identity-neutral
-classification, not judgement** — Crawler teal (`#0891b2`), App indigo
-(`#6366f1`), AI-Crawler violet (`#7c3aed`), Archiver green (`#047857`),
-Social-Preview sky (`#0ea5e9`), SEO-Marketing gold (`#ca8a04`), Data-Harvester
-ochre (`#a16207`), Spoofed-Browser orange (`#ea580c`), Spam-Bot pink
-(`#db2777`), Feed-Reader lime (`#65a30d`), Monitor teal (`#0d9488`), Automation
-warm-gray (`#78716c`), Unknown gray (`#6b7280`). Several deliberately share a
-hue with a Secondary verdict (Vuln-Scanner = Threat Red, Impersonator = Deep
-Red, Search-Engine = Verified Green) so the badge and its dangerous tags read as
-one voice.
+Eighteen categorical hues for the kind badges, white text, all **≥4.5:1**.
+These are **identity-neutral classification, not judgement** — Crawler teal
+(`#007d9e`), App indigo (`#6062ed`), AI-Crawler violet (`#7c3aed`), Archiver
+green (`#047857`), Social-Preview sky (`#0079bb`), SEO-Marketing gold
+(`#a36600`), Data-Harvester ochre (`#a16207`), Spoofed-Browser orange
+(`#d14000`), Spam-Bot pink (`#d92476`), Feed-Reader lime (`#478200`), Monitor
+teal (`#008277`), Automation warm-gray (`#78716c`), Unknown gray (`#6b7280`).
+Several deliberately share a hue with a Secondary verdict (Vuln-Scanner = Threat
+Red, Impersonator = Deep Red, Search-Engine = Verified Green, Monitor = Egress
+Teal) so the badge and its dangerous tags read as one voice.
 
 ### Neutral
 - **Canvas / CanvasText** (system): the substrate. Background and all default
   text. Never hardcoded — this is what makes one file work in both OS themes.
-- **Muted Ink** (`#6b7280`): the only fixed neutral text color — meta lines,
-  blurbs, AS-org names, the secondary UA line, captions.
+- **Muted Ink** (`color-mix(in srgb, CanvasText 58%, Canvas)`): secondary text —
+  meta lines, blurbs, AS-org names, the secondary UA line, captions. Mixed from
+  the system ink and paper rather than a fixed gray, so it tracks the OS theme
+  and clears 4.5:1 in **both** modes (the old fixed `#6b7280` dropped to ~3.4:1
+  on a dark canvas). Falls back to plain `CanvasText` if `color-mix` is absent.
 - **Hairlines** (`#888` + alpha: `#88888844` cell rules, `#88888866` header
   rules & input border): a single mode-adaptive gray. Because it's gray-with-
   alpha, it darkens on a light page and lightens on a dark one automatically.
 - **Washes** (`#88888811` row-hover/column-off, `#88888833` tag track &
   share-bar): the same gray at lower alpha, for tonal separation without ink.
-- **Heat Blue** (`#60a5fa`) and **Heat Red** (`#dc2626`), applied at variable
-  alpha to cross-tab cells to shade by share.
+- **Heat Blue** (`--heat`: `96 165 250` light / `37 99 235` dark) and **Heat
+  Red** (`#dc2626`), applied at variable alpha to cross-tab cells to shade by
+  share. The blue deepens in dark mode so the cell's `CanvasText` (now light)
+  stays readable over the strongest fills; red sits where both light- and
+  dark-mode text read over it unchanged.
 
 ### Named Rules
 **The System-Color Substrate Rule.** Background and body text are `Canvas` and

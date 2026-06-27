@@ -44,46 +44,52 @@ from .format import (
 from .geo import CountryFlags
 from .inspect import ROLLUP_MIN_CLIENTS
 
+# Kind badge fills. White-text badges, so each fill is held at >=4.5:1 against
+# white (deepened along OKLCH lightness from its original hue where needed);
+# the hue family -- the actual signal -- is preserved.
 _KIND_COLORS: dict[Kind, str] = {
     Kind.BROWSER: "#2563eb",
-    Kind.APP: "#6366f1",
-    Kind.CRAWLER: "#0891b2",
-    Kind.SEARCH_ENGINE: "#16a34a",
+    Kind.APP: "#6062ed",
+    Kind.CRAWLER: "#007d9e",
+    Kind.SEARCH_ENGINE: "#00862e",
     Kind.ARCHIVER: "#047857",
-    Kind.SOCIAL_PREVIEW: "#0ea5e9",
+    Kind.SOCIAL_PREVIEW: "#0079bb",
     Kind.AI_CRAWLER: "#7c3aed",
-    Kind.SEO_MARKETING: "#ca8a04",
+    Kind.SEO_MARKETING: "#a36600",
     Kind.DATA_HARVESTER: "#a16207",
     Kind.IMPERSONATOR: "#b91c1c",
-    Kind.SCRAPER: "#d97706",
+    Kind.SCRAPER: "#b85900",
     Kind.VULN_SCANNER: "#dc2626",
-    Kind.SPOOFED_BROWSER: "#ea580c",
-    Kind.SPAM_BOT: "#db2777",
-    Kind.FEED_READER: "#65a30d",
-    Kind.MONITOR: "#0d9488",
+    Kind.SPOOFED_BROWSER: "#d14000",
+    Kind.SPAM_BOT: "#d92476",
+    Kind.FEED_READER: "#478200",
+    Kind.MONITOR: "#008277",
     Kind.AUTOMATION: "#78716c",
     Kind.UNKNOWN: "#6b7280",
 }
 
 # Tags that deserve a non-neutral colour.
+# Signal-tag fills. White text again, so each colour is held at >=4.5:1 against
+# white; hues match their kind-badge counterparts (e.g. 'verified' shares the
+# search-engine green, 'vpn' the monitor teal) so the wheel stays coherent.
 _TAG_COLORS: dict[str, str] = {
-    "verified": "#16a34a",  # confirmed identity -> strong green
-    "asn-associated": "#059669",  # origin AS corroborates the declared crawler -> green
+    "verified": "#00862e",  # confirmed identity -> strong green
+    "asn-associated": "#008459",  # origin AS corroborates the declared crawler -> green
     "unverified": "#b45309",  # declared crawler we had info for but couldn't confirm -> amber
     "impersonator": "#dc2626",
-    "ignores-robots": "#d97706",
+    "ignores-robots": "#b85900",
     "probe-paths": "#dc2626",  # requested known-vulnerable paths -> red
     "traversal": "#dc2626",  # path-traversal / injection markers -> red
     "encoding-evasion": "#b91c1c",  # deliberate encoding evasion -> deep red
-    "404-storm": "#d97706",
+    "404-storm": "#b85900",
     "ancient-browser-ua": "#dc2626",  # years-stale browser version -> almost certainly spoofed
     "impossible-browser-ua": "#dc2626",  # version newer than exists -> forged UA
     "datacenter": "#9333ea",  # origin is hosting, not an eyeball network -> purple
-    "ua-rotating": "#d97706",  # many UAs from a hosting/non-browser source -> amber
+    "ua-rotating": "#b85900",  # many UAs from a hosting/non-browser source -> amber
     "forged-referer": "#dc2626",  # Referer faked to mimic navigation -> red
-    "icloud-private-relay": "#0284c7",  # privacy relay; a positive browser signal -> blue
+    "icloud-private-relay": "#0079bc",  # privacy relay; a positive browser signal -> blue
     "tor-exit": "#6d28d9",  # Tor exit node; anonymised egress -> violet
-    "vpn": "#0d9488",  # consumer VPN egress -> teal
+    "vpn": "#008277",  # consumer VPN egress -> teal
     "corporate-proxy": "#7c3aed",  # SASE / corporate egress -> violet
     # 'shared-ip' is left neutral (grey): many UAs but a benign shared egress.
 }
@@ -111,7 +117,20 @@ def _network_title(name: str, category: str) -> str:
 
 
 _CSS = """
-:root { color-scheme: light dark; }
+:root {
+  color-scheme: light dark;
+  /* Muted secondary text. Mixed from the system ink/paper so it tracks the OS
+     theme and clears 4.5:1 in both light and dark (a fixed grey did not). */
+  --muted: color-mix(in srgb, CanvasText 58%, Canvas);
+  /* Warning ink: a deep amber on light paper, a brighter amber on dark so the
+     calibration / robots notices stay legible either way. */
+  --warn: light-dark(#b45309, #d97706);
+  /* Cross-tab heat (blue). Light-blue reads under dark text on paper; a deeper
+     blue reads under light text in dark mode. Set as an "R G B" triple so the
+     table script can vary only the alpha. */
+  --heat: 96 165 250;
+}
+@media (prefers-color-scheme: dark) { :root { --heat: 37 99 235; } }
 * { box-sizing: border-box; }
 body { margin: 0; background: Canvas; color: CanvasText;
   font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -119,10 +138,10 @@ body { margin: 0; background: Canvas; color: CanvasText;
 h1 { font-size: 1.7rem; margin: 0 0 .25rem; }
 h2 { font-size: 1.25rem; margin: 2.25rem 0 .5rem; }
 a { color: inherit; }
-.meta { list-style: none; padding: 0; margin: .5rem 0 1.5rem; color: #6b7280; font-size: .92rem; }
+.meta { list-style: none; padding: 0; margin: .5rem 0 1.5rem; color: var(--muted); font-size: .92rem; }
 .meta li { margin: .15rem 0; }
 .meta code { color: CanvasText; }
-.warn { color: #b45309; }
+.warn { color: var(--warn); }
 table { border-collapse: collapse; width: 100%; margin: .5rem 0 1rem; font-size: .92rem; }
 th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid #8884; vertical-align: top; }
 th { font-weight: 600; border-bottom: 2px solid #8886; }
@@ -130,7 +149,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .netdiv { border-left: 2px solid #8887; }
 th.netoff { background: #8881; }
 tr.netall td { border-top: 2px solid #8887; }
-.netctl { font-size: .9rem; color: #6b7280; margin: .25rem 0 .6rem; }
+.netctl { font-size: .9rem; color: var(--muted); margin: .25rem 0 .6rem; }
 .netctl select { font: inherit; margin-left: .35rem; }
 tr:hover td { background: #8881; }
 .badge { display: inline-block; padding: .08rem .5rem; border-radius: 999px;
@@ -138,18 +157,18 @@ tr:hover td { background: #8881; }
 .tag { display: inline-block; padding: .05rem .45rem; margin: 0 .2rem .2rem 0;
   border-radius: 6px; background: #8883; font-size: .78rem; white-space: nowrap; cursor: help; }
 .flag { cursor: help; font-style: normal; }
-.blurb { color: #6b7280; margin: .15rem 0 .6rem; }
+.blurb { color: var(--muted); margin: .15rem 0 .6rem; }
 .bar { background: #8883; border-radius: 4px; height: .7rem; min-width: 2px; }
 .card { border: 1px solid #8884; border-radius: 10px; padding: 1rem 1.1rem; margin: 1rem 0; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem;
   word-break: break-all; }
 td.cid { max-width: 26rem; }
 .cid-id { font-weight: 600; }
-.cid-as { color: #6b7280; font-size: .8rem; word-break: break-word; margin: 1px 0; }
-.cid-ua { color: #6b7280; font-size: .82rem; margin-top: 1px;
+.cid-as { color: var(--muted); font-size: .8rem; word-break: break-word; margin: 1px 0; }
+.cid-ua { color: var(--muted); font-size: .82rem; margin-top: 1px;
   display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3;
   -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
-.muted { color: #6b7280; }
+.muted { color: var(--muted); }
 .evlist { margin: .25rem 0 .25rem 1rem; padding: 0; }
 .evlist li { margin: .1rem 0; }
 .primary-sig { font-weight: 600; }
@@ -157,21 +176,21 @@ td.copy { cursor: pointer; }
 td.copy:hover { background: #8882; }
 td.copy.copied { background: #16a34a55; }
 details { margin: .25rem 0 1rem; }
-summary { cursor: pointer; color: #6b7280; font-size: .9rem; padding: .25rem 0; }
+summary { cursor: pointer; color: var(--muted); font-size: .9rem; padding: .25rem 0; }
 tr.asum { cursor: pointer; }
 tr.asum .tri { display: inline-block; margin-right: .5rem; color: #2563eb;
   font-size: 1rem; line-height: 1; vertical-align: middle; transition: transform .12s; }
 tbody.actor.open tr.asum .tri { transform: rotate(90deg); }
-.actor-ua { color: #6b7280; font-size: .82rem; margin-left: .5rem; }
+.actor-ua { color: var(--muted); font-size: .82rem; margin-left: .5rem; }
 tbody.actor .amem { display: none; }
 tbody.actor.open .amem { display: table-row; }
 tr.amem td.cid { padding-left: 1.6rem; }
-tr.amem .cid-as { color: #6b7280; font-size: .82rem; }
+tr.amem .cid-as { color: var(--muted); font-size: .82rem; }
 input.filter { display: block; width: 100%; max-width: 30rem; margin: .5rem 0;
   padding: .4rem .55rem; border: 1px solid #8886; border-radius: 6px;
   background: Canvas; color: CanvasText; font: inherit;
   position: sticky; top: .5rem; z-index: 1; }
-footer { margin-top: 3rem; color: #6b7280; font-size: .85rem; }
+footer { margin-top: 3rem; color: var(--muted); font-size: .85rem; }
 """.strip()
 
 # Click a client cell to copy its id (the value for `inspect --client`).

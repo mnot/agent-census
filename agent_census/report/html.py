@@ -9,11 +9,9 @@ from __future__ import annotations
 
 import html
 import json
-from functools import lru_cache
 
 from .. import __version__
-from ..dataload import load_egress_networks
-from ..model import ClientProfile, Kind
+from ..model import Classification, ClientProfile, Kind
 from ..pipeline import OTHER_HOSTING, RESIDENTIAL_NETWORK, AnalysisResult, KindRollup
 from ._netscript import NET_SCRIPT
 from .aggregate import (
@@ -39,6 +37,7 @@ from .format import (
     human_duration,
     kind_label,
     ordered_tags,
+    tag_title,
     top_evidence,
     truncate,
 )
@@ -88,105 +87,6 @@ _TAG_COLORS: dict[str, str] = {
     "corporate-proxy": "#7c3aed",  # SASE / corporate egress -> violet
     # 'shared-ip' is left neutral (grey): many UAs but a benign shared egress.
 }
-
-# Hover descriptions for the tags (rendered as a native title= tooltip). Egress
-# network tags are described from the data file, so new networks get tooltips
-# without touching this table.
-_TAG_HELP: dict[str, str] = {
-    "datacenter": "Source IP is in a known datacenter / cloud hosting range, "
-    "not a consumer or ISP network.",
-    "bursty": "Irregular, bursty request timing — human-like, not clockwork.",
-    "steady": "Moderately regular request timing.",
-    "loads-assets": "After fetching pages it pulled their sub-resources (CSS/JS/images) — "
-    "the browser fingerprint.",
-    "no-assets": "Fetched HTML pages but never their sub-resources — not rendering them "
-    "like a browser.",
-    "follows-links": "Often arrives at a page via a Referer it fetched earlier — on-site "
-    "navigation.",
-    "cold": "Requests pages cold, without following on-site links.",
-    "browser-ua": "User-Agent matches a real browser profile (Mozilla + a layout engine), but "
-    "carries no readable version to age.",
-    "generic-ua": "User-Agent is a generic HTTP library/tool (curl, python-requests…), not a "
-    "named agent.",
-    "bot-ua": "User-Agent self-identifies as a bot, but not one we recognise — obscure, new, "
-    "or fabricated.",
-    "post-heavy": "Most requests are POSTs — form/submission traffic, e.g. comment or login spam.",
-    "has-cache": "Received 304 Not Modified responses — makes conditional requests "
-    "and holds a real cache, the mark of a browser or a polite poller.",
-    "lacks-cache": "Re-fetches the same URLs (or makes many requests) yet never receives "
-    "a 304 — makes no use of HTTP caching / revalidation, unlike a browser or polite poller.",
-    "singleton": "Made exactly one request — too little on its own to characterise, "
-    "so the kind leans on its UA and origin alone.",
-    "headless-browser": "User-Agent names a headless / automation-driven browser engine "
-    "(HeadlessChrome, PhantomJS, Puppeteer…) — a real engine, but machine-driven.",
-    "uses-HEAD": "Issues HEAD requests for more than an incidental share of its traffic "
-    "— browsers fetch with GET, so this points to a monitor, link-checker, or other bot.",
-    "current-browser-ua": "Browser User-Agent whose version is current for when the client "
-    "was active — consistent with a real, auto-updating browser.",
-    "stale-browser-ua": "Browser User-Agent whose version is well behind the release cadence "
-    "for its active period; unusual for an auto-updating browser.",
-    "ancient-browser-ua": "Browser User-Agent whose version is years out of date. Chromium and "
-    "Firefox auto-update, so this is almost always a frozen, spoofed User-Agent.",
-    "impossible-browser-ua": "Browser User-Agent claiming a version newer than any that has "
-    "been released for its active period — a forged User-Agent.",
-    "checked-robots": "Requested /robots.txt at some point.",
-    "no-user-agent": "Sent no User-Agent header.",
-    "ua-rotating": "Many distinct User-Agents from one IP, paired with a hosting origin "
-    "or non-browser behaviour — likely UA rotation to evade limits.",
-    "shared-ip": "Many distinct User-Agents from one IP but behaving normally — a shared "
-    "egress such as NAT, VPN, proxy, or carrier gateway.",
-    "ignores-robots": "Requested paths disallowed by the applicable robots.txt group.",
-    "verified": "Reverse/forward DNS or a published IP range confirmed the declared "
-    "crawler identity.",
-    "asn-associated": "User-Agent names a known crawler and its origin AS is one that "
-    "crawler is configured to use -- corroboration, a lighter check than DNS / IP-range "
-    "verification (which take precedence when available).",
-    "declares-known-bot": "User-Agent names a known crawler (identity verified separately).",
-    "unverified": "Declared a crawler we could check by reverse DNS or IP range, but the check "
-    "didn't confirm it — it failed, or was inconclusive (a DNS timeout, unfetchable ranges). "
-    "The mirror of 'verified'; the kind and verdict are unchanged.",
-    "asn-attributed": "Identity is the origin AS itself -- an asn_primary network that "
-    "crawls behind spoofed User-Agents, recognised by AS number rather than by its UA.",
-    "probe-paths": "Requested known-vulnerable / probe paths (.env, /wp-login.php, .git/config…) "
-    "— a burst of them, or a meaningful share of its traffic.",
-    "traversal": "Used path-traversal or injection markers in the request path (../, injection "
-    "patterns) — no legitimate use.",
-    "encoding-evasion": "Used double or overlong percent-encoding — a deliberate attempt to slip "
-    "past filters / a WAF.",
-    "exotic-method": "Used uncommon HTTP methods (PUT/DELETE/PROPFIND/CONNECT…) — typical of "
-    "scanners and WebDAV probes, not browsers.",
-    "404-storm": "A high share of 404s spread across many distinct paths — scanning for "
-    "content, or a broken integration.",
-    "metronomic": "Near-constant intervals between requests — clockwork timing characteristic "
-    "of automation, not a human.",
-    "forged-referer": "Sends a Referer equal to the requested URL — fabricated "
-    "navigation, not something a real browser produces.",
-    "fetches-non-feeds": "A feed reader that also requested non-feed resources.",
-    "high-rate": "Peak requests-per-minute well above this site's real browsers — a "
-    "request rate no human-driven browser here reaches.",
-    "high-bytes": "Mean response size well above this site's real browsers — pulling large "
-    "objects / heavy downloads, not merely making many requests.",
-    "wide-breadth": "Ranges across the site's structure more widely than its real browsers "
-    "do — broad crawling rather than reading a few areas.",
-    "long-session": "Active over a far longer span than this site's real browsers — a session "
-    "length no human visit reaches.",
-}
-
-
-@lru_cache(maxsize=None)
-def _egress_tag_help() -> dict[str, str]:
-    return {
-        net.tag: f"{net.name}: a shared-egress network (privacy relay / proxy). "
-        "Its requests are folded into one entry per User-Agent."
-        for net in load_egress_networks()
-        if net.tag
-    }
-
-
-def _tag_title(tag: str) -> str:
-    """Hover description for a tag, or '' if none is known."""
-    return _TAG_HELP.get(tag) or _egress_tag_help().get(tag, "")
-
 
 # Hover descriptions for the cross-tab column headers. The egress buckets group
 # several networks, so spell out their members; the catch-all columns get a note.
@@ -382,7 +282,7 @@ def _tags_html(tags: frozenset[str]) -> str:
     for tag in ordered_tags(tags):
         color = _TAG_COLORS.get(tag)
         style = f' style="background:{color};color:#fff"' if color else ""
-        description = _tag_title(tag)
+        description = tag_title(tag)
         title = f' title="{_esc(description)}"' if description else ""
         spans.append(f'<span class="tag"{style}{title}>{_esc(tag)}</span>')
     return "".join(spans)
@@ -845,20 +745,41 @@ def render_report_html(
 
 
 def _rationale_html(profile: ClientProfile) -> str:
-    signals = sorted(profile.classification.all_signals, key=lambda s: s.confidence, reverse=True)
-    if not signals:
-        return "<p>No classifier produced a signal — left UNKNOWN.</p>"
-    items = []
-    for signal in signals:
-        primary = signal.kind is profile.classification.primary
-        klass = ' class="primary-sig"' if primary else ""
-        ev = "".join(f"<li>{_esc(item)}</li>" for item in signal.evidence)
-        items.append(
-            f"<li{klass}>{_kind_badge(signal.kind)} "
-            f"<span class='muted'>{signal.confidence:.0%} · {_esc(signal.classifier)}</span>"
-            f'<ul class="evlist">{ev}</ul></li>'
+    cls = profile.classification
+    signals = sorted(cls.all_signals, key=lambda s: s.confidence, reverse=True)
+    if signals:
+        items = []
+        for signal in signals:
+            primary = signal.kind is cls.primary
+            klass = ' class="primary-sig"' if primary else ""
+            ev = "".join(f"<li>{_esc(item)}</li>" for item in signal.evidence)
+            items.append(
+                f"<li{klass}>{_kind_badge(signal.kind)} "
+                f"<span class='muted'>{signal.confidence:.0%} · {_esc(signal.classifier)}</span>"
+                f'<ul class="evlist">{ev}</ul></li>'
+            )
+        rationale = f"<h3>Why this classification</h3><ul>{''.join(items)}</ul>"
+    else:
+        rationale = (
+            "<h3>Why this classification</h3>"
+            "<p>No classifier produced a signal — left UNKNOWN.</p>"
         )
-    return f"<h3>Why this classification</h3><ul>{''.join(items)}</ul>"
+    return rationale + _tags_evidence_html(cls)
+
+
+def _tags_evidence_html(cls: Classification) -> str:
+    """Every tag with the concrete measurement that earned it — the second axis of
+    the verdict, shown alongside the kind signals."""
+    if not cls.tags:
+        return ""
+    evidence = dict(cls.tag_evidence)
+    items = []
+    for tag in ordered_tags(cls.tags):
+        why = evidence.get(tag)
+        chip = f'<span class="tag" title="{_esc(tag_title(tag))}">{_esc(tag)}</span>'
+        detail = f" <span class='muted'>{_esc(why)}</span>" if why else ""
+        items.append(f"<li>{chip}{detail}</li>")
+    return f'<h3>Tags</h3><ul class="evlist">{"".join(items)}</ul>'
 
 
 def _compliance_html(profile: ClientProfile) -> str:
@@ -925,7 +846,6 @@ def _profile_card(profile: ClientProfile, limit: int, full: bool) -> str:
         f'<h2 class="mono">{_esc(client_label(profile)[:100])}</h2>'
         f'<ul class="meta">'
         f"<li>{_kind_badge(cls.primary)} {conf}</li>"
-        f"<li><strong>Tags:</strong> {_tags_html(cls.tags)}</li>"
         f"<li><strong>IP:</strong> <code>{_esc(profile.client_id.ip)}</code></li>"
         + (f"<li><strong>Network:</strong> {_esc(profile.network)}</li>" if profile.network else "")
         + f'<li><strong>User-Agent:</strong> <span class="mono">{ua}</span></li>'

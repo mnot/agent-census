@@ -466,6 +466,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         verification: BotVerification | None,
         member: tuple[str, ...],
         extra_tags: frozenset[str] = frozenset(),
+        extra_tag_evidence: tuple[tuple[str, str], ...] = (),
         datacenter: bool | None = None,
         network: str | None = None,
         network_category: str | None = None,
@@ -552,7 +553,12 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             keep_signals=keep_signals,
         )
         if extra_tags:
-            classification = replace(classification, tags=classification.tags | extra_tags)
+            classification = replace(
+                classification,
+                tags=classification.tags | extra_tags,
+                tag_evidence=classification.tag_evidence
+                + (extra_tag_evidence if keep_signals else ()),
+            )
         # Sample this client into the reference pool (browsers only qualify). Done
         # for every emitted single client, so the distribution is eviction-safe and
         # not limited to the capped `kept` heap. An egress fold is excluded: it is
@@ -735,6 +741,13 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             None,
             tuple(sorted(egress_members[(name, user_agent)])),
             extra_tags=frozenset({egress_tag[name]}),
+            extra_tag_evidence=(
+                (
+                    egress_tag[name],
+                    f"requests folded under shared-egress network {egress_group[name]} "
+                    "(privacy relay / proxy)",
+                ),
+            ),
             network=egress_group[name],
             network_category=_NET_EGRESS,
         )
@@ -795,7 +808,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
     # resident now, so no second read of the log.
     calibration = collector.calibrate(rel_config.params)
     profiles = [
-        tag_profile(profile, rel_config, calibration)
+        tag_profile(profile, rel_config, calibration, keep_evidence=keep_signals)
         for heap in kept.values()
         for (_, _, profile) in heap
     ]

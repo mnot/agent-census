@@ -13,7 +13,8 @@ from agent_census.parsing.apache import PRESETS
 from agent_census.model import Classification, ClientFeatures, ClientId, ClientProfile, Kind
 from agent_census.report import render_inspect_html, render_report_html, select_profiles
 from agent_census.classify.relative import _METRIC_TAGS
-from agent_census.report.html import _TAG_HELP, _client_row, _esc
+from agent_census.report.format import _TAG_HELP
+from agent_census.report.html import _client_row, _esc
 
 DATA = Path(__file__).parent / "data"
 
@@ -64,15 +65,14 @@ def test_report_html_client_cells_are_copyable() -> None:
     assert "navigator.clipboard" in html  # copy script present
     assert "inspect --client" in html  # the tip
     # The cell is stacked: identity line + UA line (clamped) under one copy target.
-    assert "<div class=\"mono cid-id\">203.0.113.66</div>" in html
+    assert '<div class="mono cid-id">203.0.113.66</div>' in html
     assert 'class="mono cid-ua"' in html
 
 
 def test_kind_section_disclosure_and_filter(tmp_path: Path) -> None:
     # 8 one-off clients -> one 'unknown' kind; top 5 shown, 3 behind a disclosure.
     lines = [
-        f"10.0.0.{i} - - [10/Oct/2023:12:00:0{i} +0000] "
-        f'"GET / HTTP/1.1" 200 10 "-" "agent-{i}"'
+        f"10.0.0.{i} - - [10/Oct/2023:12:00:0{i} +0000] " f'"GET / HTTP/1.1" 200 10 "-" "agent-{i}"'
         for i in range(8)
     ]
     log = tmp_path / "many.log"
@@ -239,7 +239,7 @@ def test_filter_haystack_includes_visible_tags() -> None:
 def test_tags_have_hover_descriptions() -> None:
     # The 203.0.113.66 zgrab scanner is tagged 'probe-paths'; it should carry a tooltip.
     html = render_report_html(_run(), source="sample")
-    assert "<span class=\"tag\"" in html
+    assert '<span class="tag"' in html
     assert 'title="Requested known-vulnerable' in html
 
 

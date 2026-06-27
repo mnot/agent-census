@@ -237,6 +237,11 @@ class Classification:
     tags: frozenset[str] = frozenset()
     evidence: tuple[str, ...] = ()
     all_signals: tuple[Signal, ...] = ()
+    # Per-tag evidence for inspect mode: the concrete measurement that earned each
+    # tag, paired ``(tag, why)``. Like ``all_signals`` this is detail only inspect
+    # reads, so it is populated only when signals are kept (``keep_signals``); the
+    # bulk ``analyze`` path leaves it empty to avoid holding a string per client.
+    tag_evidence: tuple[tuple[str, str], ...] = ()
 
 
 class RobotsVerdict(str, Enum):

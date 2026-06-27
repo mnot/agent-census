@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from functools import lru_cache
 
+from ..dataload import load_egress_networks
 from ..model import ClientFeatures, ClientProfile, Kind, VerificationStatus
 
 _KHTML_MARKER = "(khtml, like gecko)"
@@ -137,6 +139,106 @@ CONDUCT_TAGS = frozenset(
         "forged-referer",
     }
 )
+
+
+# Hover descriptions for the tags (rendered as a native title= tooltip in HTML, and
+# the fallback rationale in inspect when a tag carries no per-client evidence). Egress
+# network tags are described from the data file, so new networks get descriptions
+# without touching this table.
+_TAG_HELP: dict[str, str] = {
+    "datacenter": "Source IP is in a known datacenter / cloud hosting range, "
+    "not a consumer or ISP network.",
+    "bursty": "Irregular, bursty request timing — human-like, not clockwork.",
+    "steady": "Moderately regular request timing.",
+    "loads-assets": "After fetching pages it pulled their sub-resources (CSS/JS/images) — "
+    "the browser fingerprint.",
+    "no-assets": "Fetched HTML pages but never their sub-resources — not rendering them "
+    "like a browser.",
+    "follows-links": "Often arrives at a page via a Referer it fetched earlier — on-site "
+    "navigation.",
+    "cold": "Requests pages cold, without following on-site links.",
+    "browser-ua": "User-Agent matches a real browser profile (Mozilla + a layout engine), but "
+    "carries no readable version to age.",
+    "generic-ua": "User-Agent is a generic HTTP library/tool (curl, python-requests…), not a "
+    "named agent.",
+    "bot-ua": "User-Agent self-identifies as a bot, but not one we recognise — obscure, new, "
+    "or fabricated.",
+    "post-heavy": "Most requests are POSTs — form/submission traffic, e.g. comment or login spam.",
+    "has-cache": "Received 304 Not Modified responses — makes conditional requests "
+    "and holds a real cache, the mark of a browser or a polite poller.",
+    "lacks-cache": "Re-fetches the same URLs (or makes many requests) yet never receives "
+    "a 304 — makes no use of HTTP caching / revalidation, unlike a browser or polite poller.",
+    "singleton": "Made exactly one request — too little on its own to characterise, "
+    "so the kind leans on its UA and origin alone.",
+    "headless-browser": "User-Agent names a headless / automation-driven browser engine "
+    "(HeadlessChrome, PhantomJS, Puppeteer…) — a real engine, but machine-driven.",
+    "uses-HEAD": "Issues HEAD requests for more than an incidental share of its traffic "
+    "— browsers fetch with GET, so this points to a monitor, link-checker, or other bot.",
+    "current-browser-ua": "Browser User-Agent whose version is current for when the client "
+    "was active — consistent with a real, auto-updating browser.",
+    "stale-browser-ua": "Browser User-Agent whose version is well behind the release cadence "
+    "for its active period; unusual for an auto-updating browser.",
+    "ancient-browser-ua": "Browser User-Agent whose version is years out of date. Chromium and "
+    "Firefox auto-update, so this is almost always a frozen, spoofed User-Agent.",
+    "impossible-browser-ua": "Browser User-Agent claiming a version newer than any that has "
+    "been released for its active period — a forged User-Agent.",
+    "checked-robots": "Requested /robots.txt at some point.",
+    "no-user-agent": "Sent no User-Agent header.",
+    "ua-rotating": "Many distinct User-Agents from one IP, paired with a hosting origin "
+    "or non-browser behaviour — likely UA rotation to evade limits.",
+    "shared-ip": "Many distinct User-Agents from one IP but behaving normally — a shared "
+    "egress such as NAT, VPN, proxy, or carrier gateway.",
+    "ignores-robots": "Requested paths disallowed by the applicable robots.txt group.",
+    "verified": "Reverse/forward DNS or a published IP range confirmed the declared "
+    "crawler identity.",
+    "asn-associated": "User-Agent names a known crawler and its origin AS is one that "
+    "crawler is configured to use -- corroboration, a lighter check than DNS / IP-range "
+    "verification (which take precedence when available).",
+    "declares-known-bot": "User-Agent names a known crawler (identity verified separately).",
+    "unverified": "Declared a crawler we could check by reverse DNS or IP range, but the check "
+    "didn't confirm it — it failed, or was inconclusive (a DNS timeout, unfetchable ranges). "
+    "The mirror of 'verified'; the kind and verdict are unchanged.",
+    "asn-attributed": "Identity is the origin AS itself -- an asn_primary network that "
+    "crawls behind spoofed User-Agents, recognised by AS number rather than by its UA.",
+    "probe-paths": "Requested known-vulnerable / probe paths (.env, /wp-login.php, .git/config…) "
+    "— a burst of them, or a meaningful share of its traffic.",
+    "traversal": "Used path-traversal or injection markers in the request path (../, injection "
+    "patterns) — no legitimate use.",
+    "encoding-evasion": "Used double or overlong percent-encoding — a deliberate attempt to slip "
+    "past filters / a WAF.",
+    "exotic-method": "Used uncommon HTTP methods (PUT/DELETE/PROPFIND/CONNECT…) — typical of "
+    "scanners and WebDAV probes, not browsers.",
+    "404-storm": "A high share of 404s spread across many distinct paths — scanning for "
+    "content, or a broken integration.",
+    "metronomic": "Near-constant intervals between requests — clockwork timing characteristic "
+    "of automation, not a human.",
+    "forged-referer": "Sends a Referer equal to the requested URL — fabricated "
+    "navigation, not something a real browser produces.",
+    "fetches-non-feeds": "A feed reader that also requested non-feed resources.",
+    "high-rate": "Peak requests-per-minute well above this site's real browsers — a "
+    "request rate no human-driven browser here reaches.",
+    "high-bytes": "Mean response size well above this site's real browsers — pulling large "
+    "objects / heavy downloads, not merely making many requests.",
+    "wide-breadth": "Ranges across the site's structure more widely than its real browsers "
+    "do — broad crawling rather than reading a few areas.",
+    "long-session": "Active over a far longer span than this site's real browsers — a session "
+    "length no human visit reaches.",
+}
+
+
+@lru_cache(maxsize=None)
+def _egress_tag_help() -> dict[str, str]:
+    return {
+        net.tag: f"{net.name}: a shared-egress network (privacy relay / proxy). "
+        "Its requests are folded into one entry per User-Agent."
+        for net in load_egress_networks()
+        if net.tag
+    }
+
+
+def tag_title(tag: str) -> str:
+    """Hover / fallback description for a tag, or '' if none is known."""
+    return _TAG_HELP.get(tag) or _egress_tag_help().get(tag, "")
 
 
 def as_display(org: str | None, number: str | None) -> str:

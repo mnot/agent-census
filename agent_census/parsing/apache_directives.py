@@ -134,7 +134,10 @@ def parse_clf_time(value: str) -> datetime | None:
             return stamp.replace(tzinfo=timezone(timedelta(minutes=offset_min)))
     except (ValueError, KeyError):
         return None
-    return stamp
+    # No usable offset (absent or malformed zone): return an aware UTC datetime so
+    # one log never mixes naive and tz-aware timestamps -- comparing the two raises
+    # TypeError where first_seen/last_seen are tracked.
+    return stamp.replace(tzinfo=timezone.utc)
 
 
 # --- setter factories for the common shapes -------------------------------

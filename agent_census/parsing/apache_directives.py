@@ -125,13 +125,15 @@ def parse_clf_time(value: str) -> datetime | None:
         year, hour, minute, second = rest.split(":")
         month = _MONTHS[mon]
         stamp = datetime(int(year), month, int(day), int(hour), int(minute), int(second))
+        # Inside the try: a malformed offset (e.g. ``+07ab``) must yield None like
+        # any other bad shape, not raise and fail the whole line at the setter.
+        if zone and len(zone) == 5 and zone[0] in "+-":
+            offset_min = int(zone[1:3]) * 60 + int(zone[3:5])
+            if zone[0] == "-":
+                offset_min = -offset_min
+            return stamp.replace(tzinfo=timezone(timedelta(minutes=offset_min)))
     except (ValueError, KeyError):
         return None
-    if zone and len(zone) == 5 and zone[0] in "+-":
-        offset_min = int(zone[1:3]) * 60 + int(zone[3:5])
-        if zone[0] == "-":
-            offset_min = -offset_min
-        return stamp.replace(tzinfo=timezone(timedelta(minutes=offset_min)))
     return stamp
 
 

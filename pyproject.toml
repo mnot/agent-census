@@ -51,7 +51,7 @@ namespaces = false
 include-package-data = true
 
 [tool.setuptools.package-data]
-agent_census = ["py.typed", "data/*.toml"]
+agent_census = ["py.typed", "data/*.toml", "data/agents/*.toml"]
 
 # Most tool configuration lives in dedicated files (managed by the template):
 #   mypy   → mypy.ini

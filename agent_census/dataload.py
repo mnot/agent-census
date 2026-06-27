@@ -184,9 +184,10 @@ class BrowserRelease:
 
 
 @lru_cache(maxsize=None)
-def _load(name: str) -> dict[str, Any]:
-    text = (files("agent_census.data") / f"{name}.toml").read_text(encoding="utf-8")
-    return tomllib.loads(text)
+def _load(name: str, subdir: str = "") -> dict[str, Any]:
+    root = files("agent_census.data")
+    resource = (root / subdir / f"{name}.toml") if subdir else (root / f"{name}.toml")
+    return tomllib.loads(resource.read_text(encoding="utf-8"))
 
 
 @lru_cache(maxsize=None)
@@ -224,11 +225,12 @@ def _require_agent(entry: dict[str, Any]) -> str:
 
 @lru_cache(maxsize=None)
 def _agents(category: str) -> tuple[dict[str, Any], ...]:
-    """The validated ``[[agent]]`` tables of ``<category>.toml`` (raw dicts)."""
-    data = _load(category)
-    _check_top_level(f"{category}.toml", data, {"agent"})
+    """The validated ``[[agent]]`` tables of ``agents/<category>.toml`` (raw dicts)."""
+    data = _load(category, "agents")
+    label = f"agents/{category}.toml"
+    _check_top_level(label, data, {"agent"})
     entries = _validate_records(
-        f"{category}.toml", "agent", data.get("agent", []), _AGENT_SCHEMA, _require_agent
+        label, "agent", data.get("agent", []), _AGENT_SCHEMA, _require_agent
     )
     return tuple(entries)
 

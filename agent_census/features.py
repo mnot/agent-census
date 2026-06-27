@@ -239,8 +239,8 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
 
     __slots__ = (
         "_disallowed_check", "count", "total_bytes", "status_counts", "count_404",
-        "paths_404", "vuln_hits", "vuln_sample", "submit_hits", "traversal_hits", "evasion_hits", "methods",
-        "distinct_paths", "static_count", "fetched_robots", "user_agent", "as_org",
+        "paths_404", "vuln_hits", "vuln_sample", "submit_hits", "traversal_hits", "evasion_hits",
+        "methods", "distinct_paths", "static_count", "fetched_robots", "user_agent", "as_org",
         "as_number", "first_seen",
         "last_seen", "_has_prev", "_prev_top", "breadth_changes",
         "breadth_pairs", "ref_total", "ref_onsite", "self_referer_hits", "pages_total",

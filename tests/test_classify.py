@@ -442,7 +442,9 @@ def test_bot_ua_only_for_unrecognised_bots() -> None:
     assert "declares-known-bot" in known.tags and "bot-ua" not in known.tags
     # A self-declared bot we don't recognise gets bot-ua, and no declares-known-bot.
     unknown = classify_client(
-        ClientFeatures(request_count=5, ua_empty=False, ua_declares_bot=True, user_agent="FooBot/1.0")
+        ClientFeatures(
+            request_count=5, ua_empty=False, ua_declares_bot=True, user_agent="FooBot/1.0"
+        )
     )
     assert "bot-ua" in unknown.tags and "declares-known-bot" not in unknown.tags
 
@@ -459,7 +461,9 @@ def test_ua_age_tags() -> None:
     assert "current-browser-ua" in tags_for(
         "Chrome/120.0.0.0 Safari/537.36", datetime(2024, 1, 1, tzinfo=timezone.utc)
     )
-    assert "stale-browser-ua" in tags_for("Firefox/100.0", datetime(2024, 6, 1, tzinfo=timezone.utc))
+    assert "stale-browser-ua" in tags_for(
+        "Firefox/100.0", datetime(2024, 6, 1, tzinfo=timezone.utc)
+    )
     # A generic library has no browser version -> generic-ua, no browser/age tag.
     curl_tags = tags_for("curl/8.0", y2026)
     assert "generic-ua" in curl_tags
@@ -569,7 +573,10 @@ def test_browser_version_parsing_and_age() -> None:
     assert uas.browser_version("... Chrome/106.0.0.0 Safari/537.36") == ("chrome", 106)
     assert uas.browser_version("... Firefox/121.0") == ("firefox", 121)
     # Edge/Opera ride the Chromium major via their Chrome/ token.
-    assert uas.browser_version("... Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0") == ("chrome", 120)
+    assert uas.browser_version("... Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0") == (
+        "chrome",
+        120,
+    )
     # Safari reports its Version/ major (not the frozen Safari/605 WebKit build).
     assert uas.browser_version(
         "Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 (KHTML) Version/16.0 Safari/605.1.15"
@@ -824,6 +831,41 @@ def test_behavioural_tags_promoted_from_evidence() -> None:
     # A plain client earns none of them.
     plain = ClientFeatures(request_count=20, ratio_404=0.0, rate_regularity=0.8)
     assert not ({"404-storm", "exotic-method", "metronomic"} & classify_client(plain).tags)
+
+
+def test_tag_evidence_covers_every_derived_tag() -> None:
+    # Inspect mode shows the measurement behind each tag, so derive_tag_evidence
+    # must explain exactly the tags derive_tags emits -- no tag without a reason,
+    # no orphan reason. Exercise a feature-rich client that earns many tags at once.
+    from agent_census.classify.tags import derive_tag_evidence, derive_tags
+
+    feats = ClientFeatures(
+        request_count=40,
+        distinct_paths=10,
+        status_counts={200: 40},
+        rate_regularity=0.05,
+        head_ratio=0.5,
+        ua_empty=False,
+        user_agent="python-requests/2.31.0",
+        ua_declares_bot=False,
+        ua_count_for_ip=6,
+    )
+    evidence = derive_tag_evidence(feats, None, None, datacenter=True)
+    assert set(evidence) == derive_tags(feats, None, None, datacenter=True)
+    # Every reason is a non-empty, concrete string (cites the measurement).
+    assert evidence and all(why.strip() for why in evidence.values())
+    assert "lacks-cache" in evidence and "304" in evidence["lacks-cache"]
+
+
+def test_classification_carries_tag_evidence_only_when_signals_kept() -> None:
+    # tag_evidence is inspect-only detail held on the same terms as all_signals:
+    # populated when keep_signals, dropped on the bulk analyze path.
+    feats = ClientFeatures(request_count=20, rate_regularity=0.05)
+    kept = combine([], feats, keep_signals=True)
+    dropped = combine([], feats, keep_signals=False)
+    assert kept.tags == dropped.tags  # the tags themselves are unaffected
+    assert dict(kept.tag_evidence).keys() == set(kept.tags)
+    assert dropped.tag_evidence == ()
 
 
 def test_aggregate_suppresses_cadence_tag() -> None:
@@ -1173,7 +1215,9 @@ def test_search_engine_and_social_preview_are_distinct() -> None:
         ClientFeatures(request_count=4, user_agent="Mozilla/5.0 (compatible; Googlebot/2.1)")
     )
     assert google.primary is Kind.SEARCH_ENGINE
-    facebook = classify_client(ClientFeatures(request_count=2, user_agent="facebookexternalhit/1.1"))
+    facebook = classify_client(
+        ClientFeatures(request_count=2, user_agent="facebookexternalhit/1.1")
+    )
     assert facebook.primary is Kind.SOCIAL_PREVIEW
 
 
@@ -1224,7 +1268,6 @@ def test_feed_reader_app_not_feed_dominant_is_not_an_app() -> None:
             request_count=10, distinct_paths=8, feed_requests=3, feed_ratio=0.3, user_agent=ua
         )
         assert classify_client(feats).primary is not Kind.APP, ua
-
 
 
 def test_datacenter_library_harvester_is_a_scraper() -> None:

@@ -74,6 +74,16 @@ def test_spam_bot_submission_endpoint_reads_actual_paths() -> None:
     assert any("submission endpoints" in e for e in signals[0].evidence)
 
 
+def test_tie_break_priority_covers_every_kind() -> None:
+    # Every Kind needs an explicit tie-break rank. A missing one silently falls to
+    # the worst rank (below UNKNOWN) via _RANK.get's len(_PRIORITY) fallback, so it
+    # loses every confidence tie -- which is what happened to DATA_HARVESTER.
+    from agent_census.classify.combiner import _PRIORITY
+
+    assert set(_PRIORITY) == set(Kind)
+    assert len(_PRIORITY) == len(set(_PRIORITY))  # no duplicate ranks
+
+
 def test_vuln_scanner_silent_on_clean_client() -> None:
     feats = ClientFeatures(request_count=10, ratio_2xx=1.0)
     assert VulnScannerClassifier().evaluate(feats) == []

@@ -8,13 +8,12 @@ from __future__ import annotations
 
 import re
 
+from ..dataload import load_list
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
 
-_SUBMIT_PATH = re.compile(
-    r"wp-comments-post|comment|xmlrpc|wp-login|/login|signin|register|contact|sendmail",
-    re.I,
-)
+# Submission-endpoint substrings live in data/submit_paths.toml.
+_SUBMIT_PATH = re.compile("|".join(re.escape(p) for p in load_list("submit_paths")), re.I)
 
 
 class SpamBotClassifier(Classifier):

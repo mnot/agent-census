@@ -1,0 +1,49 @@
+# Markers read off the request line -- path, query, and method -- during feature
+# extraction (see agent_census/features.py). Like the UA signatures, these are
+# descriptive: they decide what gets counted, and classifiers turn the counts into
+# verdicts. Editing a list changes what is counted; no code change is needed.
+# Path/query markers are matched case-insensitively as substrings.
+
+[static_assets]
+# File extensions a browser pulls in *after* a page: stylesheets, scripts, images,
+# fonts, media. A high share of these is a browser tell -- a real browser fetches a
+# page and then its sub-resources; their absence is a tell the client wants only
+# documents.
+extensions = [
+    "css", "js", "mjs",
+    "png", "jpg", "jpeg", "gif", "svg", "webp", "avif", "ico", "bmp",
+    "woff", "woff2", "ttf", "eot", "otf",
+    "map", "mp4", "webm", "mp3", "ogg", "wav", "pdf",
+]
+
+[pages]
+# Extensions that count as an HTML page rather than an asset (a trailing slash or a
+# path with no extension counts too). Pages are the anchor for the co-load and
+# breadth measurements.
+extensions = ["html", "htm", "xhtml", "php", "asp", "aspx", "jsp", "shtml", "cfm"]
+
+[path_traversal]
+# Substrings that mark a directory-traversal or path-injection attempt. A hit is
+# scored against the client as probing, not browsing.
+markers = ["../", "..%2f", "%2e%2e", "..\\", "%00", "/etc/passwd", "/proc/self"]
+
+[encoding_evasion]
+# Double- or overlong-encoded sequences. There is no legitimate reason to
+# double-encode a path, so these read as deliberate WAF evasion and weigh heavier
+# than plain traversal.
+markers = ["%252e", "%252f", "%255c", "%c0%ae", "%c0%af", "%u002e"]
+
+[methods]
+# HTTP methods a browser never issues on its own. Their presence points at a scanner
+# or scripted client -- WebDAV verbs, probing, tunnelling.
+uncommon = ["PUT", "DELETE", "PROPFIND", "PROPPATCH", "CONNECT", "TRACE", "PATCH", "MKCOL"]
+
+[feed_urls]
+# How a feed poll is spotted from the URL (the UA side lives in ua_signatures.toml).
+# A filename part equal to one of these tokens -- /blog/feed/, /index.rss, atom.xml
+# -- reads as a feed. Matched as a whole dot/dash/underscore-delimited part, so
+# "feedback.html" doesn't count.
+filename_tokens = ["feed", "rss", "atom"]
+# Whole feed filenames that carry no give-away token, a stopgap until response media
+# types are used more widely (many sites publish their feed at /index.xml).
+filenames = ["index.xml"]

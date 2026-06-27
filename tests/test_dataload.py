@@ -8,6 +8,7 @@ from agent_census.dataload import (
     _AGENT_SCHEMA,
     _bad_format,
     _check_top_level,
+    _grouped_lists,
     _require_agent,
     _validate_records,
     KNOWN_AGENT_CATEGORIES,
@@ -15,7 +16,9 @@ from agent_census.dataload import (
     load_egress_networks,
     load_list,
     load_range_sources,
+    load_request_signatures,
     load_tokens,
+    load_ua_signatures,
 )
 from agent_census.errors import ConfigError
 
@@ -48,6 +51,50 @@ def test_flat_lists_load() -> None:
     assert "/.env" in load_list("vuln_paths")
     assert "sqlmap" in load_list("scanner_ua")
     assert "NetNewsWire" in load_list("feed_readers")
+    assert "uptimerobot" in load_list("monitor_uas")
+    assert "wp-login" in load_list("submit_paths")
+
+
+def test_ua_signatures_load() -> None:
+    sig = load_ua_signatures()
+    assert "applewebkit" in sig.browser_engines
+    assert "scrapy" in sig.automation_substrings
+    assert sig.automation_standalone_words == ("feed",)
+    assert sig.automation_suffix_words == ("bot",)
+    assert "puppeteer" in sig.headless_engines
+    assert "curl" in sig.library_names
+    assert "podcast" in sig.feed_terms
+
+
+def test_request_signatures_load() -> None:
+    sig = load_request_signatures()
+    assert "css" in sig.static_extensions
+    assert "html" in sig.page_extensions
+    assert "/etc/passwd" in sig.traversal_markers
+    assert "%252e" in sig.evasion_markers
+    assert "PROPFIND" in sig.uncommon_methods
+    assert "rss" in sig.feed_filename_tokens
+    assert "index.xml" in sig.feed_filenames
+
+
+def test_grouped_lists_rejects_unknown_table() -> None:
+    with pytest.raises(ConfigError, match="unexpected top-level key"):
+        _grouped_lists("x.toml", {"browser": {}, "bogus": {}}, {"browser": {"layout_engines"}})
+
+
+def test_grouped_lists_rejects_unknown_key() -> None:
+    with pytest.raises(ConfigError, match=r"\[browser\] unexpected key"):
+        _grouped_lists("x.toml", {"browser": {"engines": []}}, {"browser": {"layout_engines"}})
+
+
+def test_grouped_lists_rejects_bad_type() -> None:
+    with pytest.raises(ConfigError, match="must be a list of strings"):
+        _grouped_lists("x.toml", {"browser": {"layout_engines": [1]}}, {"browser": {"layout_engines"}})
+
+
+def test_grouped_lists_rejects_non_table_section() -> None:
+    with pytest.raises(ConfigError, match=r"\[browser\] must be a table"):
+        _grouped_lists("x.toml", {"browser": ["not", "a", "table"]}, {"browser": {"layout_engines"}})
 
 
 def test_asn_recognised_agents_loaded() -> None:
@@ -74,13 +121,15 @@ def test_range_source_asns_parse_as_ints() -> None:
 
 def test_all_bundled_data_files_validate() -> None:
     # A guard: every shipped data file passes validation (no unknown keys etc.).
-    for name in ("vuln_paths", "scanner_ua", "feed_readers"):
+    for name in ("vuln_paths", "scanner_ua", "feed_readers", "monitor_uas", "submit_paths"):
         assert load_list(name)
     for category in KNOWN_AGENT_CATEGORIES:
         load_tokens(category)
         load_asn_agents(category)
     assert load_range_sources("datacenter_ranges")
     assert load_egress_networks()
+    assert load_ua_signatures().browser_engines
+    assert load_request_signatures().static_extensions
 
 
 def test_validate_rejects_unknown_key() -> None:

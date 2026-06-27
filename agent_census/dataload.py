@@ -55,6 +55,35 @@ def _check_top_level(filename: str, data: dict[str, Any], allowed: set[str]) -> 
         )
 
 
+def _grouped_lists(
+    filename: str, data: dict[str, Any], schema: dict[str, set[str]]
+) -> dict[tuple[str, str], tuple[str, ...]]:
+    """Validate a file of ``[table]`` sections, each holding named ``str[]`` arrays.
+
+    ``schema`` maps each expected table to the keys it may contain. Returns a
+    ``{(table, key): tuple}`` mapping; a missing array reads as empty. Unexpected
+    tables or keys, non-table sections, and non-``str[]`` values are ``ConfigError``.
+    """
+    _check_top_level(filename, data, set(schema))
+    out: dict[tuple[str, str], tuple[str, ...]] = {}
+    for table, keys in schema.items():
+        section = data.get(table, {})
+        if not isinstance(section, dict):
+            raise ConfigError(f"{filename}: [{table}] must be a table")
+        extra = set(section) - keys
+        if extra:
+            raise ConfigError(
+                f"{filename}: [{table}] unexpected key(s) {', '.join(sorted(extra))} "
+                f"(allowed: {', '.join(sorted(keys))})"
+            )
+        for key in keys:
+            value = section.get(key, [])
+            if not _type_ok(value, "str[]"):
+                raise ConfigError(f"{filename}: [{table}] '{key}' must be a list of strings")
+            out[(table, key)] = tuple(value)
+    return out
+
+
 def _validate_records(
     filename: str,
     array: str,
@@ -181,6 +210,44 @@ class BrowserRelease:
     anchor_major: int
     anchor_date: date
     days_per_major: int
+
+
+@dataclass(frozen=True, slots=True)
+class UaSignatures:
+    """Syntactic User-Agent markers, grouped by what they recognise.
+
+    Each tuple is a list of case-insensitive tokens from ``ua_signatures.toml``. The
+    matchers in :mod:`agent_census.uas` compile these into the regexes that decide
+    whether a UA looks like a browser, declares itself a bot, names a headless
+    engine, is a bare HTTP library, or names a feed reader.
+    """
+
+    browser_engines: tuple[str, ...] = ()
+    # Automation tokens, split by how they must sit in the string (see the data file).
+    automation_substrings: tuple[str, ...] = ()  # matched anywhere
+    automation_standalone_words: tuple[str, ...] = ()  # word boundary both sides
+    automation_suffix_words: tuple[str, ...] = ()  # word boundary on the right only
+    headless_engines: tuple[str, ...] = ()
+    library_names: tuple[str, ...] = ()
+    feed_terms: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class RequestSignatures:
+    """Request-line markers (path / query / method) from ``request_signatures.toml``.
+
+    Consumed by feature extraction to count static assets, page fetches, probing
+    attempts, uncommon methods, and feed polls. Plain token lists; the regex/set
+    machinery that uses them lives in :mod:`agent_census.features`.
+    """
+
+    static_extensions: tuple[str, ...] = ()
+    page_extensions: tuple[str, ...] = ()
+    traversal_markers: tuple[str, ...] = ()
+    evasion_markers: tuple[str, ...] = ()
+    uncommon_methods: tuple[str, ...] = ()
+    feed_filename_tokens: tuple[str, ...] = ()
+    feed_filenames: tuple[str, ...] = ()
 
 
 @lru_cache(maxsize=None)
@@ -359,4 +426,55 @@ def load_browser_releases() -> tuple[BrowserRelease, ...]:
             days_per_major=entry["days_per_major"],
         )
         for entry in entries
+    )
+
+
+_UA_SIGNATURE_SCHEMA: dict[str, set[str]] = {
+    "browser": {"layout_engines"},
+    "automation": {"substrings", "standalone_words", "suffix_words"},
+    "headless": {"engines"},
+    "http_library": {"names"},
+    "feed_reader": {"generic_terms"},
+}
+
+
+@lru_cache(maxsize=None)
+def load_ua_signatures() -> UaSignatures:
+    """Return the grouped UA-string token lists from ``ua_signatures.toml``."""
+    groups = _grouped_lists("ua_signatures.toml", _load("ua_signatures"), _UA_SIGNATURE_SCHEMA)
+    return UaSignatures(
+        browser_engines=groups[("browser", "layout_engines")],
+        automation_substrings=groups[("automation", "substrings")],
+        automation_standalone_words=groups[("automation", "standalone_words")],
+        automation_suffix_words=groups[("automation", "suffix_words")],
+        headless_engines=groups[("headless", "engines")],
+        library_names=groups[("http_library", "names")],
+        feed_terms=groups[("feed_reader", "generic_terms")],
+    )
+
+
+_REQUEST_SIGNATURE_SCHEMA: dict[str, set[str]] = {
+    "static_assets": {"extensions"},
+    "pages": {"extensions"},
+    "path_traversal": {"markers"},
+    "encoding_evasion": {"markers"},
+    "methods": {"uncommon"},
+    "feed_urls": {"filename_tokens", "filenames"},
+}
+
+
+@lru_cache(maxsize=None)
+def load_request_signatures() -> RequestSignatures:
+    """Return the grouped request-line token lists from ``request_signatures.toml``."""
+    groups = _grouped_lists(
+        "request_signatures.toml", _load("request_signatures"), _REQUEST_SIGNATURE_SCHEMA
+    )
+    return RequestSignatures(
+        static_extensions=groups[("static_assets", "extensions")],
+        page_extensions=groups[("pages", "extensions")],
+        traversal_markers=groups[("path_traversal", "markers")],
+        evasion_markers=groups[("encoding_evasion", "markers")],
+        uncommon_methods=groups[("methods", "uncommon")],
+        feed_filename_tokens=groups[("feed_urls", "filename_tokens")],
+        feed_filenames=groups[("feed_urls", "filenames")],
     )

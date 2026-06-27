@@ -1,0 +1,7 @@
+# User-Agent tokens that name an uptime / monitoring service. Matched case-
+# insensitively as a substring; a hit corroborates the monitor classifier.
+
+monitor_uas = [
+    "uptimerobot", "pingdom", "statuscake", "site24x7", "newrelic", "datadog",
+    "nagios", "zabbix", "monitor", "healthcheck", "hetrixtools", "updown", "cron-job",
+]

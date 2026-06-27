@@ -21,22 +21,24 @@ from datetime import datetime
 from typing import TypeVar
 
 from . import uas
-from .dataload import load_list
+from .dataload import load_list, load_request_signatures
 from .model import ClientFeatures, LogEntry
 
+# Request-line marker lists live in data/request_signatures.toml; this module turns
+# them into the sets and regexes the accumulator matches against per request.
+_SIG = load_request_signatures()
+
 # Static sub-resource extensions — the things a browser pulls in after a page.
-_STATIC_EXT = frozenset("""css js mjs png jpg jpeg gif svg webp avif ico bmp woff woff2 ttf eot otf
-    map mp4 webm mp3 ogg wav pdf""".split())
-_PAGE_EXT = frozenset("html htm xhtml php asp aspx jsp shtml cfm".split())
+_STATIC_EXT = frozenset(_SIG.static_extensions)
+# Extensions (plus extension-less / trailing-slash paths) that count as an HTML page.
+_PAGE_EXT = frozenset(_SIG.page_extensions)
 
 # Path markers for directory traversal / injection attempts.
-_TRAVERSAL_MARKERS = ("../", "..%2f", "%2e%2e", "..\\", "%00", "/etc/passwd", "/proc/self")
-
+_TRAVERSAL_MARKERS = _SIG.traversal_markers
 # Double / overlong encoding -- a deliberate WAF-evasion tell, not just traversal.
-# There is no legitimate reason to double-encode a path, so this is weighted higher.
-_EVASION_MARKERS = ("%252e", "%252f", "%255c", "%c0%ae", "%c0%af", "%u002e")
-
-_EXOTIC_METHODS = frozenset("PUT DELETE PROPFIND PROPPATCH CONNECT TRACE PATCH MKCOL".split())
+_EVASION_MARKERS = _SIG.evasion_markers
+# HTTP methods a browser never issues on its own (WebDAV verbs, probing, tunnelling).
+_EXOTIC_METHODS = frozenset(_SIG.uncommon_methods)
 
 _COLOAD_WINDOW_SECONDS = 10.0
 
@@ -85,12 +87,12 @@ def _top_segment(path: str) -> str:
 # Tokens that mark a feed in a URL filename, e.g. /blog/feed/, /index.rss, atom.xml.
 # Matched as a whole dot/dash/underscore-delimited part, not a bare substring, so
 # "feedback.html" / "anatomy.html" don't read as feeds (mirrors the word-anchored
-# UA-side detection in classify/feed_reader.py).
-_FEED_TOKENS = frozenset({"feed", "rss", "atom"})
+# UA-side detection in classify/feed_reader.py). See data/request_signatures.toml.
+_FEED_TOKENS = frozenset(_SIG.feed_filename_tokens)
 _FILENAME_PARTS = re.compile(r"[.\-_]")
 # Common token-less feed filenames -- a stopgap until response media types are
 # relied on more widely (many sites publish their feed at /index.xml).
-_FEED_FILENAMES = frozenset({"index.xml"})
+_FEED_FILENAMES = frozenset(_SIG.feed_filenames)
 
 
 def _response_content_type(entry: LogEntry) -> str:

@@ -1,0 +1,61 @@
+# How a User-Agent string is read for identity, shared by feature extraction and
+# every classifier (see agent_census/uas.py). These are syntactic checks on the UA
+# text alone -- "does this look like a browser", "does it name a bot or a library"
+# -- never judgements about behaviour. UA strings are trivially forged, so a match
+# here only starts an argument that request behaviour then has to corroborate.
+#
+# Editing a list changes what the matchers recognise; no code change is needed.
+# Matching is case-insensitive throughout.
+
+[browser]
+# A real browser UA opens with "Mozilla/<n>" and, further along, names the layout
+# engine that actually renders pages. Something claiming to be a browser without one
+# of these is almost always a script wearing a browser costume.
+layout_engines = ["gecko", "applewebkit", "trident", "presto", "khtml"]
+
+[automation]
+# Self-identified automation: a UA carrying any of these is treated as a declared
+# bot -- a crawler, library, scripted client, or monitor. Three lists, split by how
+# the token has to sit in the string:
+
+# Distinctive tokens matched anywhere in the UA. Safe as plain substrings because
+# they don't turn up inside ordinary words.
+substrings = [
+    "spider", "crawl", "slurp", "scrapy",
+    "python-requests", "httpx", "aiohttp", "libwww", "java/",
+    "go-http", "okhttp", "node-fetch", "axios", "curl", "wget",
+    "headless", "phantomjs", "selenium",
+    "facebookexternalhit", "feedfetcher",
+    "rss", "monitor", "uptime", "pingdom",
+]
+
+# Short words that have to stand on their own, so "feed" doesn't fire inside
+# "feedback". Matched with a word boundary on both sides.
+standalone_words = ["feed"]
+
+# Tokens a word may end with: matches "Googlebot", "bingbot", "AhrefsBot", but not
+# "robots", "about", or "botanical". Word boundary on the right only.
+suffix_words = ["bot"]
+
+[headless]
+# Browser engines driven by an automation framework. They render like a real
+# browser (so they pull sub-resources), but the UA names the harness -- a tell the
+# operator left in deliberately.
+engines = ["headless", "phantomjs", "slimerjs", "electron", "puppeteer", "playwright"]
+
+[http_library]
+# Generic HTTP client libraries and command-line tools: a networking stack with no
+# product identity of its own. Kept apart from [automation] because "is this just a
+# bare library" is a separate question from "did this declare itself a bot", asked
+# in a different place.
+names = [
+    "python-requests", "httpx", "aiohttp", "scrapy", "libwww", "java/",
+    "go-http", "okhttp", "node-fetch", "axios", "curl", "wget",
+]
+
+[feed_reader]
+# Generic feed vocabulary, combined with the specific reader product names in
+# feed_readers.toml to recognise an RSS/Atom poller from its UA. Short terms, so
+# matched as whole words (see classify/feed_reader.py); the product names in the
+# other file stay plain substrings.
+generic_terms = ["feed", "rss", "atom", "podcast", "subscriber"]

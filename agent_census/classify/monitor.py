@@ -9,14 +9,12 @@ from __future__ import annotations
 import re
 from functools import lru_cache
 
+from ..dataload import load_list
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
 
-_MONITOR_UA = re.compile(
-    r"uptimerobot|pingdom|statuscake|site24x7|newrelic|datadog|nagios|zabbix|"
-    r"monitor|healthcheck|hetrixtools|updown|cron-job",
-    re.I,
-)
+# Monitoring-service UA tokens live in data/monitor_uas.toml.
+_MONITOR_UA = re.compile("|".join(re.escape(s) for s in load_list("monitor_uas")), re.I)
 
 
 @lru_cache(maxsize=16384)

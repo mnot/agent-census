@@ -251,13 +251,13 @@ def as_display(org: str | None, number: str | None) -> str:
     return org or "–"
 
 
-def count(n: int, noun: str, plural: str | None = None) -> str:
+def count(num: int, noun: str, plural: str | None = None) -> str:
     """A count with its noun pluralised to match, e.g. ``1 client`` / ``2 clients``.
 
     Defaults to the regular ``+s`` plural; pass ``plural`` for an irregular noun.
     """
-    word = noun if n == 1 else (plural or f"{noun}s")
-    return f"{n:,} {word}"
+    word = noun if num == 1 else (plural or f"{noun}s")
+    return f"{num:,} {word}"
 
 
 def actor_spread(distinct_ips: int, distinct_asns: int) -> str:

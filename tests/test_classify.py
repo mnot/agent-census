@@ -12,6 +12,7 @@ from agent_census.classify.combiner import combine
 from agent_census.classify.crawler import CrawlerClassifier
 from agent_census.classify.feed_reader import FeedReaderClassifier
 from agent_census.classify.scraper import ScraperClassifier
+from agent_census.classify.spam_bot import SpamBotClassifier
 from agent_census.classify.vuln_scanner import VulnScannerClassifier
 from agent_census.model import (
     BotVerification,
@@ -54,6 +55,23 @@ def test_one_probe_amid_normal_traffic_stays_incidental() -> None:
     )
     signals = VulnScannerClassifier().evaluate(feats)
     assert signals and signals[0].confidence < 0.45  # incidental tier, below threshold
+
+
+def test_spam_bot_submission_endpoint_reads_actual_paths() -> None:
+    # The submission-endpoint signal must come from submit_path_hits (measured
+    # against the client's real request paths), not the vuln-probe sample. A
+    # comment-spam bot that hits no vuln-probe paths must still surface it.
+    feats = ClientFeatures(
+        request_count=20,
+        method_counts={"POST": 20},
+        post_ratio=1.0,
+        asset_coload_ratio=0.0,
+        submit_path_hits=20,
+        sample_vuln_paths=(),  # never probed a vuln path
+    )
+    signals = SpamBotClassifier().evaluate(feats)
+    assert signals and signals[0].kind is Kind.SPAM_BOT
+    assert any("submission endpoints" in e for e in signals[0].evidence)
 
 
 def test_vuln_scanner_silent_on_clean_client() -> None:

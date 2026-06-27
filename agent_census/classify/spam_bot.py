@@ -6,15 +6,13 @@ The tell is a POST-heavy request mix aimed at a small set of submission endpoint
 
 from __future__ import annotations
 
-import re
-
-from ..dataload import load_list, load_shared_tuning, load_tuning
+from ..dataload import load_shared_tuning, load_tuning
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
 
-# Submission-endpoint substrings live in data/signatures/submit_paths.toml; numeric knobs in
-# data/tuning/spam_bot.toml, the no-co-load cutoff in data/tuning/shared.toml.
-_SUBMIT_PATH = re.compile("|".join(re.escape(p) for p in load_list("submit_paths")), re.I)
+# Submission-endpoint hits are measured in features (against the client's actual
+# request paths); numeric knobs live in data/tuning/spam_bot.toml, the no-co-load
+# cutoff in data/tuning/shared.toml.
 _TUNING_SCHEMA = {
     "post_ratio_min": "post_volume.post_ratio_min",
     "post_min_posts": "post_volume.min_posts",
@@ -46,8 +44,7 @@ class SpamBotClassifier(Classifier):
             confidence += _T["post_no_assets_weight"]
             evidence.append("submits forms with no browser sub-resource loading")
 
-        submit_hits = any(_SUBMIT_PATH.search(p) for p in features.sample_vuln_paths)
-        if submit_hits:
+        if features.submit_path_hits > 0:
             confidence += _T["submit_weight"]
             evidence.append("targets comment/login submission endpoints")
 

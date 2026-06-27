@@ -340,7 +340,11 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
                 self.vuln_sample = []
             if len(self.vuln_sample) < 5 and path not in self.vuln_sample:
                 self.vuln_sample.append(path)
-        if _SUBMIT_RE is not None and _SUBMIT_RE.search(low):
+        # Only POSTs count: the spam signature is *submitting* to these endpoints.
+        # The patterns are bare substrings ("comment", "contact", "register"), so
+        # counting GETs would over-fire on benign reads like /contact or
+        # /comments/feed and add spurious SPAM_BOT confidence/evidence.
+        if entry.method == "POST" and _SUBMIT_RE is not None and _SUBMIT_RE.search(low):
             self.submit_hits += 1
         haystack = low + (entry.query or "").lower()
         if _TRAVERSAL_RE.search(haystack):

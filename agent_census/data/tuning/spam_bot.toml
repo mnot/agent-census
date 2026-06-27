@@ -15,5 +15,6 @@ weight = 0.4
 weight = 0.15
 
 [submission_endpoint]
-# Targets a known comment / login / xmlrpc endpoint (see data/submit_paths.toml).
+# Targets a known comment / login / xmlrpc endpoint (see
+# data/signatures/submit_paths.toml); counted only on POST requests.
 weight = 0.15

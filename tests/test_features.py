@@ -129,6 +129,16 @@ def test_always_probe_path_counts_regardless_of_status() -> None:
         assert feats.vuln_path_hits == 1, code
 
 
+def test_submit_path_hits_count_only_posts() -> None:
+    # A submission endpoint is a spam tell only when *submitted to*. A benign GET
+    # to a path that matches a bare substring (/contact, /comments/feed) must not
+    # count; a POST to a real submission endpoint must.
+    assert extract_features([entry("/contact", offset=0)]).submit_path_hits == 0
+    assert extract_features([entry("/comments/feed", offset=0)]).submit_path_hits == 0
+    posted = extract_features([entry("/wp-comments-post.php", method="POST", offset=0)])
+    assert posted.submit_path_hits == 1
+
+
 def test_encoding_evasion_signal() -> None:
     # Double-encoded traversal (WAF-bypass) is counted as evasion, not plain
     # traversal: %252e%252e does not contain the single-encoded %2e%2e marker.

@@ -599,7 +599,12 @@ def _client_row(
     if filterable:
         _, org, _ = client_id_parts(profile)  # include the shown AS name in the filter
         haystack = " ".join(
-            (profile.client_id.ip, profile.client_id.user_agent or "", org or "")
+            (
+                profile.client_id.ip,
+                profile.client_id.user_agent or "",
+                org or "",
+                *ordered_tags(cls.tags - suppress),  # the tags shown in the Tags column
+            )
         ).lower()
         attrs = f' class="frow" data-filter="{_esc(haystack)}"'
     return (
@@ -652,7 +657,9 @@ def _folded_tbody(
     org_html = f" <span class='cid-as'>{_esc(org)}</span>" if org else ""
     row_attrs = "class='asum'"
     if filterable:
-        haystack = " ".join((prefix, ua or "", org or "", *members)).lower()
+        haystack = " ".join(
+            (prefix, ua or "", org or "", *members, *ordered_tags(cls.tags - suppress))
+        ).lower()
         row_attrs = f"class='asum frow' data-filter=\"{_esc(haystack)}\""
     summary = (
         f"<tr {row_attrs}><td class='cid'><span class='tri'>▶</span>"
@@ -705,8 +712,13 @@ def _actor_tbody(
     row_attrs = "class='asum'"
     if filterable:
         haystack = " ".join(
-            f"{m.client_id.ip} {m.client_id.user_agent or ''} {m.features.as_org or ''}"
-            for m in actor.members
+            (
+                *(
+                    f"{m.client_id.ip} {m.client_id.user_agent or ''} {m.features.as_org or ''}"
+                    for m in actor.members
+                ),
+                *ordered_tags(cls.tags - suppress),  # the tags shown in the Tags column
+            )
         ).lower()
         row_attrs = f"class='asum frow' data-filter=\"{_esc(haystack)}\""
     summary = (
@@ -754,7 +766,7 @@ def _kind_section(
             '<details name="kind-extra"><summary>'
             "Show more</summary>"
             '<input class="filter" type="search" '
-            'placeholder="filter these by IP, User-Agent, or AS name…" '
+            'placeholder="filter these by IP, User-Agent, AS name, or tag…" '
             'aria-label="filter clients">'
             f"<table><thead>{_SECTION_HEAD}</thead>{extra_rows}</table>"
             "</details>"

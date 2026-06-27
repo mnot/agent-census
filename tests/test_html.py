@@ -171,6 +171,27 @@ def test_filter_haystack_includes_as_name() -> None:
     assert "amazon.com, inc." in row.lower()  # AS name folded into the haystack
 
 
+def test_filter_haystack_includes_visible_tags() -> None:
+    # The tags shown in the Tags column are folded into data-filter so the search
+    # box matches on a tag name. Suppressed (section-baseline) tags are not shown,
+    # so they stay out of the haystack.
+    profile = ClientProfile(
+        client_id=ClientId(ip="52.1.1.0/24", user_agent="curl/8.0"),
+        entries=(),
+        features=ClientFeatures(as_org="Amazon.com, Inc."),
+        classification=Classification(
+            primary=Kind.SCRAPER,
+            confidence=0.7,
+            evidence=(),
+            tags=frozenset({"datacenter", "scraper"}),
+        ),
+    )
+    haystack = _client_row(profile, filterable=True, suppress=frozenset({"scraper"}))
+    haystack = haystack[haystack.index('data-filter="') :].split('"', 2)[1]
+    assert "datacenter" in haystack  # a visible tag is searchable
+    assert "scraper" not in haystack  # the suppressed tag is not shown, so not in filter
+
+
 def test_tags_have_hover_descriptions() -> None:
     # The 203.0.113.66 zgrab scanner is tagged 'probe-paths'; it should carry a tooltip.
     html = render_report_html(_run(), source="sample")

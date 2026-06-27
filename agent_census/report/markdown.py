@@ -69,6 +69,9 @@ def _header(
     )
     if robots_note:
         lines.append(f"- **robots.txt:** {robots_note}")
+    calibration = result.reference_calibration
+    if calibration is not None and (warning := calibration.warning()):
+        lines.append(f"- **Calibration:** {warning}")
     if elapsed is not None:
         lines.append("")
         lines.append(f"_Analysed in {elapsed:.1f}s._")

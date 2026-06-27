@@ -25,6 +25,13 @@ from .feed_reader import ua_is_feed_reader
 
 _UA_ROTATION_THRESHOLD = 4
 
+# Browser fingerprint thresholds, shared with the relative-tag reference predicate
+# (``classify.relative.is_reference_browser``) so "what counts as browser-like" is
+# defined once. A real browser co-loads a page's sub-resources and follows on-site
+# links; these are the lower bounds the ``loads-assets`` / ``follows-links`` tags use.
+BROWSER_COLOAD_MIN = 0.4  # asset_coload_ratio at/above which a client "loads-assets"
+BROWSER_FOLLOW_MIN = 0.3  # referer_following_ratio at/above which it "follows-links"
+
 
 def _declares_known_crawler(features: ClientFeatures) -> bool:
     return uas.names_known_crawler(features.user_agent)
@@ -111,7 +118,7 @@ def _fingerprint_tags(features: ClientFeatures) -> set[str]:
     # Sub-resource loading: a browser pulls a page's CSS/JS/images. Only judgeable
     # when the client actually fetched HTML pages.
     if features.page_count > 0:
-        if features.asset_coload_ratio > 0.4:
+        if features.asset_coload_ratio > BROWSER_COLOAD_MIN:
             tags.add("loads-assets")
         elif features.asset_coload_ratio < 0.1:
             tags.add("no-assets")
@@ -119,7 +126,7 @@ def _fingerprint_tags(features: ClientFeatures) -> set[str]:
     # Navigation: following on-site links (referer is a path fetched earlier).
     # Only judgeable when some request carried a Referer at all.
     if features.referer_count > 0 and features.request_count >= 4:
-        if features.referer_following_ratio > 0.3:
+        if features.referer_following_ratio > BROWSER_FOLLOW_MIN:
             tags.add("follows-links")
         elif features.referer_following_ratio < 0.1:
             tags.add("cold")

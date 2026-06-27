@@ -1,0 +1,35 @@
+# Site-relative magnitude tags (see classify/relative.py and issue #8).
+#
+# Some signals -- request rate, bytes transferred, crawl breadth, session length --
+# mean nothing as global constants: a flood for a blog is idle for a busy site. They
+# are tagged relative to the site's own high-confidence *real browsers*, the one
+# reference class bots imitate in User-Agent but not in behaviour. Per metric:
+#
+#   threshold = max(floor_<metric>, browser_p95 x margin)   (p95 on a log scale)
+#
+# Both gates must clear: the relative gate (exceeds the human-plausible envelope) and
+# the absolute floor (a sanity guard, and the sole rule when the browser pool is too
+# thin to calibrate -- see `min_reference`). The floors and margin are conservative
+# starting values, MARKED FOR CALIBRATION.
+#
+# Two knobs per kind: `reference` (which pool to compare against; only "browsers"
+# exists today) and `tags` (which metrics emit). `[default]` applies to every kind;
+# add a `[[kind]]` to override. The first slice wires only `rate`; `bytes`,
+# `breadth`, and `duration` are defined here but not yet emitted -- a fast-follow
+# turns them on by adding them to the relevant kinds' `tags`.
+
+[params]
+margin = 3.0          # a client must exceed 3x the reference browsers' p95 to fire
+min_reference = 30    # fewer reference browsers than this -> floor-only fallback
+floor_rate = 60       # peak requests/minute (the absolute floor / thin-pool guard)
+floor_bytes = 50_000_000     # total bytes -- placeholder, marked for calibration
+floor_breadth = 0.5          # subtree-changing hop ratio -- placeholder
+floor_duration = 86_400      # session seconds (1 day) -- placeholder
+
+# Every kind, by default, is measured against the browser pool and emits the rate
+# tag -- a browser running at 50x browser-rate is as interesting as an unknown
+# doing it. Per-kind overrides (e.g. dropping breadth/duration for kinds where they
+# are uninterpretable) come with the bytes/breadth/duration fast-follow.
+[default]
+reference = "browsers"
+tags = ["rate"]

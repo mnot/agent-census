@@ -22,6 +22,12 @@ from typing import Protocol
 
 from . import egress, uas
 from .classify import DEFAULT_UNKNOWN_THRESHOLD, classify_client
+from .classify.relative import (
+    ReferenceCalibration,
+    load_relative_tags,
+    make_collector,
+    tag_profile,
+)
 from .dataload import CrawlerSpec
 from .features import DisallowedCheck, FeatureAccumulator
 from .hosting import (
@@ -296,6 +302,9 @@ class AnalysisResult:
     # The site analysed: the first --vhost if one was given, else the most common
     # served host (logged %v, else the Host header). None if the log carries none.
     site: str | None = None
+    # Site-relative tag calibration: the reference-browser pool sizes and the
+    # per-metric thresholds derived from them. None only when no analysis ran.
+    reference_calibration: ReferenceCalibration | None = None
 
 
 def read_lines(path: Path) -> Iterator[str]:
@@ -440,6 +449,10 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
     net_rollups: dict[str, dict[Kind, _RollupAcc]] = defaultdict(lambda: defaultdict(_RollupAcc))
     net_categories: dict[str, str] = {}
     kept: dict[Kind, list[tuple[int, int, ClientProfile]]] = defaultdict(list)
+    # Site-relative tags: sample every client's metrics into the reference-browser
+    # pool as it streams past emit(), then calibrate and tag once at the end.
+    rel_config = load_relative_tags()
+    collector = make_collector()
     seq = itertools.count()
     total = parsed = skipped = excluded = 0
     client_count = singleton_count = multi_ua_ips = 0
@@ -534,6 +547,10 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         )
         if extra_tags:
             classification = replace(classification, tags=classification.tags | extra_tags)
+        # Sample this client into the reference pool (browsers only qualify). Done
+        # for every emitted client, so the distribution is eviction-safe and not
+        # limited to the capped `kept` heap.
+        collector.observe(features)
         profile = ClientProfile(
             client_id=key,
             entries=(),
@@ -763,7 +780,15 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         )
         client_count += 1
 
-    profiles = [profile for heap in kept.values() for (_, _, profile) in heap]
+    # Calibrate the reference pool, then fold site-relative tags into the kept
+    # profiles. A cheap in-memory pass: only kept profiles are shown, and all are
+    # resident now, so no second read of the log.
+    calibration = collector.calibrate(rel_config.params)
+    profiles = [
+        tag_profile(profile, rel_config, calibration)
+        for heap in kept.values()
+        for (_, _, profile) in heap
+    ]
     profiles.sort(key=lambda p: p.features.request_count, reverse=True)
     if vhosts:
         site: str | None = vhosts[0]
@@ -782,6 +807,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         },
         network_categories=dict(net_categories),
         site=site,
+        reference_calibration=calibration,
     )
 
 

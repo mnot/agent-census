@@ -59,6 +59,17 @@ def test_malformed_timezone_keeps_line_with_no_timestamp() -> None:
     assert outcome.entry.status == 200
 
 
+def test_unparseable_offset_yields_aware_timestamp() -> None:
+    # A malformed non-5-char offset (+070) has no usable zone, but the timestamp
+    # must still be tz-aware (UTC) so it never mixes with well-formed aware lines
+    # in one client -- a naive/aware mix raises TypeError when first/last_seen are
+    # compared.
+    line = '192.0.2.10 - - [10/Oct/2000:13:55:36 +070] "GET / HTTP/1.1" 200 10 "-" "-"'
+    entry = _one(PRESETS["combined"], line).entry
+    assert entry is not None and entry.timestamp is not None
+    assert entry.timestamp.tzinfo is not None
+
+
 def test_dash_fields_become_none() -> None:
     line = '203.0.113.5 - - [10/Oct/2000:13:55:36 +0000] "GET / HTTP/1.1" 200 - "-" "-"'
     entry = _one(PRESETS["combined"], line).entry

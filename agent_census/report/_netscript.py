@@ -125,19 +125,19 @@ NET_SCRIPT = """
   }
   if(sel) sel.addEventListener('change',function(){paint(sel.value);});
 
-  // Click any number to jump to its kind and filter the client list by its network.
-  // The Kind cell keeps its own anchor (skip it). A network cell carries data-net
-  // (its column index) -> filter that column; a Total-column number has none ->
-  // clear the network filter. A kind row links to its section; the All-kinds row
-  // has no link, so it jumps to the client filter box (the top of the kind list).
+  // Click a cell to filter the client list below. A kind row isolates that kind
+  // (hiding the rest); a network cell (data-net = its column index) also filters
+  // to that column, while a Total-column number leaves the network unfiltered.
+  // The All-kinds row has no kind, so its network cells filter across all kinds
+  // and the grand total clears everything. The Kind cell's own anchor is
+  // intercepted so it isolates rather than just jumping.
   tab.addEventListener('click',function(ev){
-    var cell=ev.target.closest('td');
-    if(!cell||cell.classList.contains('stick-l')) return;
-    if(window.setNetFilter) window.setNetFilter(cell.getAttribute('data-net'));
+    var cell=ev.target.closest('td'); if(!cell) return;
     var link=cell.parentNode.querySelector('a[href^="#"]');
-    var target=link?document.querySelector(link.getAttribute('href')):document.querySelector('input.filter');
-    if(target&&target.scrollIntoView)
-      requestAnimationFrame(function(){target.scrollIntoView({behavior:'smooth',block:'start'});});
+    var kind=link?link.getAttribute('href').slice(1):null;  // null on the All-kinds row
+    if(link) ev.preventDefault();                            // don't also hash-jump
+    if(window.setKindNet) window.setKindNet(kind, cell.getAttribute('data-net'));
+    if(window.scrollToKind) window.scrollToKind(kind);
   });
 
   layout(); paint('count'); recomputeOther();

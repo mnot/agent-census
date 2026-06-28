@@ -44,6 +44,14 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .netdiv { border-left: 2px solid #8887; }
 th.netoff { background: #8881; }
 tr.netall td { border-top: 2px solid #8887; }
+/* Vertical column headers for the two overview tables (Summary by kind and the
+   kind x network cross-tab). A measure column no wider than its number is no
+   longer stretched to fit a long label; the header row auto-grows to its
+   longest label. Phones flatten these back to horizontal (see the media query). */
+th.vh { vertical-align: bottom; text-align: center; white-space: nowrap;
+  padding: .5rem .35rem .3rem; }
+th.vh > span { display: inline-block; writing-mode: vertical-rl;
+  transform: rotate(180deg); line-height: 1.1; }
 .netctl { font-size: .9rem; color: var(--muted); margin: .25rem 0 .6rem; }
 .netctl select { font: inherit; margin-left: .35rem; }
 /* On a phone the cross-tab can't show every network column at readable width, so
@@ -52,6 +60,9 @@ tr.netall td { border-top: 2px solid #8887; }
 .netcolctl, .netnarrow { display: none; }
 @media (max-width: 640px) {
   .netcolctl { display: inline; }
+  /* Rotated headers don't pay off on a phone (the cross-tab folds to one network
+     and the summary table scrolls in its track); read them flat instead. */
+  th.vh > span { writing-mode: horizontal-tb; transform: none; }
   #nettab th[data-net], #nettab td[data-net] { display: none; }
   #nettab th[data-net].colshow, #nettab td[data-net].colshow { display: table-cell; }
   /* The cross-tab caption's spatial guidance describes columns the folded table

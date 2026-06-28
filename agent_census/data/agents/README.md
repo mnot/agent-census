@@ -63,6 +63,17 @@ available but didn't confirm (it failed, or was inconclusive); a definitive
 mismatch is also the `impersonator` kind. With `--no-verify-bots` the DNS/range
 tiers don't run, so only `asns` can confirm or impeach.
 
+## Annotation -- an orthogonal fact about the agent
+
+- **`user_triggered`** (bool) -- records the operator's stated purpose for the token:
+  an on-behalf-of proxy (a `-User` fetcher such as `ChatGPT-User`, `Amzn-User`, or
+  `YandexUserproxy`) that serves a present user's action rather than crawling
+  autonomously. This is taken **on trust** -- whether a human actually drove any given
+  request isn't observable, and identity verification (where available) confirms *who*
+  the agent is, not that a user prompted it. It does **not** change the kind -- such an
+  agent is still an `ai_crawler` or `search_engine` -- it only adds the `user-triggered`
+  tag. Optional; defaults to false.
+
 ## Field summary
 
 | Field | Type | Purpose |
@@ -76,6 +87,7 @@ tiers don't run, so only `asns` can confirm or impeach.
 | `format` | string | how to parse `ranges_url` (default `prefixes`) |
 | `rdns_fallback` | bool | ranges primary, domains only when ranges unobtainable |
 | `asns` | int[] | verify by logged AS (lowest precedence), or the identity if `asn_primary` |
+| `user_triggered` | bool | operator's stated user-driven purpose (on trust); adds `user-triggered` tag, kind unchanged |
 
 Every agent needs at least an identity: a `ua_substring`, or `asn_primary` with
 `asns`. Verification fields are all optional -- without any, an agent is recognised

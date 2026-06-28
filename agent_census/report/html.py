@@ -197,13 +197,9 @@ def _summary_table(result: AnalysisResult) -> str:
         "? can't tell: fewer than 5 requests, or no applicable rule"
     )
     head = (
-        "<tr><th>Kind</th><th class='num vh'><span>Clients</span></th>"
-        "<th class='num vh'><span>Requests</span></th>"
-        "<th class='vh'><span>Req share</span></th>"
-        "<th class='num vh'><span>Avg/client</span></th>"
-        "<th class='num vh'><span>Bandwidth</span></th>"
-        "<th class='vh'><span>BW share</span></th>"
-        f'<th class="vh" title="{_esc(robots_help)}"><span>robots ⓘ</span></th></tr>'
+        "<tr><th>Kind</th><th class='num'>Clients</th><th class='num'>Requests</th>"
+        "<th>Req share</th><th class='num'>Avg/client</th><th class='num'>Bandwidth</th>"
+        f'<th>BW share</th><th title="{_esc(robots_help)}">robots ⓘ</th></tr>'
     )
     rows = []
     for kind in KIND_ORDER:
@@ -273,7 +269,7 @@ def _network_table(result: AnalysisResult, *, breakout_min_share: float) -> str:
     head = (
         "<tr><th>Kind</th>"
         + "".join(hd(i, n) for i, n in enumerate(nets))
-        + "<th class='num vh netdiv'><span>Total</span></th></tr>"
+        + "<th class='num netdiv'>Total</th></tr>"
     )
 
     # The Total column and All-kinds row carry their own (red) heat, keyed to the

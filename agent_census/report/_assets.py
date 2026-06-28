@@ -44,10 +44,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .netdiv { border-left: 2px solid #8887; }
 th.netoff { background: #8881; }
 tr.netall td { border-top: 2px solid #8887; }
-/* Vertical column headers for the two overview tables (Summary by kind and the
-   kind x network cross-tab). A measure column no wider than its number is no
-   longer stretched to fit a long label; the header row auto-grows to its
-   longest label. Phones flatten these back to horizontal (see the media query). */
+/* Vertical column headers for the network columns of the kind x network cross-tab
+   (not the Total column, nor the Summary table). A column no wider than its number
+   is no longer stretched to fit a long network name; the header row auto-grows to
+   its longest label. Phones flatten these back to horizontal (see the media query). */
 th.vh { vertical-align: bottom; text-align: center; white-space: nowrap;
   padding: .5rem .35rem .3rem; }
 th.vh > span { display: inline-block; writing-mode: vertical-rl;

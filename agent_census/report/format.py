@@ -124,23 +124,6 @@ def ordered_tags(tags: frozenset[str] | set[str]) -> list[str]:
     return sorted(tags, key=lambda t: (_TAG_ORDER.get(t, len(_TAG_ORDER)), t))
 
 
-# The conduct tier: noteworthy behaviour flagged only when present. When one is
-# near-universal within a kind it's summarised in the section header ("typically:
-# …") and dropped from the rows, so per-row conduct shows only the exceptions.
-CONDUCT_TAGS = frozenset(
-    {
-        "probe-paths",
-        "traversal",
-        "encoding-evasion",
-        "404-storm",
-        "exotic-method",
-        "uses-HEAD",
-        "post-heavy",
-        "forged-referer",
-    }
-)
-
-
 # Hover descriptions for the tags (rendered as a native title= tooltip in HTML, and
 # the fallback rationale in inspect when a tag carries no per-client evidence). Egress
 # network tags are described from the data file, so new networks get descriptions

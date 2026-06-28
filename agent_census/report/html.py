@@ -24,7 +24,6 @@ from .aggregate import (
     group_actors,
     network_matrix,
     time_range,
-    typical_conduct,
 )
 from .format import (
     actor_spread,
@@ -436,7 +435,6 @@ def _client_row(
     *,
     flag: str = "",
     filterable: bool = False,
-    suppress: frozenset[str] = frozenset(),
 ) -> str:
     cls = profile.classification
     evidence = _esc(truncate(top_evidence(profile)))
@@ -448,7 +446,7 @@ def _client_row(
                 profile.client_id.ip,
                 profile.client_id.user_agent or "",
                 org or "",
-                *ordered_tags(cls.tags - suppress),  # the tags shown in the Tags column
+                *ordered_tags(cls.tags),  # the tags shown in the Tags column
             )
         ).lower()
         attrs = f' class="frow" data-filter="{_esc(haystack)}"'
@@ -457,7 +455,7 @@ def _client_row(
         f"<td class='num'>{profile.features.request_count:,}</td>"
         f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
         f"<td class='num'>{cls.confidence:.0%}</td>"
-        f"<td>{_tags_html(cls.tags - suppress)}</td><td>{evidence}</td></tr>"
+        f"<td>{_tags_html(cls.tags)}</td><td>{evidence}</td></tr>"
     )
 
 
@@ -503,7 +501,6 @@ def _folded_tbody(
     flag: str = "",
     flags: CountryFlags | None = None,
     filterable: bool = False,
-    suppress: frozenset[str] = frozenset(),
 ) -> str:
     """A single entry that folded many IPs into one (an ASN operator, a verified
     bot, an egress/subnet cluster): a collapsible summary over its clustered IPs."""
@@ -514,7 +511,7 @@ def _folded_tbody(
     row_attrs = "class='asum'"
     if filterable:
         haystack = " ".join(
-            (prefix, ua or "", org or "", *members, *ordered_tags(cls.tags - suppress))
+            (prefix, ua or "", org or "", *members, *ordered_tags(cls.tags))
         ).lower()
         row_attrs = f"class='asum frow' data-filter=\"{_esc(haystack)}\""
     toggle = _disclosure(f"Show {count(len(members), 'member IP')} of {prefix}")
@@ -526,7 +523,7 @@ def _folded_tbody(
         f"<td class='num'>{profile.features.request_count:,}</td>"
         f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
         f"<td class='num'>{cls.confidence:.0%}</td>"
-        f"<td>{_tags_html(cls.tags - suppress)}</td>"
+        f"<td>{_tags_html(cls.tags)}</td>"
         f"<td>{_esc(truncate(top_evidence(profile)))}</td></tr>"
     )
     cf = flags or CountryFlags()
@@ -539,25 +536,19 @@ def _actor_tbody(
     *,
     flags: CountryFlags | None = None,
     filterable: bool = False,
-    suppress: frozenset[str] = frozenset(),
 ) -> str:
     """One actor as a ``<tbody>``: a lone client, or a collapsible summary + members.
 
     The members are ordinary rows sharing the table's Requests/Bandwidth columns,
-    hidden until the summary row is clicked (toggled by the page script). ``suppress``
-    drops the kind's baseline conduct tags (shown in the header instead).
+    hidden until the summary row is clicked (toggled by the page script).
     """
     cf = flags or CountryFlags()
     flag = _flag_html(cf.for_actor(actor.lead.client_id))
     if not actor.collapsed:
         if len(actor.lead.member_ips) >= 2:
-            return _folded_tbody(
-                actor.lead, flag=flag, flags=cf, filterable=filterable, suppress=suppress
-            )
+            return _folded_tbody(actor.lead, flag=flag, flags=cf, filterable=filterable)
         return (
-            f"<tbody>"
-            f"{_client_row(actor.lead, flag=flag, filterable=filterable, suppress=suppress)}"
-            f"</tbody>"
+            f"<tbody>{_client_row(actor.lead, flag=flag, filterable=filterable)}</tbody>"
         )
     cls = actor.lead.classification
     _, _, ua = client_id_parts(actor.lead)
@@ -574,7 +565,7 @@ def _actor_tbody(
                     f"{m.client_id.ip} {m.client_id.user_agent or ''} {m.features.as_org or ''}"
                     for m in actor.members
                 ),
-                *ordered_tags(cls.tags - suppress),  # the tags shown in the Tags column
+                *ordered_tags(cls.tags),  # the tags shown in the Tags column
             )
         ).lower()
         row_attrs = f"class='asum frow' data-filter=\"{_esc(haystack)}\""
@@ -586,7 +577,7 @@ def _actor_tbody(
         f"<td class='num'>{actor.requests:,}</td>"
         f"<td class='num'>{human_bytes(actor.total_bytes)}</td>"
         f"<td class='num'>{cls.confidence:.0%}</td>"
-        f"<td>{_tags_html(cls.tags - suppress)}</td><td>{evidence}</td></tr>"
+        f"<td>{_tags_html(cls.tags)}</td><td>{evidence}</td></tr>"
     )
     members = "".join(_member_tr(m, _flag_html(cf.for_member(m.client_id))) for m in actor.members)
     return f"<tbody class='actor'>{summary}{members}</tbody>"
@@ -601,25 +592,17 @@ def _kind_section(
 ) -> str:
     flags = flags or CountryFlags()
     actors = group_actors(group)
-    typical = typical_conduct(group)
     footprint = f"{count(rollup.clients, 'client')} · {count(rollup.requests, 'request')}"
     title = f"{_kind_badge(kind)} {footprint}"
     parts = [
         f'<h2 id="{kind.value}">{title}</h2>',
         f'<p class="blurb">{_esc(KIND_BLURB.get(kind, ""))}</p>',
     ]
-    if typical:
-        chips = "".join(f'<span class="tag">{_esc(t)}</span>' for t in ordered_tags(typical))
-        parts.append(f'<p class="muted">Typically: {chips}</p>')
-    shown = "".join(
-        _actor_tbody(a, flags=flags, filterable=True, suppress=typical) for a in actors[:top]
-    )
+    shown = "".join(_actor_tbody(a, flags=flags, filterable=True) for a in actors[:top])
     parts.append(f"<div class='tscroll'><table><thead>{_SECTION_HEAD}</thead>{shown}</table></div>")
     extra = actors[top:_EXPAND_LIMIT]
     if extra:
-        extra_rows = "".join(
-            _actor_tbody(a, flags=flags, filterable=True, suppress=typical) for a in extra
-        )
+        extra_rows = "".join(_actor_tbody(a, flags=flags, filterable=True) for a in extra)
         parts.append(
             # Shared name -> native exclusive accordion: opening one closes the rest.
             # The page filter (above all sections) suspends the name while active.

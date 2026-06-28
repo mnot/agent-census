@@ -284,3 +284,11 @@ asns = [398101, 30083, 26496, 397516, 397519, 397522, 398104, 398109]
 [[source]]
 name = "Park web"
 asns = [51248]
+
+[[source]]
+name = "Anthropic"
+asns = [16509]
+
+[[source]]
+name = "TurnItIn"
+asns = [46851]

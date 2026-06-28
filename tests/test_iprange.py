@@ -30,6 +30,26 @@ def test_parse_prefixes_bare_string_list() -> None:
     assert extract_cidrs(text, "prefixes") == ("5.187.84.32/28", "2a02:6b8::/32")
 
 
+def test_parse_amazon_html_embedded_json() -> None:
+    # Amazon serves the prefixes JSON inside an HTML <pre><code> block, with bare
+    # IPs (no /mask) and HTML-escaped quotes -- both must come through cleanly.
+    text = (
+        "<html><body><pre><code class=\"container\">{\n"
+        '  &quot;creationTime&quot;: &quot;2026-04-30T00:00:00.000000+00:00&quot;,\n'
+        '  &quot;prefixes&quot;: [\n'
+        '    {&quot;ipv4Prefix&quot;: &quot;3.81.253.213&quot;},\n'
+        '    {&quot;ipv6Prefix&quot;: &quot;2600:1f00::/24&quot;}\n'
+        "  ]\n}</code></pre></body></html>"
+    )
+    assert extract_cidrs(text, "amazon") == ("3.81.253.213", "2600:1f00::/24")
+
+
+def test_parse_amazon_falls_back_to_raw_json() -> None:
+    # No HTML wrapper -> treat the input as the raw prefixes JSON.
+    text = '{"prefixes": [{"ipv4Prefix": "8.8.8.0/24"}]}'
+    assert extract_cidrs(text, "amazon") == ("8.8.8.0/24",)
+
+
 def test_parse_aws_schema() -> None:
     text = (
         '{"prefixes": [{"ip_prefix": "52.0.0.0/8"}], '

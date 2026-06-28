@@ -6,10 +6,19 @@ import base64
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from agent_census import identity, pipeline, wba
-from agent_census.model import WbaStatus
+from agent_census.classify.tags import impersonation
+from agent_census.model import (
+    BotVerification,
+    ClientFeatures,
+    Kind,
+    VerificationStatus,
+    WbaResult,
+    WbaStatus,
+)
 from agent_census.parsing import resolve
 
 # The real Ahrefs request Mark logged on the issue (redbot.org), header values as
@@ -33,6 +42,14 @@ AHREFS_JWK = {
     "kid": "e3vpiy0B6M1Wdxnizw3dqRSgpqS6SXM2qiQ6HtUwZ5g",
 }
 AHREFS_KEYID = "e3vpiy0B6M1Wdxnizw3dqRSgpqS6SXM2qiQ6HtUwZ5g"
+# Ahrefs's real JWK directory response (two keys), as fetched once from
+# ahrefs.com/.well-known/http-message-signatures-directory.
+AHREFS_DIRECTORY = (
+    '{"keys":[{"kty":"OKP","crv":"Ed25519","x":"0g1xFRWdVlSOm1h92tZ4VFl7FWGtvRnTZ0PwuBdJuDU",'
+    '"kid":"e3vpiy0B6M1Wdxnizw3dqRSgpqS6SXM2qiQ6HtUwZ5g","use":"sig"},'
+    '{"kty":"OKP","crv":"Ed25519","x":"v02owuOay4qEWYA4r-BZzdwy7ySHU8o1FESfuY4ICro",'
+    '"kid":"0227KWFT1389RBnlR8TLhbMaA_Of2MbNPhmlNICS7eI","use":"sig"}]}'
+)
 # The signature base this request must reduce to (RFC 9421 §2.5). Locks
 # canonicalisation -- the part most likely to drift.
 AHREFS_GOLDEN_BASE = (
@@ -312,3 +329,138 @@ def test_unlogged_covered_field_is_unverifiable() -> None:
     status, reason = wba.verify_claim(_unsignable_claim(("@authority", "x-custom-header")), key)
     assert status is WbaStatus.UNVERIFIABLE
     assert "x-custom-header" in reason
+
+
+# --- the verifier: key fetch, permanent store, offline behaviour ----------------
+
+
+def test_verifier_fetches_thumbprint_checks_and_persists(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    monkeypatch.setattr(wba, "remote_enabled", lambda: True)
+    fetched: list[str] = []
+
+    def fake_get(url: str) -> str:
+        fetched.append(url)
+        return AHREFS_DIRECTORY
+
+    monkeypatch.setattr(wba, "_http_get", fake_get)
+    verifier = wba.WbaVerifier(allow_fetch=True)
+    result = verifier.verify(_ahrefs_claim(1782543551.0))
+    assert result.status is WbaStatus.VERIFIED
+    assert result.operator == "Ahrefs"
+    assert fetched == ["https://ahrefs.com/.well-known/http-message-signatures-directory"]
+    verifier.save()
+
+    # The store is permanent: a fresh, offline verifier still verifies from it.
+    def boom(url: str) -> str:
+        raise AssertionError("must not fetch when the key is already cached")
+
+    monkeypatch.setattr(wba, "_http_get", boom)
+    offline = wba.WbaVerifier(allow_fetch=False)
+    assert offline.verify(_ahrefs_claim(1782543551.0)).status is WbaStatus.VERIFIED
+
+
+def test_verifier_offline_without_key_is_unverifiable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    verifier = wba.WbaVerifier(allow_fetch=False)  # empty store, never fetches
+    result = verifier.verify(_ahrefs_claim(1782543551.0))
+    assert result.status is WbaStatus.UNVERIFIABLE
+    assert "could not obtain" in (result.reason or "")
+
+
+def test_verifier_thumbprint_mismatch_does_not_poison(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A directory serving a different key can't satisfy the requested keyid: keys are
+    # stored under their recomputed thumbprint, so the keyid simply isn't found ->
+    # unverifiable, never a wrong-key "forged".
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    monkeypatch.setattr(wba, "remote_enabled", lambda: True)
+    wrong = (
+        '{"keys":[{"kty":"OKP","crv":"Ed25519",'
+        '"x":"v02owuOay4qEWYA4r-BZzdwy7ySHU8o1FESfuY4ICro"}]}'  # Ahrefs's *other* key
+    )
+    monkeypatch.setattr(wba, "_http_get", lambda url: wrong)
+    result = wba.WbaVerifier(allow_fetch=True).verify(_ahrefs_claim(1782543551.0))
+    assert result.status is WbaStatus.UNVERIFIABLE
+
+
+def test_pipeline_verifies_wba_end_to_end(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    monkeypatch.setattr(wba, "remote_enabled", lambda: True)
+    monkeypatch.setattr(wba, "_http_get", lambda url: AHREFS_DIRECTORY)
+    fmt = (
+        '%h %t "%r" %>s %b "%{User-Agent}i" %{Host}i '
+        '"%{Signature-Input}i" "%{Signature}i" "%{Signature-Agent}i"'
+    )
+    line = " ".join(
+        [
+            "203.0.113.10",
+            "[27/Jun/2026:06:59:10 +0000]",
+            '"GET /?uri=x HTTP/2.0"',
+            "200",
+            "461",
+            _log_quote("Mozilla/5.0 (compatible; AhrefsBot/7.0; +http://ahrefs.com/robot/)"),
+            "redbot.org",
+            _log_quote(AHREFS_SIGNATURE_INPUT),
+            _log_quote(AHREFS_SIGNATURE),
+            _log_quote(AHREFS_SIGNATURE_AGENT),
+        ]
+    )
+    log = tmp_path / "wba.log"
+    log.write_text(line + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": fmt})
+    result = pipeline.analyze(
+        log,
+        parser,
+        identity.get_strategy("ip_ua"),
+        wba_verifier=wba.WbaVerifier(allow_fetch=True),
+    )
+    signed = [p for p in result.profiles if p.wba is not None]
+    assert len(signed) == 1
+    profile = signed[0]
+    assert profile.wba is not None and profile.wba.status is WbaStatus.VERIFIED
+    assert "wba-verified" in profile.classification.tags
+    assert profile.classification.primary is not Kind.IMPERSONATOR  # valid sig confirms identity
+
+
+# --- impersonation precedence (Web Bot Auth outranks the network channel) --------
+
+
+def _feat(ua: str | None) -> ClientFeatures:
+    return ClientFeatures(user_agent=ua)
+
+
+def test_forged_signature_is_impersonation() -> None:
+    forged = WbaResult(WbaStatus.FORGED, evidence=("signature failed",))
+    faking, why = impersonation(None, forged, _feat("AhrefsBot"))
+    assert faking and why == ("signature failed",)
+
+
+def test_valid_signature_clears_a_network_impersonator() -> None:
+    # rDNS/range said impersonator, but a valid signature is cryptographic proof.
+    net = BotVerification(VerificationStatus.IMPERSONATOR, evidence=("rDNS disagrees",))
+    verified = WbaResult(WbaStatus.VERIFIED, operator="Ahrefs")
+    faking, _ = impersonation(net, verified, _feat("AhrefsBot"))
+    assert not faking
+
+
+def test_valid_signature_from_wrong_operator_is_impersonation() -> None:
+    # UA claims Ahrefs, but the request is validly signed by a different operator.
+    verified = WbaResult(WbaStatus.VERIFIED, operator="SomeoneElse")
+    faking, why = impersonation(None, verified, _feat("AhrefsBot"))
+    assert faking
+    assert "Ahrefs" in why[0] and "SomeoneElse" in why[0]
+
+
+def test_unverifiable_defers_to_network_channel() -> None:
+    net = BotVerification(VerificationStatus.IMPERSONATOR, evidence=("rDNS disagrees",))
+    unverifiable = WbaResult(WbaStatus.UNVERIFIABLE, reason="no key")
+    faking, why = impersonation(net, unverifiable, _feat("AhrefsBot"))
+    assert faking and why == ("rDNS disagrees",)

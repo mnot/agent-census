@@ -48,9 +48,11 @@ from .model import (
     LogEntry,
     RobotsVerdict,
     VerificationStatus,
+    WbaResult,
 )
 from .parsing.base import LogParser
 from .robots import RobotsRules, report_from_signals
+from .wba import WbaClaim
 from .wba import detect_result as _wba_detect
 
 # Default inactivity gap after which a client is considered finished and evicted.
@@ -201,6 +203,14 @@ class BotVerifier(Protocol):
     def verify_all(
         self, items: Sequence[tuple[ClientId, str | None]]
     ) -> dict[ClientId, BotVerification]: ...
+
+
+class WbaVerifier(Protocol):
+    """Verifies Web Bot Auth claims (:class:`agent_census.wba.WbaVerifier`)."""
+
+    def verify(self, claim: WbaClaim) -> WbaResult: ...
+
+    def save(self) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -420,6 +430,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
     *,
     robots: RobotsRules | None = None,
     verifier: BotVerifier | None = None,
+    wba_verifier: WbaVerifier | None = None,
     unknown_threshold: float = DEFAULT_UNKNOWN_THRESHOLD,
     keep_signals: bool = True,
     quiescent_seconds: float | None = None,
@@ -597,10 +608,16 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         aggregate = network_category == _NET_EGRESS
         verification = _resolve_asn_verification(verification, features)
         # Web Bot Auth (the cryptographic-identity channel). A signed request's
-        # fields are stashed on the accumulator; phase 1 records its presence and
-        # operator. Suppressed on an egress fold -- a representative signed request
-        # belongs to one of the folded clients, not the whole multi-client row.
-        wba_result = None if aggregate or acc.wba_claim is None else _wba_detect(acc.wba_claim)
+        # fields are stashed on the accumulator; with a verifier the signature is
+        # checked against the operator's key, else its presence is just recorded.
+        # Suppressed on an egress fold -- a representative signed request belongs to
+        # one of the folded clients, not the whole multi-client row.
+        if aggregate or acc.wba_claim is None:
+            wba_result = None
+        elif wba_verifier is not None:
+            wba_result = wba_verifier.verify(acc.wba_claim)
+        else:
+            wba_result = _wba_detect(acc.wba_claim)
         classification = classify_client(
             features,
             compliance=compliance,
@@ -871,6 +888,10 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             network_category=_NET_DATACENTER if provider else _NET_RESIDENTIAL,
         )
         client_count += 1
+
+    # Persist any Web Bot Auth keys learned this run (content-addressed, permanent).
+    if wba_verifier is not None:
+        wba_verifier.save()
 
     # Calibrate the reference pool, then fold site-relative tags into the kept
     # profiles. A cheap in-memory pass: only kept profiles are shown, and all are

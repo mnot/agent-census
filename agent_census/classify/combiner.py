@@ -135,8 +135,10 @@ def combine(
     tag_evidence = tuple(tag_ev.items()) if keep_signals else ()
 
     # Impersonation is decisive: a client faking a declared identity is an
-    # impersonator, whatever else it looks like.
-    faking, why = impersonation(verification)
+    # impersonator, whatever else it looks like. Web Bot Auth (cryptographic)
+    # outranks the network channel here -- a valid signature clears it, a forged
+    # one forces it.
+    faking, why = impersonation(verification, wba, features)
     if faking:
         return Classification(
             primary=Kind.IMPERSONATOR,

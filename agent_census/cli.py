@@ -24,6 +24,7 @@ from .maxmind import (
     open_asn_db,
     open_country_db,
 )
+from .model import WbaStatus
 from .netverify import BotVerifier
 from .parsing import available, resolve
 from .parsing.apache import PRESETS
@@ -42,6 +43,7 @@ from .report import (
 from .robots import from_file, from_network
 from .robots.parser import RobotsRules
 from .robots.source import RobotsDoc, url_for_host
+from .wba import WbaVerifier
 
 _ANALYZE_EXAMPLES = """\
 examples:
@@ -580,6 +582,32 @@ def _warn_maxmind_skew(
         )
 
 
+def _warn_wba_key_skew(result: AnalysisResult) -> None:
+    """Warn when signed requests couldn't be verified for want of the operator's key.
+
+    A Web Bot Auth ``keyid`` is content-addressed and immutable, so the only reason
+    a signature goes ``unverifiable`` for a missing key is that the operator has
+    rotated and the old key is gone from the live directory -- which is exactly what
+    happens when a log is analysed long after collection. The permanent key store
+    accrues coverage, so the fix is to verify nearer collection time (a regular
+    pass or a small cron); flag it rather than let it read as a quiet non-result.
+    """
+    rotated = sum(
+        1
+        for profile in result.profiles
+        if profile.wba is not None
+        and profile.wba.status is WbaStatus.UNVERIFIABLE
+        and (profile.wba.reason or "").startswith("could not obtain")
+    )
+    if rotated:
+        print(
+            f"agent-census: warning: {rotated} Web Bot Auth signature(s) could not be verified "
+            "because the operator's key is no longer published (likely rotated since the log was "
+            "collected). Run verification nearer collection time so the key store captures it.",
+            file=sys.stderr,
+        )
+
+
 def _maxmind_paths(args: argparse.Namespace) -> tuple[Path | None, Path | None]:
     """Effective (ASN, country) database paths; explicit flags override --mm-db-dir."""
     asn, country = args.mm_asn_db, args.mm_country_db
@@ -606,6 +634,9 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
     verifier = BotVerifier() if args.verify_bots else None
     if args.fetch_ranges:
         iprange.enable_remote()
+    # Web Bot Auth signature verification rides --verify-bots; key fetching obeys the
+    # same network switch as the range feeds (--fetch-ranges).
+    wba_verifier = WbaVerifier(allow_fetch=args.fetch_ranges) if args.verify_bots else None
     quiescent = args.quiescent_hours * 3600 if args.quiescent_hours > 0 else None
     asn_path, country_path = _maxmind_paths(args)
     asn_resolver = open_asn_db(asn_path) if asn_path else None
@@ -621,6 +652,7 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
             strategy,
             robots=rules,
             verifier=verifier,
+            wba_verifier=wba_verifier,
             unknown_threshold=args.unknown_threshold,
             keep_signals=args.command in ("inspect", "calibrate"),
             quiescent_seconds=quiescent,
@@ -636,6 +668,7 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
             asn_resolver.close()
     if asn_resolver is not None:
         _warn_maxmind_skew(asn_resolver, result, "AS attributions")
+    _warn_wba_key_skew(result)
 
     flags = CountryFlags()
     if country_path:

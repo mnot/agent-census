@@ -43,7 +43,9 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, cast
 
 import http_sf
@@ -51,7 +53,9 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from http_sf import Token
 
+from . import USER_AGENT
 from .dataload import load_wba_operators
+from .iprange import cache_dir, remote_enabled
 from .model import WbaResult, WbaStatus
 
 # The signature parameter (and value) that marks the label as a Web Bot Auth one;
@@ -238,6 +242,22 @@ def resolve_operator(agent_url: str | None, keyid: str | None) -> str | None:
         for op in operators:
             if any(_norm_url(u) == norm for u in op.agent_urls):
                 return op.name
+    return None
+
+
+def operator_for_ua(ua: str | None) -> str | None:
+    """The registered operator a User-Agent claims to be, by its ``ua_substrings``.
+
+    Used for the stricter operator-vs-claim check: if a UA names a registered Web
+    Bot Auth operator, a *valid* signature from a different operator is a forged
+    identity. ``None`` when the UA matches no registered operator -- then a valid
+    signature simply confirms whoever signed, with nothing to contradict.
+    """
+    if not ua:
+        return None
+    for op in load_wba_operators():
+        if any(token in ua for token in op.ua_substrings):
+            return op.name
     return None
 
 
@@ -448,3 +468,139 @@ def verify_claim(claim: WbaClaim, public_key: Ed25519PublicKey) -> tuple[WbaStat
     if expires is not None and claim.timestamp is not None and claim.timestamp > expires:
         return WbaStatus.EXPIRED, "valid signature, but the request post-dates its `expires`"
     return WbaStatus.VERIFIED, "valid Ed25519 signature, within its freshness window"
+
+
+# --- key directory + the verifier the pipeline drives ---------------------------
+
+# The operator's JWK directory, relative to the Signature-Agent origin.
+_WELL_KNOWN_DIRECTORY = "/.well-known/http-message-signatures-directory"
+_FETCH_TIMEOUT = 10
+
+
+def _key_store_path() -> Path:
+    return cache_dir() / "wba-keys.json"
+
+
+def _directory_url(agent_url: str) -> str:
+    """The JWK directory URL for a Signature-Agent value (append the well-known path)."""
+    url = agent_url.rstrip("/")
+    return url if url.endswith(_WELL_KNOWN_DIRECTORY) else url + _WELL_KNOWN_DIRECTORY
+
+
+def _http_get(url: str) -> str | None:
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=_FETCH_TIMEOUT) as response:  # noqa: S310
+            return str(response.read().decode("utf-8", "replace"))
+    except (OSError, ValueError):
+        return None
+
+
+class WbaVerifier:
+    """Verifies Web Bot Auth claims, resolving operator keys with a permanent cache.
+
+    The key cache is the opposite of the range / robots caches. A ``keyid`` is a
+    JWK thumbprint -- content-addressed and immutable -- so a key, once seen, is
+    stored under its own hash forever: it can't go stale, and a hostile directory
+    can't poison an entry (the thumbprint must match the ``keyid`` the signature
+    names). The store therefore accrues coverage across runs, which is what keeps a
+    months-old log verifiable after the operator has rotated: the key is gone from
+    the live directory, but still in our store from when it was published.
+
+    Fetching the directory is gated on ``allow_fetch`` *and* the shared remote
+    switch; offline, only already-cached keys are used (a missing one is
+    ``UNVERIFIABLE``, never forgery).
+    """
+
+    def __init__(self, *, allow_fetch: bool = True) -> None:
+        self._allow_fetch = allow_fetch
+        self._keys: dict[str, dict[str, Any]] = {}  # keyid (thumbprint) -> minimal JWK
+        self._fetched: set[str] = set()  # directory URLs tried this run (once each)
+        self._dirty = False
+        self._load()
+
+    def _load(self) -> None:
+        try:
+            data = json.loads(_key_store_path().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        if isinstance(data, dict):
+            for keyid, jwk in data.items():
+                if isinstance(jwk, dict):
+                    self._keys[keyid] = jwk
+
+    def save(self) -> None:
+        """Persist newly-learned keys (atomically). A no-op when nothing changed."""
+        if not self._dirty:
+            return
+        path = _key_store_path()
+        tmp = path.with_suffix(".json.tmp")
+        try:
+            tmp.write_text(json.dumps(self._keys), encoding="utf-8")
+            tmp.replace(path)  # atomic: a crash leaves the old store intact
+        except OSError:
+            pass
+
+    def _fetch_directory(self, agent_url: str) -> None:
+        url = _directory_url(agent_url)
+        if url in self._fetched:
+            return
+        self._fetched.add(url)
+        text = _http_get(url)
+        if text is None:
+            return
+        try:
+            data = json.loads(text)
+        except ValueError:
+            return
+        keys = data.get("keys") if isinstance(data, dict) else None
+        if not isinstance(keys, list):
+            return
+        for jwk in keys:
+            if not isinstance(jwk, dict):
+                continue
+            # Store under the recomputed thumbprint, not the directory's claimed
+            # `kid`: content-addressing is the integrity check, so a lying `kid`
+            # can't displace or impersonate another key.
+            thumbprint = jwk_thumbprint(jwk)
+            if thumbprint is not None and thumbprint not in self._keys:
+                self._keys[thumbprint] = {"kty": "OKP", "crv": "Ed25519", "x": jwk.get("x")}
+                self._dirty = True
+
+    def _resolve_key(self, keyid: str, agent_url: str | None) -> dict[str, Any] | None:
+        if keyid in self._keys:
+            return self._keys[keyid]
+        if self._allow_fetch and remote_enabled() and agent_url:
+            self._fetch_directory(agent_url)
+        return self._keys.get(keyid)
+
+    def verify(self, claim: WbaClaim) -> WbaResult:
+        """Resolve the operator's key and verify ``claim`` -> a full :class:`WbaResult`."""
+        operator = resolve_operator(claim.agent_url, claim.params.keyid)
+        keyid = claim.params.keyid
+
+        def result(status: WbaStatus, reason: str) -> WbaResult:
+            who = f" by {operator}" if operator else ""
+            return WbaResult(
+                status=status,
+                operator=operator,
+                keyid=keyid,
+                created=claim.params.created,
+                expires=claim.params.expires,
+                reason=reason,
+                evidence=(f"Web Bot Auth signature{who}: {reason}",),
+            )
+
+        if keyid is None:
+            return result(WbaStatus.UNVERIFIABLE, "signature names no keyid")
+        jwk = self._resolve_key(keyid, claim.agent_url)
+        if jwk is None:
+            return result(
+                WbaStatus.UNVERIFIABLE,
+                "could not obtain the operator's key (rotated since, or directory unreachable)",
+            )
+        public_key = public_key_from_jwk(jwk)
+        if public_key is None:
+            return result(WbaStatus.UNVERIFIABLE, "the operator's stored key is not usable")
+        status, reason = verify_claim(claim, public_key)
+        return result(status, reason)

@@ -24,6 +24,7 @@ from ..model import (
     WbaResult,
     WbaStatus,
 )
+from ..wba import operator_for_ua
 from .feed_reader import ua_is_feed_reader
 
 # Numeric knobs: the tags' own thresholds in data/tuning/tags.toml, and the ones
@@ -61,14 +62,42 @@ def _declares_known_crawler(features: ClientFeatures) -> bool:
     return uas.names_known_crawler(features.user_agent)
 
 
-def impersonation(verification: BotVerification | None) -> tuple[bool, tuple[str, ...]]:
+def impersonation(
+    verification: BotVerification | None,
+    wba: WbaResult | None = None,
+    features: ClientFeatures | None = None,
+) -> tuple[bool, tuple[str, ...]]:
     """Decide whether the client is impersonating a declared identity.
 
-    Impersonation is a forged *identity*: a verification verdict that the origin
-    isn't really that crawler -- its reverse DNS, IP range, or AS number disagrees.
-    Misbehaviour such as ignoring robots.txt or probing for vulnerabilities is
-    tagged, not treated as identity theft -- a real crawler can still behave badly.
+    Impersonation is a forged *identity*. Two channels feed the verdict, with the
+    cryptographic one (Web Bot Auth) outranking the network one (reverse DNS / IP
+    range / AS number):
+
+    * A Web Bot Auth signature that *fails* against the operator's authentic key is
+      forgery, whatever the network channel says.
+    * A *valid* signature is cryptographic proof of identity: it clears a network
+      impersonator verdict -- unless the User-Agent names a *different* registered
+      operator than the one that actually signed (claiming to be one operator while
+      validly signed by another is itself a forged identity).
+    * Only when Web Bot Auth gives no definitive verdict (absent, present-only, or
+      unverifiable) does the network channel decide, as before.
+
+    Misbehaviour such as ignoring robots.txt or probing is tagged, not treated as
+    identity theft -- a real crawler can still behave badly.
     """
+    if wba is not None:
+        if wba.status is WbaStatus.FORGED:
+            return True, wba.evidence or (
+                "Web Bot Auth signature failed against the operator's key",
+            )
+        if wba.status in (WbaStatus.VERIFIED, WbaStatus.EXPIRED):
+            claimed = operator_for_ua(features.user_agent if features is not None else None)
+            if claimed is not None and wba.operator is not None and claimed != wba.operator:
+                return True, (
+                    f"User-Agent claims {claimed}, but the request is validly signed by "
+                    f"{wba.operator} -- a forged identity",
+                )
+            return False, ()  # cryptographically confirmed; outranks the network channel
     if verification is not None and verification.status is VerificationStatus.IMPERSONATOR:
         return True, verification.evidence or (
             "origin does not confirm the declared crawler (DNS / IP range / AS)",

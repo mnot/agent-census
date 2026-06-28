@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -206,6 +207,10 @@ def test_network_table_folds_datacenters_into_pinned_other(
     # Pinned and scrolling column roles.
     assert "stick-l" in html and "stick-r" in html  # Kind / Other+off-network+Total pinned
     assert " dcs'" in html or " dcs " in html  # named datacentres scroll
+    # The All-kinds row's network totals carry data-v too, so the live Other *total*
+    # folds in scrolled-out columns and the row keeps reconciling.
+    netall = re.search(r"<tr class='netall'>.*?</tr>", html, re.S)
+    assert netall is not None and netall.group(0).count("data-v=") >= 6
 
 
 def test_filter_haystack_includes_as_name() -> None:

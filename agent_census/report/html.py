@@ -334,7 +334,12 @@ def _network_table(result: AnalysisResult, *, breakout_min_share: float) -> str:
         # The pinned Other total grows as datacentres scroll out of view; stash its
         # aggregate (folded tail) and the peak so the script can re-tally and re-heat.
         agg = f" data-agg='{col}' data-peak='{peak_col}'" if net == OTHER_HOSTING else ""
-        return f"<td class='{cls}'{heat(col, peak_col)} data-net='{i}'{agg}>{col:,}</td>"
+        # data-v lets the script fold scrolled-out datacentre totals into the live
+        # Other total too (these cells aren't mxcell, so paint() leaves them alone).
+        return (
+            f"<td class='{cls}'{heat(col, peak_col)} data-net='{i}' "
+            f"data-v='{col}'{agg}>{col:,}</td>"
+        )
 
     totals = "".join(total_cell(i, n) for i, n in enumerate(nets))
     rows.append(

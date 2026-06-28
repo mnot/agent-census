@@ -106,7 +106,7 @@ _NETWORK_HELP: dict[str, str] = {
     "(Zscaler, Netskope).",
     OTHER_HOSTING: (
         "Hosting providers too small for their own column, plus any datacentre "
-        "columns currently scrolled out of view, tallied together."
+        "columns still scrolled off to the right — scroll right to reveal them."
     ),
     RESIDENTIAL_NETWORK: "Consumer ISP, mobile, and otherwise unrecognised networks.",
 }

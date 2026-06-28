@@ -48,11 +48,10 @@ NET_SCRIPT = """
   //     left/right frozen widths used to decide which datacentre columns are hidden.
   var headRow=tab.rows[0];
   var stickR=[].slice.call(headRow.cells).filter(function(c){return c.classList.contains('stick-r');});
-  var leftW=0, rightW=0;
+  var rightW=0;
   function isPhone(){ return window.matchMedia && window.matchMedia('(max-width: 640px)').matches; }
   function layout(){
-    if(isPhone()){ leftW=0; rightW=0; return; }
-    leftW=headRow.cells[0].getBoundingClientRect().width;
+    if(isPhone()){ rightW=0; return; }
     var acc=0;
     for(var i=stickR.length-1;i>=0;i--){
       var ci=stickR[i].cellIndex, off=Math.ceil(acc);  // ceil so pinned columns overlap, not gap
@@ -78,11 +77,15 @@ NET_SCRIPT = """
       if(cue) cue.textContent='';
       paint(sel?sel.value:'count'); return;
     }
-    var tr=track.getBoundingClientRect(), bandL=tr.left+leftW, bandR=tr.right-rightW;
+    // Only fold datacentre columns scrolled off to the RIGHT (still hidden behind
+    // the pinned Other column -- not yet revealed). Columns scrolled past to the
+    // left, under Kind, have already been read; re-adding them to Other just
+    // double-counts what the reader already accounted for.
+    var bandR=track.getBoundingClientRect().right-rightW;
     var hidden={}, n=0;
     dcsHd.forEach(function(th){
       var r=th.getBoundingClientRect();
-      if(r.width && (r.right<=bandL+0.5 || r.left>=bandR-0.5)){ hidden[th.cellIndex]=1; n++; }
+      if(r.width && r.left>=bandR-0.5){ hidden[th.cellIndex]=1; n++; }
     });
     otherCells.forEach(function(oc){ oc._v=rowSum(oc.parentNode, +oc.getAttribute('data-agg'), hidden); });
     if(otherTot){

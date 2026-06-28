@@ -158,6 +158,10 @@ class ClientFeatures:  # pylint: disable=too-many-instance-attributes
     inter_arrival_min: float | None = None
     peak_requests_per_minute: int = 0
     rate_regularity: float | None = None  # coefficient of variation of intervals
+    # Per-request volume folded into equal slices of [first_seen, last_seen], the
+    # source histogram for the report's request-pattern sparkline. Empty when
+    # there is no shape to plot (no timestamps, or the whole span fits one minute).
+    request_buckets: tuple[int, ...] = ()
 
     # crawl shape
     distinct_paths: int = 0

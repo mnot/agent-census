@@ -241,6 +241,23 @@ class CrawlerSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class WbaOperator:
+    """A Web Bot Auth operator: a signing identity mapped to a human name.
+
+    Matched offline against a request's parsed ``Signature-Agent`` URL and/or the
+    ``keyid`` (JWK thumbprint) its signature names -- the "who", orthogonal to
+    whether the signature verifies. ``ua_substrings`` link the operator to the
+    crawler User-Agent it should present, so a *valid* signature whose operator
+    differs from the declared crawler can be flagged (phase 2's stricter check).
+    """
+
+    name: str
+    agent_urls: tuple[str, ...] = ()
+    keyids: tuple[str, ...] = ()
+    ua_substrings: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class RangeSource:
     """One provider's IP ranges: inline CIDRs and/or a fetchable published list."""
 
@@ -399,6 +416,48 @@ def _agents(category: str) -> tuple[dict[str, Any], ...]:
         label, "agent", data.get("agent", []), _AGENT_SCHEMA, _require_agent
     )
     return tuple(entries)
+
+
+_WBA_OPERATOR_SCHEMA = {
+    "name": "str",
+    "agent_urls": "str[]",
+    "keyids": "str[]",
+    "ua_substrings": "str[]",
+}
+
+
+def _require_wba_operator(entry: dict[str, Any]) -> str:
+    if not entry.get("name"):
+        return "a Web Bot Auth operator needs a 'name'"
+    # It must be matchable by *something* offline -- a directory URL or a keyid.
+    if not entry.get("agent_urls") and not entry.get("keyids"):
+        return "an operator needs at least one 'agent_urls' or 'keyids' entry to match on"
+    return ""
+
+
+@lru_cache(maxsize=None)
+def load_wba_operators() -> tuple[WbaOperator, ...]:
+    """Return the Web Bot Auth operator list from ``agents/web_bot_auth.toml``.
+
+    Maps a signing identity (directory URL and/or published JWK thumbprints) to a
+    human operator name, plus the crawler UA tokens it presents. Offline data, like
+    the declared-crawler files; the cryptographic check is layered on separately.
+    """
+    data = _load("web_bot_auth", "agents")
+    label = "agents/web_bot_auth.toml"
+    _check_top_level(label, data, {"operator"})
+    entries = _validate_records(
+        label, "operator", data.get("operator", []), _WBA_OPERATOR_SCHEMA, _require_wba_operator
+    )
+    return tuple(
+        WbaOperator(
+            name=entry["name"],
+            agent_urls=tuple(entry.get("agent_urls", ())),
+            keyids=tuple(entry.get("keyids", ())),
+            ua_substrings=tuple(entry.get("ua_substrings", ())),
+        )
+        for entry in entries
+    )
 
 
 @lru_cache(maxsize=None)

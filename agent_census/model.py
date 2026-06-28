@@ -296,6 +296,46 @@ class BotVerification:
     network_checked: bool = False
 
 
+class WbaStatus(str, Enum):
+    """Outcome of a Web Bot Auth signature check, a cryptographic identity tier.
+
+    Parallel to (and outranking) the network :class:`VerificationStatus`: a valid
+    signature is proof the operator's key signed the request, not an inference from
+    where the IP sits. ``PRESENT`` is the phase-1 detect-only state (a signature is
+    there, not yet cryptographically checked). ``FORGED`` -- a signature that fails
+    against the operator's *authentic* fetched key -- is the only state that means
+    impersonation; every "couldn't obtain the key / rebuild the base" path is
+    ``UNVERIFIABLE``, never forgery.
+    """
+
+    PRESENT = "present"  # a web-bot-auth signature is present; not yet verified
+    VERIFIED = "verified"  # signature valid against the operator's key, and fresh
+    EXPIRED = "expired"  # signature valid, but its `expires` is before the request
+    FORGED = "forged"  # signature fails against the operator's authentic key
+    UNVERIFIABLE = "unverifiable"  # key unobtainable / base unbuildable / body signed
+    NOT_APPLICABLE = "not_applicable"  # no web-bot-auth signature on the request
+
+
+@dataclass(frozen=True, slots=True)
+class WbaResult:
+    """Outcome of a Web Bot Auth check on a client's representative signed request.
+
+    Carried alongside :class:`BotVerification` (the network tier) rather than
+    folded into it, so the cryptographic and network channels each keep their own
+    opinion; the combiner weighs both, with a definitive WBA verdict outranking the
+    network one. ``operator`` is the human name resolved from the offline list (the
+    "who"), orthogonal to whether the signature is valid.
+    """
+
+    status: WbaStatus
+    operator: str | None = None  # operator name from the offline list, if known
+    keyid: str | None = None  # the JWK thumbprint the signature names
+    created: int | None = None  # signature `created` (unix seconds), if present
+    expires: int | None = None  # signature `expires` (unix seconds), if present
+    reason: str | None = None  # why UNVERIFIABLE / FORGED, for the report
+    evidence: tuple[str, ...] = ()
+
+
 @dataclass(frozen=True, slots=True)
 class ClientProfile:
     """Everything known about one client, assembled by the pipeline.
@@ -311,6 +351,9 @@ class ClientProfile:
     classification: Classification
     compliance: ComplianceReport | None = None
     verification: BotVerification | None = None
+    # Web Bot Auth signature verdict, when the client presented a signed request.
+    # The cryptographic-identity channel, parallel to ``verification`` (network).
+    wba: WbaResult | None = None
     # For a merged verified-bot entry: the individual IPs collapsed into it.
     member_ips: tuple[str, ...] = ()
     # Origin-network bucket this client was attributed to (hosting provider /

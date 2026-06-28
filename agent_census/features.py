@@ -23,6 +23,7 @@ from typing import TypeVar
 from . import uas
 from .dataload import load_list, load_request_signatures, load_vuln_paths
 from .model import ClientFeatures, LogEntry
+from .wba import SIGNATURE_INPUT_HEADER, WbaClaim, build_claim
 
 # Request-line marker lists live in data/signatures/request_signatures.toml; this module turns
 # them into the sets and regexes the accumulator matches against per request.
@@ -250,7 +251,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         "breadth_pairs", "ref_total", "ref_onsite", "self_referer_hits", "pages_total",
         "pages_satisfied",
         "_pending_pages", "disallowed_hits", "disallowed_sample", "robots_fetched_first",
-        "_content_seen", "feed_requests",
+        "_content_seen", "feed_requests", "wba_claim",
         # Inter-arrival timing, summarised in bounded memory (no per-request array).
         "_prev_ts", "_iat_count", "_iat_sum", "_iat_sumsq", "_iat_min",
         "_iat_buf", "_iat_hist", "_minute_counts",
@@ -285,6 +286,10 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         self.robots_fetched_first = False
         self._content_seen = False
         self.feed_requests = 0
+        # The first Web Bot Auth-signed request seen, captured whole (the signature
+        # is per-request and the entries are discarded), so it can be verified after
+        # grouping. Set once; None unless the client presented a signed request.
+        self.wba_claim: WbaClaim | None = None
         # Inter-arrival timing: mean/min/CV kept exactly online; the distribution
         # for median/p95 stays in a small exact buffer until it overflows into a
         # fixed log-histogram. peak rpm uses per-minute counts (bounded by span).
@@ -320,6 +325,16 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
                 self.as_org = org
             if self.as_number is None:
                 self.as_number = number
+        # Capture the first Web Bot Auth-signed request whole, for later verification.
+        # Guarded on the header's presence so the parse runs only on signed requests.
+        if self.wba_claim is None and SIGNATURE_INPUT_HEADER in entry.extra:
+            self.wba_claim = build_claim(
+                entry.extra,
+                host=entry.host_header,
+                method=entry.method,
+                path=entry.path,
+                timestamp=entry.timestamp.timestamp() if entry.timestamp is not None else None,
+            )
 
         if entry.status is not None:
             if self.status_counts is None:
@@ -539,6 +554,8 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
             self.as_org = other.as_org
         if self.as_number is None:
             self.as_number = other.as_number
+        if self.wba_claim is None:
+            self.wba_claim = other.wba_claim
         if other.first_seen is not None and (
             self.first_seen is None or other.first_seen < self.first_seen
         ):

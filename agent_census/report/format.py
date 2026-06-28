@@ -105,6 +105,11 @@ _TAG_ORDER = {
             "forged-referer",
             "datacenter",
             "asn-attributed",
+            "wba-verified",
+            "wba-expired",
+            "wba",
+            "wba-unverified",
+            "wba-violation",
             "verified",
             "asn-associated",
             "unverified",
@@ -187,6 +192,19 @@ _TAG_HELP: dict[str, str] = {
     "unverified": "Declared a crawler we could check by reverse DNS or IP range, but the check "
     "didn't confirm it — it failed, or was inconclusive (a DNS timeout, unfetchable ranges). "
     "The mirror of 'verified'; the kind and verdict are unchanged.",
+    "wba": "Presented a Web Bot Auth signature (a cryptographically signed request), "
+    "not yet checked against the operator's key — run with --verify-bots to verify it.",
+    "wba-verified": "A valid, fresh Web Bot Auth signature, checked against the operator's "
+    "published Ed25519 key — cryptographic proof of identity, stronger than reverse-DNS or "
+    "IP-range inference, and it outranks them.",
+    "wba-expired": "A valid Web Bot Auth signature whose `expires` was already past at request "
+    "time — the key genuinely signed it, but outside the signature's freshness window.",
+    "wba-unverified": "Presented a Web Bot Auth signature that couldn't be checked — the key "
+    "was unobtainable (e.g. rotated since), a covered field wasn't logged, or the body was "
+    "signed. Never read as forgery: that requires a signature that fails against a fetched key.",
+    "wba-violation": "A Web Bot Auth signature that failed against the operator's authentic, "
+    "fetched key — cryptographic proof of a forged identity. Drives the 'impersonator' kind; "
+    "shown alongside it so a client verified by one channel but forged on another is visible.",
     "asn-attributed": "Identity is the origin AS itself -- an asn_primary network that "
     "crawls behind spoofed User-Agents, recognised by AS number rather than by its UA.",
     "probe-paths": "Requested known-vulnerable / probe paths (.env, /wp-login.php, .git/config…) "

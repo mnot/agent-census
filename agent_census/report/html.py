@@ -85,6 +85,11 @@ _KIND_COLORS: dict[Kind, str] = {
 _TAG_TOKENS: dict[str, str] = {
     # Identity -- who is it, and is the declared identity genuine?
     "verified": "trust",
+    "wba-verified": "trust",  # cryptographic identity -- as strong as network 'verified'
+    "wba": "trust-soft",  # a signature is present, not yet checked against the key
+    "wba-expired": "doubt",  # valid signature, but past its freshness window
+    "wba-unverified": "doubt",  # signature present but couldn't be checked
+    "wba-violation": "danger-deep",  # cryptographic forgery -- the strongest hostile signal
     "asn-associated": "trust-soft",
     "asn-attributed": "trust-soft",
     "user-triggered": "trust-soft",

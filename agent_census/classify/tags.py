@@ -21,6 +21,8 @@ from ..model import (
     ComplianceReport,
     RobotsVerdict,
     VerificationStatus,
+    WbaResult,
+    WbaStatus,
 )
 from .feed_reader import ua_is_feed_reader
 
@@ -305,6 +307,42 @@ def _conduct_tags(features: ClientFeatures) -> dict[str, str]:
     return tags
 
 
+# The phase-1 WBA states map to one tag each; the verification tier (phase 2) adds
+# the verified/expired/unverified/violation states. `wba-violation` (FORGED) is
+# additional detail alongside the `impersonator` kind it also drives -- it names
+# *which* channel caught the forgery, since dns/ip/wba can each independently
+# verify or violate on the same client.
+_WBA_TAGS: dict[WbaStatus, str] = {
+    WbaStatus.PRESENT: "wba",
+    WbaStatus.VERIFIED: "wba-verified",
+    WbaStatus.EXPIRED: "wba-expired",
+    WbaStatus.UNVERIFIABLE: "wba-unverified",
+    WbaStatus.FORGED: "wba-violation",
+}
+_WBA_TAG_DEFAULT: dict[str, str] = {
+    "wba": "presented a Web Bot Auth signature (not yet cryptographically verified)",
+    "wba-verified": "a valid, fresh Web Bot Auth signature confirmed the operator",
+    "wba-expired": "a valid Web Bot Auth signature, but past its expiry at request time",
+    "wba-unverified": "presented a Web Bot Auth signature that couldn't be checked",
+    "wba-violation": "Web Bot Auth signature failed against the operator's authentic key",
+}
+
+
+def _wba_tag(wba: WbaResult | None) -> dict[str, str]:
+    """The single, mutually-exclusive Web Bot Auth status tag, if a signature was seen.
+
+    One tag conveys the whole state -- no stacking. ``NOT_APPLICABLE`` means no
+    signature, so nothing to tag.
+    """
+    if wba is None:
+        return {}
+    tag = _WBA_TAGS.get(wba.status)
+    if tag is None:
+        return {}
+    why = wba.reason or (wba.evidence[0] if wba.evidence else None) or _WBA_TAG_DEFAULT[tag]
+    return {tag: why}
+
+
 def _fact_tags(
     features: ClientFeatures,
     compliance: ComplianceReport | None,
@@ -391,6 +429,7 @@ def derive_tag_evidence(
     features: ClientFeatures,
     compliance: ComplianceReport | None,
     verification: BotVerification | None,
+    wba: WbaResult | None = None,
     *,
     datacenter: bool = False,
     aggregate: bool = False,
@@ -405,6 +444,7 @@ def derive_tag_evidence(
     evidence.update(_fingerprint_tags(features, aggregate))
     evidence.update(_conduct_tags(features))
     evidence.update(_fact_tags(features, compliance, verification, datacenter))
+    evidence.update(_wba_tag(wba))
     return evidence
 
 
@@ -412,6 +452,7 @@ def derive_tags(
     features: ClientFeatures,
     compliance: ComplianceReport | None,
     verification: BotVerification | None,
+    wba: WbaResult | None = None,
     *,
     datacenter: bool = False,
     aggregate: bool = False,
@@ -423,6 +464,6 @@ def derive_tags(
     """
     return set(
         derive_tag_evidence(
-            features, compliance, verification, datacenter=datacenter, aggregate=aggregate
+            features, compliance, verification, wba, datacenter=datacenter, aggregate=aggregate
         )
     )

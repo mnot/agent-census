@@ -51,6 +51,7 @@ from .model import (
 )
 from .parsing.base import LogParser
 from .robots import RobotsRules, report_from_signals
+from .wba import detect_result as _wba_detect
 
 # Default inactivity gap after which a client is considered finished and evicted.
 DEFAULT_QUIESCENT_SECONDS = 24 * 60 * 60
@@ -595,10 +596,16 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         # tags, and keep it out of the reference-browser pool.
         aggregate = network_category == _NET_EGRESS
         verification = _resolve_asn_verification(verification, features)
+        # Web Bot Auth (the cryptographic-identity channel). A signed request's
+        # fields are stashed on the accumulator; phase 1 records its presence and
+        # operator. Suppressed on an egress fold -- a representative signed request
+        # belongs to one of the folded clients, not the whole multi-client row.
+        wba_result = None if aggregate or acc.wba_claim is None else _wba_detect(acc.wba_claim)
         classification = classify_client(
             features,
             compliance=compliance,
             verification=verification,
+            wba=wba_result,
             datacenter=in_datacenter,
             aggregate=aggregate,
             unknown_threshold=unknown_threshold,
@@ -625,6 +632,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             classification=classification,
             compliance=compliance,
             verification=verification,
+            wba=wba_result,
             member_ips=member,
             network=network,
             is_aggregate=aggregate,

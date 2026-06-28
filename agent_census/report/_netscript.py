@@ -129,8 +129,9 @@ NET_SCRIPT = """
   // (hiding the rest); a network cell (data-net = its column index) also filters
   // to that column, while a Total-column number leaves the network unfiltered.
   // The All-kinds row has no kind, so its network cells filter across all kinds
-  // and the grand total clears everything. The Kind cell's own anchor is
-  // intercepted so it isolates rather than just jumping.
+  // and the grand total clears the kind and network filters (any typed search
+  // stays). The Kind cell's own anchor is intercepted so it isolates rather than
+  // just jumping.
   tab.addEventListener('click',function(ev){
     var cell=ev.target.closest('td'); if(!cell) return;
     var link=cell.parentNode.querySelector('a[href^="#"]');

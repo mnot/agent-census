@@ -75,9 +75,10 @@ th.vh > span { display: inline-block; writing-mode: vertical-rl;
 .othercue:empty { display: none; }
 .netctl { font-size: .9rem; color: var(--muted); margin: .25rem 0 .6rem; }
 .netctl select { font: inherit; margin-left: .35rem; }
-/* Every cross-tab number jumps to its kind and filters the clients by its network;
-   the Kind label keeps its own anchor, so leave it alone. */
-#nettab td:not(.stick-l) { cursor: pointer; }
+/* Every cross-tab cell is clickable: a number isolates its kind (and filters by
+   the column's network), the Kind label isolates the kind, and the "All kinds"
+   corner clears the table filters -- so the pointer covers them all. */
+#nettab td { cursor: pointer; }
 /* Active-network-filter pill beside the client filter box; click / Enter / Space
    clears it (handled in the page script). */
 /* Active-filter row under the search box: removable kind / network pills plus the
@@ -377,7 +378,10 @@ document.addEventListener('click', function (event) {
 }, false);
 document.addEventListener('keydown', function (event) {
   var which = filterControl(event.target);
-  if (which && (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar')) {
+  // Only the role="button" pills need synthetic activation; the native
+  // <button id="clearfilters"> fires its own click on Enter/Space already.
+  if ((which === 'kind' || which === 'net') &&
+      (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar')) {
     event.preventDefault(); runFilterControl(which);
   }
 }, false);

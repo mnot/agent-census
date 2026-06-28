@@ -134,6 +134,11 @@ tr:hover td { background: #8881; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem;
   word-break: break-all; }
 td.cid { max-width: 26rem; }
+/* Floor the identity column on desktop so a heavy Tags / evidence row can't squeeze
+   it down to a sliver that wraps IPs and AS names mid-token (break-all). Scoped to
+   non-phone widths so the tighter phone floor above still wins (it sits earlier in
+   source order, so an unscoped rule here would override it). */
+@media (min-width: 641px) { td.cid { min-width: 14rem; } }
 .cid-id { font-weight: 600; }
 .cid-as { color: var(--muted); font-size: .8rem; word-break: break-word; margin: 1px 0; }
 .cid-ua { color: var(--muted); font-size: .82rem; margin-top: 1px;
@@ -158,7 +163,10 @@ button.tri { appearance: none; -webkit-appearance: none; background: none; borde
 button.tri:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; border-radius: 2px; }
 tbody.actor.open tr.asum .tri { transform: rotate(90deg); }
 @media (prefers-reduced-motion: reduce) { button.tri { transition: none; } }
-.actor-ua { color: var(--muted); font-size: .82rem; margin-left: .5rem; }
+/* Break the actor summary's UA onto its own line (like the per-client cid-ua),
+   rather than letting it trail the IP/org and wrap only when the line fills. */
+.actor-ua { display: block; color: var(--muted); font-size: .82rem; margin-top: 1px;
+  word-break: break-word; }
 tbody.actor .amem { display: none; }
 tbody.actor.open .amem { display: table-row; }
 tr.amem td.cid { padding-left: 1.6rem; }

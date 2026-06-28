@@ -43,8 +43,9 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -245,6 +246,23 @@ def resolve_operator(agent_url: str | None, keyid: str | None) -> str | None:
     return None
 
 
+def _domain_of(agent_url: str | None) -> str | None:
+    """The host of a Signature-Agent URL, lowercased -- the display fallback for the
+    operator when it isn't in the curated list (e.g. ``ahrefs.com``)."""
+    if not agent_url:
+        return None
+    try:
+        host = urllib.parse.urlsplit(agent_url).hostname
+    except ValueError:
+        return None
+    return host.lower() if host else None
+
+
+def display_operator(result: WbaResult) -> str | None:
+    """The "who" to show: the curated operator name, else the signer's domain."""
+    return result.operator or result.signer_domain
+
+
 def operator_for_ua(ua: str | None) -> str | None:
     """The registered operator a User-Agent claims to be, by its ``ua_substrings``.
 
@@ -270,15 +288,28 @@ def detect_result(claim: WbaClaim) -> WbaResult:
     ``forged`` / ``expired`` / ``unverifiable``.
     """
     operator = resolve_operator(claim.agent_url, claim.params.keyid)
-    who = f" by {operator}" if operator else ""
+    domain = _domain_of(claim.agent_url)
+    who = f" by {operator or domain}" if (operator or domain) else ""
     return WbaResult(
         status=WbaStatus.PRESENT,
         operator=operator,
+        signer_domain=domain,
         keyid=claim.params.keyid,
         created=claim.params.created,
         expires=claim.params.expires,
         evidence=(f"presented a Web Bot Auth signature{who} (keyid {claim.params.keyid})",),
     )
+
+
+def extract_nonce(signature_input: str) -> str | None:
+    """The ``nonce`` of the web-bot-auth label in a ``Signature-Input`` header.
+
+    A cheap targeted parse used while streaming to track nonces across the whole
+    log (replay detection), without stashing every signed request. ``None`` if the
+    header doesn't parse or carries no web-bot-auth nonce.
+    """
+    selected = select_web_bot_auth(parse_signature_input(signature_input))
+    return selected[1].nonce if selected is not None else None
 
 
 def select_web_bot_auth(parsed: dict[str, SigParams]) -> tuple[str, SigParams] | None:
@@ -577,13 +608,15 @@ class WbaVerifier:
     def verify(self, claim: WbaClaim) -> WbaResult:
         """Resolve the operator's key and verify ``claim`` -> a full :class:`WbaResult`."""
         operator = resolve_operator(claim.agent_url, claim.params.keyid)
+        domain = _domain_of(claim.agent_url)
         keyid = claim.params.keyid
 
         def result(status: WbaStatus, reason: str) -> WbaResult:
-            who = f" by {operator}" if operator else ""
+            who = f" by {operator or domain}" if (operator or domain) else ""
             return WbaResult(
                 status=status,
                 operator=operator,
+                signer_domain=domain,
                 keyid=keyid,
                 created=claim.params.created,
                 expires=claim.params.expires,
@@ -604,3 +637,16 @@ class WbaVerifier:
             return result(WbaStatus.UNVERIFIABLE, "the operator's stored key is not usable")
         status, reason = verify_claim(claim, public_key)
         return result(status, reason)
+
+    def verify_sample(self, claims: list[WbaClaim]) -> WbaResult:
+        """Verify a client's sampled signed requests; the first is the headline.
+
+        The representative (first) claim drives the verdict, exactly as before. The
+        rest of the sparse sample are verified only to detect a *mixed* identity --
+        one whose signatures don't all agree -- which sets ``mixed`` on the result
+        without changing the headline status (so the impersonation precedence is
+        unaffected; mixing is surfaced as its own flag).
+        """
+        head = self.verify(claims[0])
+        mixed = any(self.verify(other).status is not head.status for other in claims[1:])
+        return replace(head, mixed=True) if mixed else head

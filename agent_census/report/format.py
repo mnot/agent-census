@@ -110,6 +110,9 @@ _TAG_ORDER = {
             "wba",
             "wba-unverified",
             "wba-violation",
+            "wba-mixed",
+            "wba-replay",
+            "wba-nonce-reuse",
             "verified",
             "asn-associated",
             "unverified",
@@ -205,6 +208,14 @@ _TAG_HELP: dict[str, str] = {
     "wba-violation": "A Web Bot Auth signature that failed against the operator's authentic, "
     "fetched key — cryptographic proof of a forged identity. Drives the 'impersonator' kind; "
     "shown alongside it so a client verified by one channel but forged on another is visible.",
+    "wba-mixed": "A sample of this client's signed requests disagreed — some signatures verified "
+    "and some did not. One identity presenting both valid and non-valid signatures is worth a "
+    "look; the headline verdict is the representative request's.",
+    "wba-replay": "A signature nonce from this client also appeared from a different origin — a "
+    "captured, validly-signed request replayed elsewhere. The whole-log view catches this where "
+    "an edge server checking one request can't; a valid signature alone wouldn't.",
+    "wba-nonce-reuse": "This client reused a signature nonce across its own requests — a signer "
+    "reusing nonces rather than a replay. Milder than a cross-origin replay; noted, not alarming.",
     "asn-attributed": "Identity is the origin AS itself -- an asn_primary network that "
     "crawls behind spoofed User-Agents, recognised by AS number rather than by its UA.",
     "probe-paths": "Requested known-vulnerable / probe paths (.env, /wp-login.php, .git/config…) "

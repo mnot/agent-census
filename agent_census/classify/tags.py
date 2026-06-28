@@ -358,18 +358,39 @@ _WBA_TAG_DEFAULT: dict[str, str] = {
 
 
 def _wba_tag(wba: WbaResult | None) -> dict[str, str]:
-    """The single, mutually-exclusive Web Bot Auth status tag, if a signature was seen.
+    """The Web Bot Auth tags: one mutually-exclusive status tag, plus orthogonal
+    flags for a mixed identity and nonce replay/reuse.
 
-    One tag conveys the whole state -- no stacking. ``NOT_APPLICABLE`` means no
-    signature, so nothing to tag.
+    The status is a single tag -- no stacking. ``NOT_APPLICABLE`` means no
+    signature, so nothing to tag. ``mixed`` / ``replayed`` / ``nonce_reused``
+    are independent dimensions layered on top when present.
     """
     if wba is None:
         return {}
-    tag = _WBA_TAGS.get(wba.status)
-    if tag is None:
-        return {}
-    why = wba.reason or (wba.evidence[0] if wba.evidence else None) or _WBA_TAG_DEFAULT[tag]
-    return {tag: why}
+    tags: dict[str, str] = {}
+    status_tag = _WBA_TAGS.get(wba.status)
+    if status_tag is not None:
+        tags[status_tag] = (
+            wba.reason
+            or (wba.evidence[0] if wba.evidence else None)
+            or _WBA_TAG_DEFAULT[status_tag]
+        )
+    if wba.mixed:
+        tags["wba-mixed"] = (
+            "a sample of this client's signed requests disagreed -- some signatures "
+            "verified, some did not"
+        )
+    if wba.replayed:
+        tags["wba-replay"] = (
+            "a signature nonce from this client also appeared from a different origin "
+            "-- a captured signature replayed"
+        )
+    elif wba.nonce_reused:
+        tags["wba-nonce-reuse"] = (
+            "this client reused a signature nonce across its own requests "
+            "(a signer reusing nonces, not a replay)"
+        )
+    return tags
 
 
 def _fact_tags(

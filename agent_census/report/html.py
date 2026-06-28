@@ -90,6 +90,9 @@ _TAG_TOKENS: dict[str, str] = {
     "wba-expired": "doubt",  # valid signature, but past its freshness window
     "wba-unverified": "doubt",  # signature present but couldn't be checked
     "wba-violation": "danger-deep",  # cryptographic forgery -- the strongest hostile signal
+    "wba-replay": "danger-deep",  # a captured signature replayed from elsewhere
+    "wba-mixed": "doubt",  # some of this client's signed requests verified, some didn't
+    "wba-nonce-reuse": "doubt",  # same-origin nonce reuse -- a milder note, not a replay
     "asn-associated": "trust-soft",
     "asn-attributed": "trust-soft",
     "user-triggered": "trust-soft",

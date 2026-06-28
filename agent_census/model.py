@@ -328,12 +328,30 @@ class WbaResult:
     """
 
     status: WbaStatus
-    operator: str | None = None  # operator name from the offline list, if known
+    # The curated operator name (from the offline list), or None when the signer
+    # isn't one we recognise. Kept registered-only on purpose: the impersonation
+    # operator-vs-claim check compares this, and a domain we merely fell back to
+    # could be the same operator under another name -- not grounds to cry forgery.
+    operator: str | None = None
+    # The Signature-Agent host, a display fallback for the "who" when ``operator``
+    # is unknown (e.g. ``ahrefs.com``). Never used for the impersonation decision.
+    signer_domain: str | None = None
     keyid: str | None = None  # the JWK thumbprint the signature names
     created: int | None = None  # signature `created` (unix seconds), if present
     expires: int | None = None  # signature `expires` (unix seconds), if present
     reason: str | None = None  # why UNVERIFIABLE / FORGED, for the report
     evidence: tuple[str, ...] = ()
+    # A sparse sample of this client's signed requests disagreed: some verified,
+    # some didn't (the headline status is the representative request's). Surfaced as
+    # ``wba-mixed`` -- one identity presenting both valid and non-valid signatures.
+    mixed: bool = False
+    # A nonce in this client's signature(s) also appeared from a *different* origin:
+    # a captured signature replayed (``wba-replay``). The whole-log view is what lets
+    # us see this; an edge server checking one request can't.
+    replayed: bool = False
+    # A nonce reused across this client's own requests (same origin) -- a signer
+    # reusing nonces rather than a replay. A benign-ish note (``wba-nonce-reuse``).
+    nonce_reused: bool = False
 
 
 @dataclass(frozen=True, slots=True)

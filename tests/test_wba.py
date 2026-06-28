@@ -464,3 +464,90 @@ def test_unverifiable_defers_to_network_channel() -> None:
     unverifiable = WbaResult(WbaStatus.UNVERIFIABLE, reason="no key")
     faking, why = impersonation(net, unverifiable, _feat("AhrefsBot"))
     assert faking and why == ("rDNS disagrees",)
+
+
+# --- phase 3: domain fallback, mixed identity, nonce replay/reuse ----------------
+
+
+def test_operator_domain_fallback_for_unregistered_signer() -> None:
+    # Same valid headers, but a Signature-Agent we don't have in the curated list.
+    extra = {
+        wba.SIGNATURE_INPUT_HEADER: AHREFS_SIGNATURE_INPUT,
+        wba.SIGNATURE_HEADER: AHREFS_SIGNATURE,
+        wba.SIGNATURE_AGENT_HEADER: '"https://unknown-crawler.example"',
+    }
+    claim = wba.build_claim(extra, host="redbot.org", method="GET", path="/", timestamp=None)
+    assert claim is not None
+    result = wba.detect_result(claim)
+    assert result.operator is None  # not curated -> no registered identity
+    assert result.signer_domain == "unknown-crawler.example"
+    assert wba.display_operator(result) == "unknown-crawler.example"
+
+
+def _seed_key(verifier: wba.WbaVerifier, keyid: str, priv: Ed25519PrivateKey) -> None:
+    raw = priv.public_key().public_bytes_raw()
+    x = base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+    verifier._keys[keyid] = {"kty": "OKP", "crv": "Ed25519", "x": x}  # noqa: SLF001
+
+
+def test_verify_sample_flags_mixed_identity(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    priv = Ed25519PrivateKey.generate()
+    verifier = wba.WbaVerifier(allow_fetch=False)
+    _seed_key(verifier, "k", priv)  # the synthetic claims name keyid "k"
+    good = _synthetic_signed_claim(priv)
+    tampered = replace(good, authority="evil.example")  # base changes -> signature fails
+    result = verifier.verify_sample([good, tampered])
+    assert result.status is WbaStatus.VERIFIED  # representative drives the headline
+    assert result.mixed is True
+    # Uniform sample is not flagged mixed.
+    assert verifier.verify_sample([good, good]).mixed is False
+
+
+def _wba_log_line(ip: str) -> str:
+    return " ".join(
+        [
+            ip,
+            "[27/Jun/2026:06:59:10 +0000]",
+            '"GET / HTTP/2.0"',
+            "200",
+            "461",
+            _log_quote("Mozilla/5.0 (compatible; AhrefsBot/7.0; +http://ahrefs.com/robot/)"),
+            "redbot.org",
+            _log_quote(AHREFS_SIGNATURE_INPUT),
+            _log_quote(AHREFS_SIGNATURE),
+            _log_quote(AHREFS_SIGNATURE_AGENT),
+        ]
+    )
+
+
+_WBA_FMT = (
+    '%h %t "%r" %>s %b "%{User-Agent}i" %{Host}i '
+    '"%{Signature-Input}i" "%{Signature}i" "%{Signature-Agent}i"'
+)
+
+
+def test_pipeline_flags_cross_origin_replay(tmp_path: Path) -> None:
+    # The same signature (same nonce) from two different IPs -> replay, both flagged.
+    log = tmp_path / "replay.log"
+    log.write_text(_wba_log_line("203.0.113.10") + "\n" + _wba_log_line("198.51.100.10") + "\n")
+    parser = resolve("apache", {"format": _WBA_FMT})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
+    wba_profiles = [p for p in result.profiles if p.wba is not None]
+    assert len(wba_profiles) == 2
+    assert all("wba-replay" in p.classification.tags for p in wba_profiles)
+
+
+def test_pipeline_flags_same_origin_nonce_reuse(tmp_path: Path) -> None:
+    # The same signature twice from one IP -> a signer reusing a nonce, not a replay.
+    log = tmp_path / "reuse.log"
+    log.write_text(_wba_log_line("203.0.113.10") + "\n" + _wba_log_line("203.0.113.10") + "\n")
+    parser = resolve("apache", {"format": _WBA_FMT})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
+    wba_profiles = [p for p in result.profiles if p.wba is not None]
+    assert len(wba_profiles) == 1
+    tags = wba_profiles[0].classification.tags
+    assert "wba-nonce-reuse" in tags
+    assert "wba-replay" not in tags

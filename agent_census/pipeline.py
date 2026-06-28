@@ -52,8 +52,9 @@ from .model import (
 )
 from .parsing.base import LogParser
 from .robots import RobotsRules, report_from_signals
-from .wba import WbaClaim
+from .wba import SIGNATURE_INPUT_HEADER, WbaClaim
 from .wba import detect_result as _wba_detect
+from .wba import extract_nonce as _wba_nonce
 
 # Default inactivity gap after which a client is considered finished and evicted.
 DEFAULT_QUIESCENT_SECONDS = 24 * 60 * 60
@@ -79,6 +80,12 @@ DEFAULT_RETIRED_CAP = 50_000
 # ~4h per slice), a fraction of a slice only down at a few hours. It also bounds the
 # per-kind dict to window-duration / 5min entries.
 CADENCE_BIN_SECONDS = 300
+
+# Ceiling on distinct Web Bot Auth nonces tracked for replay detection, so a log
+# with an unbounded number of signed requests can't exhaust memory. Generous --
+# signed traffic is rare today; past it we stop learning new nonces (a documented
+# limit, not a crash). Tightening / Bloom-filtering this is a future refinement.
+_WBA_NONCE_CAP = 1_000_000
 
 # Declared-crawler categories, checked individually so per-UA matches cache.
 _CRAWLER_CATEGORIES = (
@@ -208,7 +215,7 @@ class BotVerifier(Protocol):
 class WbaVerifier(Protocol):
     """Verifies Web Bot Auth claims (:class:`agent_census.wba.WbaVerifier`)."""
 
-    def verify(self, claim: WbaClaim) -> WbaResult: ...
+    def verify_sample(self, claims: list[WbaClaim]) -> WbaResult: ...
 
     def save(self) -> None: ...
 
@@ -523,6 +530,26 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
     host_counts: Counter[str] = Counter()  # served host -> line count, for the site label
     latest_ts: float | None = None
     reasons: dict[str, int] = defaultdict(int)
+    # Web Bot Auth nonce tracking across the whole log (what the edge can't do):
+    # first origin per nonce, the nonces and IPs caught reused from another origin
+    # (replay), and nonces reused by one origin (a signer reusing them). Bounded so
+    # a pathological log can't exhaust memory; past the cap we stop learning, not crash.
+    wba_nonce_origin: dict[str, str] = {}
+    wba_replay_ips: set[str] = set()
+    wba_replayed_nonces: set[str] = set()
+    wba_reused_nonces: set[str] = set()
+
+    def track_wba_nonce(nonce: str, ip: str) -> None:
+        first = wba_nonce_origin.get(nonce)
+        if first is None:
+            if len(wba_nonce_origin) < _WBA_NONCE_CAP:
+                wba_nonce_origin[nonce] = ip
+        elif first != ip:  # the same signature presented from a different origin
+            wba_replayed_nonces.add(nonce)
+            wba_replay_ips.add(first)
+            wba_replay_ips.add(ip)
+        else:  # one origin reusing a nonce -- a signer quirk, not a replay
+            wba_reused_nonces.add(nonce)
 
     def emit(
         key: ClientId,
@@ -607,17 +634,27 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         # tags, and keep it out of the reference-browser pool.
         aggregate = network_category == _NET_EGRESS
         verification = _resolve_asn_verification(verification, features)
-        # Web Bot Auth (the cryptographic-identity channel). A signed request's
-        # fields are stashed on the accumulator; with a verifier the signature is
-        # checked against the operator's key, else its presence is just recorded.
-        # Suppressed on an egress fold -- a representative signed request belongs to
-        # one of the folded clients, not the whole multi-client row.
-        if aggregate or acc.wba_claim is None:
+        # Web Bot Auth (the cryptographic-identity channel). A sparse sample of the
+        # client's signed requests is stashed on the accumulator; with a verifier the
+        # signatures are checked against the operator's key (and disagreement flagged
+        # mixed), else their presence is just recorded. Suppressed on an egress fold
+        # -- a representative signed request belongs to one folded client, not the row.
+        if aggregate or not acc.wba_claims:
             wba_result = None
         elif wba_verifier is not None:
-            wba_result = wba_verifier.verify(acc.wba_claim)
+            wba_result = wba_verifier.verify_sample(acc.wba_claims)
         else:
-            wba_result = _wba_detect(acc.wba_claim)
+            wba_result = _wba_detect(acc.wba_claims[0])
+        if wba_result is not None:
+            # Replay: this client's IP shared a signature nonce with another origin.
+            # Same-origin nonce reuse is a milder note. Cross-origin wins if both.
+            client_ips = set(member) or {key.ip}
+            replayed = bool(client_ips & wba_replay_ips)
+            reused = not replayed and any(
+                c.params.nonce in wba_reused_nonces for c in acc.wba_claims
+            )
+            if replayed or reused:
+                wba_result = replace(wba_result, replayed=replayed, nonce_reused=reused)
         classification = classify_client(
             features,
             compliance=compliance,
@@ -772,6 +809,14 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         if served:
             host_counts[served] += 1
         ip, ua = entry.remote_host, entry.user_agent
+        # Track this signed request's nonce against its origin, for replay detection
+        # over the whole log (done per entry, not per sampled claim, so a replay
+        # beyond the sample cap is still caught).
+        sig_input = entry.extra.get(SIGNATURE_INPUT_HEADER)
+        if sig_input is not None:
+            nonce = _wba_nonce(sig_input)
+            if nonce is not None:
+                track_wba_nonce(nonce, ip)
         asn = _asn_of(entry, ip)
         # Egress by IP range, else by AS number (VPNs/proxies that publish no list).
         network = egress.lookup(ip) or egress.lookup_asn(uas.parse_asn(asn))

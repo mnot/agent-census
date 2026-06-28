@@ -466,10 +466,21 @@ def _network_table(matrix: NetworkMatrix | None) -> str:
     )
 
 
-_SECTION_HEAD = (
-    "<tr><th>Client</th><th class='num'>Requests</th><th class='num'>Bandwidth</th>"
-    "<th class='num'>Conf.</th><th>Tags</th><th>Request pattern</th></tr>"
-)
+def _section_head(window: _Window) -> str:
+    """The client-table header row. The request-pattern column names the span its
+    shared x-axis covers (every sparkline in the report is drawn against it), with
+    the exact start -> end on hover."""
+    span = ""
+    if window is not None:
+        duration = human_duration((window[1] - window[0]).total_seconds())
+        full = f"shared sparkline axis: {fmt_ts(window[0])} → {fmt_ts(window[1])}"
+        span = f" <span class='muted' title=\"{_esc(full)}\">({_esc(duration)})</span>"
+    return (
+        "<tr><th>Client</th><th class='num'>Requests</th><th class='num'>Bandwidth</th>"
+        f"<th class='num'>Conf.</th><th>Tags</th><th>Request pattern{span}</th></tr>"
+    )
+
+
 # Per-kind cap rendered into the HTML (visible rows + the expandable set).
 _EXPAND_LIMIT = 200
 
@@ -710,7 +721,9 @@ def _kind_section(
         _actor_tbody(a, flags=flags, filterable=True, net_col=net_col, window=window)
         for a in actors[:top]
     )
-    parts.append(f"<div class='tscroll'><table><thead>{_SECTION_HEAD}</thead>{shown}</table></div>")
+    parts.append(
+        f"<div class='tscroll'><table><thead>{_section_head(window)}</thead>{shown}</table></div>"
+    )
     extra = actors[top:_EXPAND_LIMIT]
     if extra:
         extra_rows = "".join(
@@ -722,7 +735,8 @@ def _kind_section(
             # The page filter (above all sections) suspends the name while active.
             '<details name="kind-extra"><summary>'
             "Show more</summary>"
-            f"<div class='tscroll'><table><thead>{_SECTION_HEAD}</thead>{extra_rows}</table></div>"
+            f"<div class='tscroll'><table><thead>{_section_head(window)}</thead>"
+            f"{extra_rows}</table></div>"
             "</details>"
         )
     # rollup.clients is the exact total; only the highest-volume ones are detailed.

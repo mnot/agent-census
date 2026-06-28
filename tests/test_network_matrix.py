@@ -80,7 +80,8 @@ def test_breakout_selector_drops_long_tail_below_share_floor() -> None:
     rollups["TinyFold"] = {Kind.SCRAPER: _rollup(5)}
     categories["TinyFold"] = "datacenter"
 
-    # Total = 685; floor at 10% = 68.5: BigFold (80) clears, TinyFold (5) does not.
+    # Single kind, so per-kind share == overall: scraper total = 685, floor at
+    # 10% = 68.5, BigFold (80) clears, TinyFold (5) does not.
     matrix = network_matrix(rollups, categories, max_datacenter=6, min_breakout_share=0.1)
 
     assert matrix is not None
@@ -91,6 +92,29 @@ def test_breakout_selector_drops_long_tail_below_share_floor() -> None:
     everything = network_matrix(rollups, categories, max_datacenter=6, min_breakout_share=0.0)
     assert everything is not None
     assert [name for name, _ in everything.collapsed] == ["BigFold", "TinyFold"]
+
+
+def test_breakout_floor_is_per_kind_not_overall() -> None:
+    # Six big scraper-only datacenters keep their columns; two fold. "Niche" is a
+    # sliver of overall traffic but dominates the (small) browser kind, so the
+    # per-kind floor still offers it; "Tiny" clears no kind's floor.
+    rollups: dict[str, dict[Kind, KindRollup]] = {}
+    categories: dict[str, str] = {}
+    for i in range(6):
+        rollups[f"DC{i}"] = {Kind.SCRAPER: _rollup(100)}
+        categories[f"DC{i}"] = "datacenter"
+    rollups["Niche"] = {Kind.BROWSER: _rollup(20)}
+    categories["Niche"] = "datacenter"
+    rollups["Tiny"] = {Kind.BROWSER: _rollup(2)}
+    categories["Tiny"] = "datacenter"
+
+    # Browser total = 22: Niche 20 (91%) clears the 10% floor, Tiny 2 (9%) doesn't.
+    # Overall total = 622, so Niche is ~3% -- an overall floor would have dropped it.
+    matrix = network_matrix(rollups, categories, max_datacenter=6, min_breakout_share=0.1)
+
+    assert matrix is not None
+    assert [name for name, _ in matrix.collapsed] == ["Niche"]
+    assert dict(matrix.collapsed)["Niche"] == {Kind.BROWSER: 20}
 
 
 def test_collapsed_breakdown_empty_when_nothing_folds() -> None:

@@ -183,14 +183,16 @@ def test_network_table_offers_breakout_for_folded_datacenters(
         pipeline, "datacenter_provider", lambda ip: f"Provider {int(ip.split('.')[0])}"
     )
     # One provider per /8 (octets 11..18). Volume decreases with the octet so the
-    # two smallest providers (17, 18) are the ones that fold into Other.
+    # two smallest providers (17, 18) fold into Other; with the single curl kind,
+    # both still carry >10% of that kind's traffic (24 and 23 of 212) and clear the
+    # break-out floor, so each is offered in the selector.
     weighted = []
     for rank, octet in enumerate(range(11, 19)):
         line = (
             f"{octet}.0.0.1 - - [10/Oct/2023:12:00:00 +0000] "
             '"GET /p HTTP/1.1" 200 100 "-" "curl/8.0"'
         )
-        weighted.extend([line] * (10 - rank))
+        weighted.extend([line] * (30 - rank))
     log = tmp_path / "netmany.log"
     log.write_text("\n".join(weighted) + "\n", encoding="utf-8")
     parser = resolve("apache", {"format": PRESETS["combined"]})

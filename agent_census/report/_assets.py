@@ -184,7 +184,11 @@ tr.amem .cid-as { color: var(--muted); font-size: .82rem; }
    base hides rows scrolling underneath. The inter-section gap moves from the h2's
    top margin to the section itself -- inside the sticky box it would show as dead
    space above the heading once pinned. */
-section.kind { margin-top: 2.25rem; }
+/* scroll-margin-top: jumping to a kind aligns its top with the viewport top,
+   but the sticky filter bar sits there -- so leave room for it (plus a little
+   breathing space) and the heading lands just below the bar, not behind it. */
+section.kind { margin-top: 2.25rem;
+  scroll-margin-top: calc(var(--filterbar-h, 0px) + 0.75rem); }
 .kindhead { position: sticky; top: var(--filterbar-h, 0px); z-index: 1;
   background: Canvas; padding-bottom: .3rem; }
 .kindhead h2 { margin-top: 0; }

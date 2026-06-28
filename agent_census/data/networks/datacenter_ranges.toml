@@ -286,9 +286,5 @@ name = "Park web"
 asns = [51248]
 
 [[source]]
-name = "Anthropic"
-asns = [16509]
-
-[[source]]
 name = "TurnItIn"
 asns = [46851]

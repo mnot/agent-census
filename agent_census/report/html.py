@@ -230,7 +230,7 @@ def _summary_table(result: AnalysisResult) -> str:
     return (
         f"<h2>Summary by kind</h2>\n"
         f"<div class='tscroll'><table>{head}{''.join(rows)}</table></div>\n"
-        '<p class="muted">Tip: click a kind to show only it; click a client below '
+        '<p class="hint">Click a kind to show only it; click a client below '
         "to copy its id for <code>inspect --client</code>.</p>"
     )
 
@@ -416,18 +416,22 @@ def _network_table(matrix: NetworkMatrix | None) -> str:
         if len(nets) > 1
         else ""
     )
+    # Up-front affordance cue (italic/grey); the caption below carries the finer points.
+    hint = (
+        '<p class="hint">Click a cell to filter the report to that kind and network — '
+        "use “Show all” (by the filter box) to clear.</p>"
+    )
     caption = (
-        '<p class="muted">Click a number to show only that kind, filtered to that '
-        "network (a Total-column number shows the whole kind; an All-kinds number "
-        f"filters every kind to that network; “{_esc(OTHER_HOSTING)}” covers the "
-        "folded small datacentres). Use “Show all” by the filter box to clear. "
-        "Counts default; the toggle switches to row or column shares "
+        '<p class="muted">A Total-column number filters by kind only; an All-kinds '
+        f"number by network only; “{_esc(OTHER_HOSTING)}” covers the folded small "
+        "datacentres. Counts default; the toggle switches to row or column shares "
         "(the Total column keeps the raw count). Cell shading tracks the same axis — "
         "across each kind, or down each network. "
         f"<span class='netwide'>{spatial}</span>{narrow}</p>"
     )
     return (
         "<h2>Requests by kind and network</h2>\n"
+        + hint
         + control
         + f"<div class='tscroll'><table id='nettab'>{head}{''.join(rows)}</table></div>\n"
         + caption

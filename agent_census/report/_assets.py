@@ -125,6 +125,9 @@ tr:hover td { background: #8881; }
   border-radius: 6px; background: #8883; font-size: .78rem; white-space: nowrap; cursor: help; }
 .flag { cursor: help; font-style: normal; }
 .blurb { color: var(--muted); margin: .15rem 0 .6rem; }
+/* Lightweight affordance cue: italic + muted, so it reads as guidance, not data. */
+.hint { font-style: italic; color: var(--muted); font-size: .9rem; margin: .25rem 0 .6rem; }
+.hint code { font-style: normal; }
 .bar { background: #8883; border-radius: 4px; height: .7rem; min-width: 2px; }
 .card { border: 1px solid #8884; border-radius: 10px; padding: 1rem 1.1rem; margin: 1rem 0; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem;

@@ -108,7 +108,7 @@ def _summary_table(result: AnalysisResult) -> list[str]:
     if any_robots:
         lines.append(
             "_robots: ✓ respect (requested no disallowed paths) · "
-            "✗ ignore (requested disallowed paths) · "
+            "✗ violate (requested disallowed paths) · "
             "? can't tell (fewer than 5 requests, or no applicable rule)._"
         )
         lines.append("")

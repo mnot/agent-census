@@ -403,6 +403,10 @@ function runFilterControl(which) {
     var input = document.querySelector('input.filter');
     if (input) input.value = '';
     window.setKindNet(null, null);
+    // Re-showing every section shifts the page under the reader; without this the
+    // browser anchors them mid-document (at the first browser client). Go to the
+    // top so "Show all" reliably means "back to the whole report from the start".
+    requestAnimationFrame(function () { window.scrollTo({ top: 0, behavior: 'smooth' }); });
   }
 }
 document.addEventListener('click', function (event) {

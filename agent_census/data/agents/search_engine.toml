@@ -173,6 +173,12 @@ ua_substring = "mwmbl"
 ua_substring = "amazon-kendra"
 
 [[agent]]
+# https://developer.amazon.com/amazonbot
+ua_substring = "Amzn-SearchBot"
+ranges_url = "https://developer.amazon.com/amazonbot/searchbot-ip-addresses/"
+format = "amazon"
+
+[[agent]]
 # https://www.image-meta.com
 ua_substring = "ImageMetaBot"
 

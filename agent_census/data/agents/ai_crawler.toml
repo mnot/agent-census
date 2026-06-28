@@ -65,11 +65,16 @@ ranges_url = "https://mistral.ai/mistralai-user-ips.json"
 [[agent]]
 # https://developer.amazon.com/amazonbot
 ua_substring = "Amazonbot"
-domains = ["amazon.com", "crawl.amazonbot.amazon"]
-# Amazon embeds the JSON range list inside an HTML page (format = "amazon").
+domains = ["crawl.amazonbot.amazon"]
 ranges_url = "https://developer.amazon.com/amazonbot/ip-addresses/"
 format = "amazon"
 rdns_fallback = true
+
+[[agent]]
+# https://developer.amazon.com/amazonbot
+ua_substring = "Amzn-User"
+ranges_url = "https://developer.amazon.com/amazonbot/live-ip-addresses/"
+format = "amazon"
 
 [[agent]]
 # https://docs.aws.amazon.com/quick/latest/userguide/web-crawler-integration.html

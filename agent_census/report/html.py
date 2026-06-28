@@ -15,6 +15,11 @@ from ..model import Classification, ClientProfile, Kind
 from ..pipeline import OTHER_HOSTING, RESIDENTIAL_NETWORK, AnalysisResult, KindRollup
 from ._assets import CSS, SCRIPT
 from ._netscript import NET_SCRIPT
+from ._sparkline import Window as _Window
+from ._sparkline import aggregate_buckets as _aggregate_buckets
+from ._sparkline import member_pattern as _member_pattern
+from ._sparkline import pattern_cell as _pattern_cell
+from ._sparkline import pattern_cell_for as _pattern_cell_for
 from .aggregate import (
     BREAKOUT_MIN_SHARE,
     KIND_BLURB,
@@ -210,9 +215,7 @@ def _robots_bar(respects: int, ignores: int, unk: int) -> str:
         if seg_count == 0:
             continue
         pct = seg_count / total * 100
-        segments.append(
-            f'<span style="width:{pct:.3f}%;background:{color}"></span>'
-        )
+        segments.append(f'<span style="width:{pct:.3f}%;background:{color}"></span>')
     summary = f"{respects:,} respect / {ignores:,} violate / {unk:,} can't tell"
     return f'<div class="rbar" title="{_esc(summary)}">{"".join(segments)}</div>'
 
@@ -465,7 +468,7 @@ def _network_table(matrix: NetworkMatrix | None) -> str:
 
 _SECTION_HEAD = (
     "<tr><th>Client</th><th class='num'>Requests</th><th class='num'>Bandwidth</th>"
-    "<th class='num'>Conf.</th><th>Tags</th><th>Top evidence</th></tr>"
+    "<th class='num'>Conf.</th><th>Tags</th><th>Request pattern</th></tr>"
 )
 # Per-kind cap rendered into the HTML (visible rows + the expandable set).
 _EXPAND_LIMIT = 200
@@ -498,9 +501,10 @@ def _client_row(
     flag: str = "",
     filterable: bool = False,
     net_col: dict[str, int] | None = None,
+    window: _Window = None,
 ) -> str:
     cls = profile.classification
-    evidence = _esc(truncate(top_evidence(profile)))
+    pattern = _pattern_cell_for(profile, window)
     attrs = ""
     if filterable:
         _, org, _ = client_id_parts(profile)  # include the shown AS name in the filter
@@ -520,7 +524,7 @@ def _client_row(
         f"<td class='num'>{profile.features.request_count:,}</td>"
         f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
         f"<td class='num'>{cls.confidence:.0%}</td>"
-        f"<td>{_tags_html(cls.tags)}</td><td>{evidence}</td></tr>"
+        f"<td>{_tags_html(cls.tags)}</td><td>{pattern}</td></tr>"
     )
 
 
@@ -535,8 +539,9 @@ def _disclosure(label: str) -> str:
     )
 
 
-def _member_tr(profile: ClientProfile, flag: str = "") -> str:
-    """A collapsed member as a real table row: IP/AS in Client, its own req/bytes."""
+def _member_tr(profile: ClientProfile, flag: str = "", window: _Window = None) -> str:
+    """A collapsed member as a real table row: IP/AS in Client, its own req/bytes,
+    and -- on the shared axis -- its own request-pattern sparkline."""
     prefix, _, _ = client_id_parts(profile)
     asn = as_display(profile.features.as_org, profile.features.as_number)
     asn_html = f" <span class='cid-as'>{_esc(asn)}</span>" if asn != "–" else ""
@@ -546,7 +551,7 @@ def _member_tr(profile: ClientProfile, flag: str = "") -> str:
         f"{flag}<span class='mono'>{_esc(prefix)}</span>{asn_html}</td>"
         f"<td class='num'>{profile.features.request_count:,}</td>"
         f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
-        "<td></td><td></td><td></td></tr>"
+        f"<td></td><td></td><td>{_member_pattern(profile, window)}</td></tr>"
     )
 
 
@@ -567,12 +572,18 @@ def _folded_tbody(
     flags: CountryFlags | None = None,
     filterable: bool = False,
     net_col: dict[str, int] | None = None,
+    window: _Window = None,
 ) -> str:
     """A single entry that folded many IPs into one (an ASN operator, a verified
-    bot, an egress/subnet cluster): a collapsible summary over its clustered IPs."""
+    bot, an egress/subnet cluster): a collapsible summary over its clustered IPs.
+
+    The summary sparkline is the *combined* cadence of every folded IP -- the
+    features merged their per-minute counts -- so a coordinated crawl across many
+    addresses reads as one rhythm. The clustered IP rows keep no per-IP timing."""
     cls = profile.classification
     prefix, org, ua = client_id_parts(profile)
     members = profile.member_ips
+    pattern = _pattern_cell_for(profile, window)
     org_html = f" <span class='cid-as'>{_esc(org)}</span>" if org else ""
     row_attrs = "class='asum'"
     if filterable:
@@ -593,7 +604,7 @@ def _folded_tbody(
         f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
         f"<td class='num'>{cls.confidence:.0%}</td>"
         f"<td>{_tags_html(cls.tags)}</td>"
-        f"<td>{_esc(truncate(top_evidence(profile)))}</td></tr>"
+        f"<td>{pattern}</td></tr>"
     )
     cf = flags or CountryFlags()
     rows = "".join(_ip_member_tr(ip, _flag_html(cf.for_ip(ip))) for ip in members)
@@ -606,11 +617,15 @@ def _actor_tbody(
     flags: CountryFlags | None = None,
     filterable: bool = False,
     net_col: dict[str, int] | None = None,
+    window: _Window = None,
 ) -> str:
     """One actor as a ``<tbody>``: a lone client, or a collapsible summary + members.
 
     The members are ordinary rows sharing the table's Requests/Bandwidth columns,
-    hidden until the summary row is clicked (toggled by the page script).
+    hidden until the summary row is clicked (toggled by the page script). The
+    summary sparkline sums the members' projected cadences, so a rotation across
+    grouped IPs (each firing in its own slice) shows as continuous coverage even
+    though no single member spans the window.
     """
     cf = flags or CountryFlags()
     net_col = net_col or {}
@@ -618,9 +633,16 @@ def _actor_tbody(
     if not actor.collapsed:
         if len(actor.lead.member_ips) >= 2:
             return _folded_tbody(
-                actor.lead, flag=flag, flags=cf, filterable=filterable, net_col=net_col
+                actor.lead,
+                flag=flag,
+                flags=cf,
+                filterable=filterable,
+                net_col=net_col,
+                window=window,
             )
-        row = _client_row(actor.lead, flag=flag, filterable=filterable, net_col=net_col)
+        row = _client_row(
+            actor.lead, flag=flag, filterable=filterable, net_col=net_col, window=window
+        )
         return f"<tbody>{row}</tbody>"
     cls = actor.lead.classification
     _, _, ua = client_id_parts(actor.lead)
@@ -628,7 +650,9 @@ def _actor_tbody(
     spread = actor_spread(actor.distinct_ips, 0 if shared else actor.distinct_asns)
     # One AS across the fold -> name it (greyed, like the per-client AS) instead of "1 ASNs".
     asn_html = f" <span class='cid-as'>{_esc(as_display(*shared))}</span>" if shared else ""
-    evidence = _esc(truncate(top_evidence(actor.lead)))
+    pattern = _pattern_cell(
+        _aggregate_buckets(actor.members, window), top_evidence(actor.lead), actor.requests
+    )
     row_attrs = "class='asum'"
     if filterable:
         haystack = " ".join(
@@ -652,9 +676,11 @@ def _actor_tbody(
         f"<td class='num'>{actor.requests:,}</td>"
         f"<td class='num'>{human_bytes(actor.total_bytes)}</td>"
         f"<td class='num'>{cls.confidence:.0%}</td>"
-        f"<td>{_tags_html(cls.tags)}</td><td>{evidence}</td></tr>"
+        f"<td>{_tags_html(cls.tags)}</td><td>{pattern}</td></tr>"
     )
-    members = "".join(_member_tr(m, _flag_html(cf.for_member(m.client_id))) for m in actor.members)
+    members = "".join(
+        _member_tr(m, _flag_html(cf.for_member(m.client_id)), window) for m in actor.members
+    )
     return f"<tbody class='actor'>{summary}{members}</tbody>"
 
 
@@ -665,6 +691,7 @@ def _kind_section(
     top: int,
     flags: CountryFlags | None = None,
     net_col: dict[str, int] | None = None,
+    window: _Window = None,
 ) -> str:
     flags = flags or CountryFlags()
     net_col = net_col or {}
@@ -680,13 +707,15 @@ def _kind_section(
         "</div>",
     ]
     shown = "".join(
-        _actor_tbody(a, flags=flags, filterable=True, net_col=net_col) for a in actors[:top]
+        _actor_tbody(a, flags=flags, filterable=True, net_col=net_col, window=window)
+        for a in actors[:top]
     )
     parts.append(f"<div class='tscroll'><table><thead>{_SECTION_HEAD}</thead>{shown}</table></div>")
     extra = actors[top:_EXPAND_LIMIT]
     if extra:
         extra_rows = "".join(
-            _actor_tbody(a, flags=flags, filterable=True, net_col=net_col) for a in extra
+            _actor_tbody(a, flags=flags, filterable=True, net_col=net_col, window=window)
+            for a in extra
         )
         parts.append(
             # Shared name -> native exclusive accordion: opening one closes the rest.
@@ -728,6 +757,9 @@ def render_report_html(
         min_breakout_share=breakout_min_share,
     )
     net_col = _net_col_index(matrix, result.network_rollups)
+    # The report-wide span every request-pattern sparkline shares as its x-axis.
+    start, end = time_range(result.rollups)
+    window = (start, end) if start is not None and end is not None else None
     heading = "Agent Census" + (f" — {result.site}" if result.site else "")
     parts = [
         f"<h1>{_esc(heading)}</h1>",
@@ -757,7 +789,9 @@ def render_report_html(
     for kind in KIND_ORDER:
         rollup = result.rollups.get(kind)
         if rollup and rollup.clients:
-            parts.append(_kind_section(kind, groups.get(kind, []), rollup, top, flags, net_col))
+            parts.append(
+                _kind_section(kind, groups.get(kind, []), rollup, top, flags, net_col, window)
+            )
     return _page(heading, "\n".join(parts))
 
 

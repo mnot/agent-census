@@ -305,3 +305,99 @@ def test_tags_have_hover_descriptions() -> None:
 
 def test_esc_quotes() -> None:
     assert _esc('a"b<c>') == "a&quot;b&lt;c&gt;"
+
+
+def _spark_profile(
+    *, request_count: int, first, last, buckets, evidence: str = "steady cadence"
+) -> ClientProfile:
+    return ClientProfile(
+        client_id=ClientId(ip="203.0.113.5", user_agent="Bot/1.0"),
+        entries=(),
+        features=ClientFeatures(
+            request_count=request_count,
+            first_seen=first,
+            last_seen=last,
+            request_buckets=tuple(buckets),
+        ),
+        classification=Classification(
+            primary=Kind.CRAWLER, confidence=0.8, evidence=(evidence,), tags=frozenset()
+        ),
+    )
+
+
+def test_report_html_has_request_pattern_column() -> None:
+    # The cadence sparkline replaces the old free-text evidence column.
+    html = render_report_html(_run(), source="sample")
+    assert "<th>Request pattern</th>" in html
+    assert "Top evidence" not in html
+
+
+def test_client_row_renders_sparkline_with_caption() -> None:
+    from datetime import datetime, timedelta, timezone
+
+    start = datetime(2023, 10, 10, 12, 0, tzinfo=timezone.utc)
+    end = start + timedelta(hours=1)
+    profile = _spark_profile(
+        request_count=200, first=start, last=end, buckets=[5] * 40,
+        evidence="steady, machine-paced cadence",
+    )
+    cell = _client_row(profile, window=(start, end))
+    assert "<svg class='spark'" in cell
+    assert cell.count("<rect") >= 20  # bars across the shared window
+    assert "steady, machine-paced cadence" in cell  # pithy caption preserved
+
+
+def test_client_row_below_threshold_is_caption_only() -> None:
+    from datetime import datetime, timedelta, timezone
+
+    start = datetime(2023, 10, 10, 12, 0, tzinfo=timezone.utc)
+    end = start + timedelta(hours=1)
+    profile = _spark_profile(
+        request_count=12, first=start, last=end, buckets=[1] * 40, evidence="only a dozen hits"
+    )
+    cell = _client_row(profile, window=(start, end))
+    assert "<svg" not in cell  # a handful of requests has no shape worth drawing
+    assert "only a dozen hits" in cell
+
+
+def test_sparkline_projects_onto_shared_axis() -> None:
+    # A client active only in the first quarter of the report window lands its
+    # volume in the left of the axis, leaving the rest empty -- so 'when' reads
+    # comparably across rows.
+    from datetime import datetime, timedelta, timezone
+
+    from agent_census.report._sparkline import project_buckets
+
+    start = datetime(2023, 10, 10, 12, 0, tzinfo=timezone.utc)
+    window = (start, start + timedelta(hours=1))
+    profile = _spark_profile(
+        request_count=100, first=start, last=start + timedelta(minutes=15), buckets=[1] * 40
+    )
+    projected = project_buckets(profile, window)
+    assert sum(projected) == 40
+    assert sum(projected[:12]) == 40  # all of it in the first quarter
+    assert projected[30] == 0
+
+
+def test_aggregate_buckets_reveals_rotation() -> None:
+    # Two members each active in a different half: individually narrow, together
+    # they cover the whole window -- the coordination signal the summary shows.
+    from datetime import datetime, timedelta, timezone
+
+    from agent_census.report._sparkline import aggregate_buckets, project_buckets
+
+    start = datetime(2023, 10, 10, 12, 0, tzinfo=timezone.utc)
+    window = (start, start + timedelta(hours=1))
+    first_half = _spark_profile(
+        request_count=80, first=start, last=start + timedelta(minutes=20), buckets=[1] * 40
+    )
+    second_half = _spark_profile(
+        request_count=80,
+        first=start + timedelta(minutes=40),
+        last=start + timedelta(minutes=59),
+        buckets=[1] * 40,
+    )
+    agg = aggregate_buckets([first_half, second_half], window)
+    expected = sum(project_buckets(first_half, window)) + sum(project_buckets(second_half, window))
+    assert sum(agg) == expected
+    assert any(agg[:20]) and any(agg[20:])  # coverage on both halves

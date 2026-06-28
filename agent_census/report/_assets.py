@@ -136,6 +136,13 @@ tr:hover td { background: #8881; }
 .rbar { display: flex; width: 6rem; height: .55rem; border-radius: 3px;
   overflow: hidden; background: #8883; cursor: help; }
 .rbar > span { height: 100%; min-width: 1px; }
+/* Per-client request-pattern sparkline: a fixed-width bar glyph; the whole
+   column shares one time axis. Bars use a CanvasText mix so they track the
+   reader's light/dark scheme, like the rest of the page. */
+.spark { display: block; width: 200px; max-width: 100%; height: 26px; }
+.spark rect { fill: color-mix(in srgb, CanvasText 66%, Canvas); }
+.spark .sparkbase { stroke: #8884; stroke-width: 1; }
+.spark-cap { color: var(--muted); font-size: .82rem; margin-top: .15rem; max-width: 200px; }
 .card { border: 1px solid #8884; border-radius: 10px; padding: 1rem 1.1rem; margin: 1rem 0; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem;
   word-break: break-all; }

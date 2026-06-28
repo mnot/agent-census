@@ -242,3 +242,39 @@ def test_feed_requests_by_content_type() -> None:
     )
     feats = extract_features([e])
     assert feats.feed_requests == 1
+
+
+def test_request_buckets_spread_over_span() -> None:
+    # 10 requests in the first minute, 10 in the eleventh: the cadence histogram
+    # puts them at opposite ends of its fixed-width axis, nothing in between.
+    entries = [entry("/a", offset=float(i)) for i in range(10)]
+    entries += [entry("/b", offset=600.0 + i) for i in range(10)]
+    feats = extract_features(entries)
+    assert len(feats.request_buckets) == 40
+    assert feats.request_buckets[0] == 10
+    assert feats.request_buckets[-1] == 10
+    assert sum(feats.request_buckets) == 20
+    assert sum(feats.request_buckets[1:-1]) == 0
+
+
+def test_request_buckets_even_over_long_span() -> None:
+    # One request per minute across a span far longer than the bucket count: the
+    # bins are equal-width, so every bucket fills -- including the last. Scaling by
+    # the last index instead of the count would starve the final bin to a single
+    # minute; this guards that regression.
+    entries = [entry("/a", offset=float(i * 60)) for i in range(400)]
+    feats = extract_features(entries)
+    assert len(feats.request_buckets) == 40
+    assert all(feats.request_buckets), "every equal-width bin should be populated"
+    assert max(feats.request_buckets) - min(feats.request_buckets) <= 1  # evenly spread
+    assert sum(feats.request_buckets) == 400
+
+
+def test_request_buckets_empty_for_single_minute_burst() -> None:
+    # Every request inside one minute: no cadence to show at minute resolution.
+    feats = extract_features([entry("/a", offset=float(i)) for i in range(30)])
+    assert feats.request_buckets == ()
+
+
+def test_request_buckets_empty_without_requests() -> None:
+    assert extract_features([]).request_buckets == ()

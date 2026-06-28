@@ -164,6 +164,10 @@ _IAT_PER_DECADE = 10
 _IAT_BUCKETS = (_IAT_MAX_EXP - _IAT_MIN_EXP) * _IAT_PER_DECADE + 2  # + under/overflow
 _IAT_BUF_CAP = 256  # below this many deltas, keep them exactly (cheap for the long tail)
 
+# Time slices the per-minute counts collapse into for the report sparkline. Kept
+# small: a fixed handful of ints per client, independent of how long the span is.
+_REQUEST_BUCKETS = 40
+
 
 def _iat_bucket(delta: float) -> int:
     """Histogram bucket for an inter-arrival delta in seconds."""
@@ -479,6 +483,30 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
             p95 = buf[min(len(buf) - 1, round(0.95 * (len(buf) - 1)))]
         return {"mean": mean, "median": median, "p95": p95, "min": self._iat_min, "cv": cv}
 
+    def _request_buckets(self) -> tuple[int, ...]:
+        """Fold the per-minute counts into ``_REQUEST_BUCKETS`` equal-width slices
+        of the client's active span -- the source histogram for the report's
+        request-pattern sparkline. Empty when there is nothing plottable: no
+        timestamps, or a span that fits inside a single minute (a sub-minute burst
+        has no cadence at the resolution we recorded)."""
+        counts = self._minute_counts
+        if not counts or self.first_seen is None or self.last_seen is None:
+            return ()
+        first = int(self.first_seen.timestamp() // 60)
+        span = int(self.last_seen.timestamp() // 60) - first
+        if span <= 0:
+            return ()
+        last_idx = _REQUEST_BUCKETS - 1
+        buckets = [0] * _REQUEST_BUCKETS
+        for minute, hits in counts.items():
+            # Scale by the bucket *count* for even-width bins: every bucket covers a
+            # span/_REQUEST_BUCKETS slice. The final minute scales to exactly
+            # _REQUEST_BUCKETS and the clamp folds it into the last bin. (Scaling by
+            # the last index instead would make the last bin a single-minute sliver.)
+            idx = ((minute - first) * _REQUEST_BUCKETS) // span
+            buckets[min(last_idx, max(0, idx))] += hits
+        return tuple(buckets)
+
     def merge(self, other: FeatureAccumulator) -> None:
         """Fold ``other`` into this accumulator (used to collapse a bot's IPs).
 
@@ -600,6 +628,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
             inter_arrival_min=timing["min"],
             peak_requests_per_minute=peak_rpm,
             rate_regularity=timing["cv"],
+            request_buckets=self._request_buckets(),
             distinct_paths=distinct,
             coverage=_ratio(distinct, self.count),
             breadth_ratio=_ratio(self.breadth_changes, self.breadth_pairs),

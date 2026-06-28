@@ -11,9 +11,11 @@ from __future__ import annotations
 
 import bisect
 import hashlib
+import html
 import ipaddress
 import json
 import os
+import re
 import sys
 import time
 import urllib.request
@@ -230,6 +232,21 @@ def parse_prefixes(text: str) -> tuple[str, ...]:
     return tuple(out)
 
 
+_CODE_BLOCK = re.compile(r"<code[^>]*>(.*?)</code>", re.DOTALL | re.IGNORECASE)
+
+
+def parse_amazon(text: str) -> tuple[str, ...]:
+    """Amazon publishes Amazonbot's ranges as Google-style ``{"prefixes": [...]}``
+    JSON, but embedded inside an HTML page (in a ``<pre><code>`` block) rather than
+    served raw. Pull the JSON out of each code block, HTML-unescape it, and hand it
+    to :func:`parse_prefixes`. Falls back to treating the whole input as raw JSON,
+    so the parser still works if the wrapper markup ever goes away."""
+    out: list[str] = []
+    for block in _CODE_BLOCK.findall(text):
+        out.extend(parse_prefixes(html.unescape(block)))
+    return tuple(out) if out else parse_prefixes(text)
+
+
 def parse_aws(text: str) -> tuple[str, ...]:
     """AWS schema: ``prefixes[].ip_prefix`` and ``ipv6_prefixes[].ipv6_prefix``."""
     try:
@@ -335,6 +352,7 @@ def parse_oracle(text: str) -> tuple[str, ...]:
 
 _PARSERS = {
     "prefixes": parse_prefixes,
+    "amazon": parse_amazon,
     "aws": parse_aws,
     "azure": parse_azure,
     "text": parse_text,

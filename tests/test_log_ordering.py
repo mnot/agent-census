@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_census import identity, pipeline
+from agent_census import cli, identity, pipeline
 from agent_census.cli import _duration
 from agent_census.parsing import resolve
 from agent_census.parsing.apache import PRESETS
@@ -54,6 +54,14 @@ def test_duration_units(text: str, seconds: float) -> None:
 def test_duration_rejects_garbage(bad: str) -> None:
     with pytest.raises(Exception):
         _duration(bad)
+
+
+def test_from_latest_without_since_is_an_error(tmp_path: Path, capsys) -> None:
+    log = _write(tmp_path / "access.log", [1])
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["analyze", str(log), "--from-latest"])
+    assert exc.value.code == 2
+    assert "--from-latest requires --since" in capsys.readouterr().err
 
 
 # --- ordering ---------------------------------------------------------------

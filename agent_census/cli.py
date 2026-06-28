@@ -701,6 +701,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     # (argparse's plain parse_args can't do that with an nargs="+" positional).
     args = subcommands[raw[0]].parse_intermixed_args(raw[1:])
     args.command = "analyze" if raw[0] == "analyse" else raw[0]
+    if getattr(args, "from_latest", False) and args.since is None:
+        # --from-latest only re-anchors the --since window; alone it does nothing.
+        subcommands[raw[0]].error("--from-latest requires --since")
     try:
         if args.command == "audit":
             return run_audit(

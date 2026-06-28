@@ -134,21 +134,28 @@ def order_logs(
     timestamp (read from the tail); a gzip's is the *next* file's first timestamp,
     which is exact for non-overlapping rotated logs and conservative otherwise.
     """
-    spans = [_LogSpan(p, _first_timestamp(p, parser), _last_timestamp(p, parser)) for p in paths]
-    untimed = [s.path for s in spans if s.first is None]
-    timed = sorted((s for s in spans if s.first is not None), key=lambda s: s.first or 0.0)
+    # The head peek (first timestamp) is all sorting needs, and it's the only
+    # peek on the common no-window path.
+    firsts = [(p, _first_timestamp(p, parser)) for p in paths]
+    untimed = [p for p, first in firsts if first is None]
+    timed = sorted(((p, first) for p, first in firsts if first is not None), key=lambda pf: pf[1])
 
     if since_seconds is None:
-        return untimed + [s.path for s in timed], None
+        return untimed + [p for p, _ in timed], None
 
-    if from_latest and timed:
-        anchor = max((s.last if s.last is not None else s.first or 0.0) for s in timed)
+    # Windowing needs each file's last timestamp too -- an extra tail read per
+    # plain file (a gzip yields None, bounded from the next file below). Deferred
+    # to here so it's never paid when no --since was given.
+    spans = [_LogSpan(p, first, _last_timestamp(p, parser)) for p, first in timed]
+
+    if from_latest and spans:
+        anchor = max((s.last if s.last is not None else s.first or 0.0) for s in spans)
     else:
         anchor = now if now is not None else time.time()
     window_start = anchor - since_seconds
 
     kept: list[Path] = []
-    for i, span in enumerate(timed):
+    for i, span in enumerate(spans):
         # Upper bound of this file's coverage. For a plain file it's the exact
         # last timestamp read from the tail. For a gzip (no cheap tail) we fall
         # back to the next sorted file's first timestamp: under non-overlapping
@@ -158,7 +165,7 @@ def order_logs(
         # bound and is always kept (then trimmed line by line).
         upper = span.last
         if upper is None:
-            upper = timed[i + 1].first if i + 1 < len(timed) else None
+            upper = spans[i + 1].first if i + 1 < len(spans) else None
         if upper is not None and upper < window_start:
             continue  # entirely before the window
         kept.append(span.path)

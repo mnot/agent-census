@@ -178,7 +178,7 @@ def test_network_table_renders_with_providers(
 def test_network_cells_link_client_rows_to_their_column(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Clicking a cross-tab number jumps to its kind and filters the clients below
+    # Clicking a cross-tab number isolates that kind and filters the clients below
     # by that network. Each filterable client row is tagged with the cross-tab
     # column index/indices it belongs to (data-netcol), matched against the cells'
     # data-net by the page script.
@@ -197,11 +197,14 @@ def test_network_cells_link_client_rows_to_their_column(
     result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
     html = render_report_html(result, source="x")
 
-    # The clearable network-filter pill, the script hook the cross-tab calls, and
-    # the cross-tab click handler that drives it.
-    assert 'id="netfilter"' in html
-    assert "window.setNetFilter" in html
-    assert "setNetFilter(cell.getAttribute('data-net'))" in html
+    # The kind / network pills, the prominent clear control, the script hook the
+    # cross-tab calls, and the click handler that drives it. Sections carry
+    # data-kind so the script can isolate one kind.
+    assert 'id="kindfilter"' in html and 'id="netfilter"' in html
+    assert 'id="clearfilters"' in html and "Show all" in html
+    assert "window.setKindNet" in html
+    assert "setKindNet(kind, cell.getAttribute('data-net'))" in html
+    assert "data-kind=" in html  # kind sections tagged for isolation
 
     # Map each column header to its index, then confirm every client row's
     # data-netcol points at a real column -- and that the two networks present

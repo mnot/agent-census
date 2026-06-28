@@ -75,16 +75,28 @@ th.vh > span { display: inline-block; writing-mode: vertical-rl;
 .othercue:empty { display: none; }
 .netctl { font-size: .9rem; color: var(--muted); margin: .25rem 0 .6rem; }
 .netctl select { font: inherit; margin-left: .35rem; }
-/* Every cross-tab number jumps to its kind and filters the clients by its network;
-   the Kind label keeps its own anchor, so leave it alone. */
-#nettab td:not(.stick-l) { cursor: pointer; }
+/* Every cross-tab cell is clickable: a number isolates its kind (and filters by
+   the column's network), the Kind label isolates the kind, and the "All kinds"
+   corner clears the table filters -- so the pointer covers them all. */
+#nettab td { cursor: pointer; }
 /* Active-network-filter pill beside the client filter box; click / Enter / Space
    clears it (handled in the page script). */
-.netfilter { display: inline-block; margin-left: .4rem; padding: .15rem .55rem;
-  border-radius: 999px; font-size: .85rem; cursor: pointer; user-select: none;
+/* Active-filter row under the search box: removable kind / network pills plus the
+   prominent "Show all" reset. */
+.activefilters { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem;
+  margin-top: .45rem; }
+.activefilters:not(:has(> :not([hidden]))) { margin-top: 0; }  /* no gap when empty */
+.fchip { display: inline-block; padding: .15rem .55rem; border-radius: 999px;
+  font-size: .85rem; cursor: pointer; user-select: none;
   background: color-mix(in srgb, #2563eb 16%, Canvas); border: 1px solid #2563eb88; }
-.netfilter[hidden] { display: none; }
-.netfilter:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.fchip[hidden], .clearfilters[hidden] { display: none; }
+.fchip:focus-visible, .clearfilters:focus-visible { outline: 2px solid #2563eb;
+  outline-offset: 2px; }
+/* Deliberately heavier than the pills: a solid accent button so clearing the
+   filter is always obvious. */
+.clearfilters { font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer;
+  padding: .2rem .7rem; border-radius: 6px; border: 1px solid #2563eb;
+  background: #2563eb; color: #fff; }
 /* On a phone the cross-tab can't show every network column at readable width, so
    it folds to Kind | one chosen network | Total and the picker swaps the column
    in place (same idea as the desktop "break out" control). Desktop shows all. */
@@ -114,6 +126,9 @@ tr:hover td { background: #8881; }
   border-radius: 6px; background: #8883; font-size: .78rem; white-space: nowrap; cursor: help; }
 .flag { cursor: help; font-style: normal; }
 .blurb { color: var(--muted); margin: .15rem 0 .6rem; }
+/* Lightweight affordance cue: italic + muted, so it reads as guidance, not data. */
+.hint { font-style: italic; color: var(--muted); font-size: .9rem; margin: .25rem 0 .6rem; }
+.hint code { font-style: normal; }
 .bar { background: #8883; border-radius: 4px; height: .7rem; min-width: 2px; }
 .card { border: 1px solid #8884; border-radius: 10px; padding: 1rem 1.1rem; margin: 1rem 0; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem;
@@ -148,10 +163,13 @@ tbody.actor .amem { display: none; }
 tbody.actor.open .amem { display: table-row; }
 tr.amem td.cid { padding-left: 1.6rem; }
 tr.amem .cid-as { color: var(--muted); font-size: .82rem; }
-input.filter { display: block; width: 100%; max-width: 30rem; margin: .5rem 0;
+/* Search box and active-network pill pinned together so jumping to a kind keeps
+   the filter (and its clear control) in view. Opaque base so rows scroll under it. */
+.filterbar { position: sticky; top: 0; z-index: 1; background: Canvas;
+  padding: .5rem 0; margin: .5rem 0; border-bottom: 1px solid #8883; }
+input.filter { display: block; width: 100%; max-width: 30rem; margin: 0;
   padding: .4rem .55rem; border: 1px solid #8886; border-radius: 6px;
-  background: Canvas; color: CanvasText; font: inherit;
-  position: sticky; top: .5rem; z-index: 1; }
+  background: Canvas; color: CanvasText; font: inherit; }
 footer { margin-top: 3rem; color: var(--muted); font-size: .85rem; }
 """.strip()
 
@@ -207,11 +225,12 @@ document.addEventListener('click', function (event) {
   });
 }, false);
 
-// The client list answers to two filters at once: the text box and a network
-// column picked by clicking a "Requests by kind and network" number. A row shows
-// only when it matches both (network is null = any). activeNet is a column-index
-// string matching the cross-tab cells' data-net / the rows' data-netcol.
-var activeNet = null;
+// The client list answers to three filters at once: the text box, a kind picked
+// by clicking a table (which isolates that kind and hides the rest), and a network
+// column from the cross-tab. activeKind is a kind value (matching section
+// data-kind); activeNet is a column-index string (matching the cross-tab cells'
+// data-net / the rows' data-netcol). A "Show all" control clears everything.
+var activeKind = null, activeNet = null;
 
 function netName(idx) {
   var th = document.querySelector('#nettab th[data-net="' + idx + '"]');
@@ -219,15 +238,30 @@ function netName(idx) {
   var span = th.querySelector('span');
   return (span ? span.textContent : th.textContent).trim();
 }
+function kindName(kind) {
+  var badge = document.querySelector('#' + CSS.escape(kind) + ' .badge');
+  return badge ? badge.textContent.trim() : kind;
+}
 function rowInNet(row, idx) {
   var attr = row.getAttribute('data-netcol');
   return !!attr && (' ' + attr + ' ').indexOf(' ' + idx + ' ') !== -1;
+}
+function setChip(id, label, value) {
+  var chip = document.getElementById(id);
+  if (!chip) return;
+  if (value !== null) {
+    chip.textContent = label + ': ' + value + '  \\u00d7';
+    chip.hidden = false;
+  } else {
+    chip.textContent = '';
+    chip.hidden = true;
+  }
 }
 
 function applyFilters() {
   var input = document.querySelector('input.filter');
   var query = input ? input.value.trim().toLowerCase() : '';
-  var on = query.length > 0 || activeNet !== null;
+  var on = query.length > 0 || activeNet !== null || activeKind !== null;
   // While filtering, force every "Show more" disclosure open so hidden matches
   // surface, and suspend the exclusive-accordion name= so all stay open at once;
   // restore both (name re-applied, disclosures re-collapsed) when cleared.
@@ -245,61 +279,110 @@ function applyFilters() {
     var netok = activeNet === null || rowInNet(rows[i], activeNet);
     rows[i].style.display = (textok && netok) ? '' : 'none';
   }
-  // Collapse a section (header and all) or an emptied disclosure when no client
-  // row in it survives the filter; restore when cleared.
-  var boxes = document.querySelectorAll('section.kind, details');
-  for (var b = 0; b < boxes.length; b++) {
-    var live = boxes[b].querySelectorAll('tr.frow:not([style*="none"])');
-    boxes[b].style.display = (!on || live.length) ? '' : 'none';
+  // Kind isolation: when a kind is picked, hide every other kind section outright.
+  // Otherwise (and within the shown kind) collapse a section or an emptied "Show
+  // more" disclosure when no client row in it survives the row filters.
+  var sections = document.querySelectorAll('section.kind');
+  for (var s = 0; s < sections.length; s++) {
+    var sec = sections[s];
+    if (activeKind !== null && sec.getAttribute('data-kind') !== activeKind) {
+      sec.style.display = 'none'; continue;
+    }
+    var liveS = sec.querySelectorAll('tr.frow:not([style*="none"])');
+    sec.style.display = (!on || liveS.length) ? '' : 'none';
+  }
+  for (var e = 0; e < details.length; e++) {
+    var liveD = details[e].querySelectorAll('tr.frow:not([style*="none"])');
+    details[e].style.display = (!on || liveD.length) ? '' : 'none';
   }
   // When the filters hide every client, say so -- otherwise the client area just
   // collapses to nothing and the reader can't tell a narrow query from a bug.
   var msg = document.getElementById('nomatch');
   if (msg) {
-    if (on && !document.querySelector('tr.frow:not([style*="none"])')) {
+    if (on && !document.querySelector('section.kind:not([style*="none"]) tr.frow:not([style*="none"])')) {
       var bits = [];
-      if (query) bits.push('\\u201c' + (input ? input.value.trim() : '') + '\\u201d');
-      if (activeNet !== null) bits.push('the ' + netName(activeNet) + ' network');
-      msg.textContent = 'No clients match ' + bits.join(' in ') + '.';
+      if (activeKind !== null) bits.push(kindName(activeKind) + ' clients');
+      else bits.push('clients');
+      if (query) bits.push('matching \\u201c' + (input ? input.value.trim() : '') + '\\u201d');
+      if (activeNet !== null) bits.push('on the ' + netName(activeNet) + ' network');
+      msg.textContent = 'No ' + bits.join(' ') + '.';
       msg.hidden = false;
     } else {
       msg.hidden = true;
     }
   }
-  // The pill shows / hides the active network filter.
-  var chip = document.getElementById('netfilter');
-  if (chip) {
-    if (activeNet !== null) {
-      chip.textContent = 'Network: ' + netName(activeNet) + '  \\u00d7';
-      chip.title = 'Clear network filter';
-      chip.hidden = false;
-    } else {
-      chip.textContent = '';
-      chip.hidden = true;
-    }
-  }
+  // Pills reflect the active kind / network; the "Show all" control appears
+  // whenever any filter is on.
+  setChip('kindfilter', 'Kind', activeKind === null ? null : kindName(activeKind));
+  setChip('netfilter', 'Network', activeNet === null ? null : netName(activeNet));
+  var clear = document.getElementById('clearfilters');
+  if (clear) clear.hidden = !on;
   markScrollables();  // hiding rows can change a table's width and overflow
 }
 
-// Called by the cross-tab click handler (in the network-table script); pass null
-// to clear. Exposed on window so the two scripts stay decoupled.
-window.setNetFilter = function (idx) {
-  activeNet = (idx === null || idx === undefined || idx === '') ? null : String(idx);
+// Set / clear the table-driven filters. Pass null for a dimension to leave it
+// cleared. Exposed on window so the table scripts stay decoupled from this one.
+window.setKindNet = function (kind, net) {
+  activeKind = (kind === null || kind === undefined || kind === '') ? null : String(kind);
+  activeNet = (net === null || net === undefined || net === '') ? null : String(net);
   applyFilters();
+};
+// Back-compat: a network-only setter (leaves the kind filter as-is).
+window.setNetFilter = function (idx) { window.setKindNet(activeKind, idx); };
+
+// Smooth-scroll to a kind section (or the filter bar) once filtering has settled.
+window.scrollToKind = function (kind) {
+  var target = (kind && document.getElementById(kind)) || document.querySelector('.filterbar');
+  if (target && target.scrollIntoView)
+    requestAnimationFrame(function () { target.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
 };
 
 document.addEventListener('input', function (event) {
   if (event.target.classList && event.target.classList.contains('filter')) applyFilters();
 }, false);
 
-// Clear the network filter from its pill (click, or Enter / Space for keyboard).
+// A kind link in a non-cross-tab table (e.g. "Summary by kind") isolates that
+// kind instead of just jumping to it. The cross-tab handles its own clicks.
 document.addEventListener('click', function (event) {
-  if (event.target.closest('#netfilter')) window.setNetFilter(null);
+  var a = event.target.closest('a[href^="#"]');
+  if (!a || a.closest('#nettab')) return;
+  var id = a.getAttribute('href').slice(1), sec = document.getElementById(id);
+  if (sec && sec.closest && sec.closest('section.kind')) {
+    event.preventDefault();
+    window.setKindNet(id, null);
+    window.scrollToKind(id);
+  }
+}, false);
+
+// Clear a single dimension from its pill, or everything from "Show all"
+// (click, or Enter / Space for keyboard).
+function filterControl(target) {
+  if (!target || !target.closest) return null;
+  if (target.closest('#kindfilter')) return 'kind';
+  if (target.closest('#netfilter')) return 'net';
+  if (target.closest('#clearfilters')) return 'all';
+  return null;
+}
+function runFilterControl(which) {
+  if (which === 'kind') window.setKindNet(null, activeNet);
+  else if (which === 'net') window.setKindNet(activeKind, null);
+  else if (which === 'all') {
+    var input = document.querySelector('input.filter');
+    if (input) input.value = '';
+    window.setKindNet(null, null);
+  }
+}
+document.addEventListener('click', function (event) {
+  var which = filterControl(event.target);
+  if (which) runFilterControl(which);
 }, false);
 document.addEventListener('keydown', function (event) {
-  if (!event.target.closest || !event.target.closest('#netfilter')) return;
-  if (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar') {
-    event.preventDefault(); window.setNetFilter(null);
+  var which = filterControl(event.target);
+  // Only the role="button" pills need synthetic activation; the native
+  // <button id="clearfilters"> fires its own click on Enter/Space already.
+  if ((which === 'kind' || which === 'net') &&
+      (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar')) {
+    event.preventDefault(); runFilterControl(which);
   }
 }, false);
 

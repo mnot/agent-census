@@ -230,8 +230,8 @@ def _summary_table(result: AnalysisResult) -> str:
     return (
         f"<h2>Summary by kind</h2>\n"
         f"<div class='tscroll'><table>{head}{''.join(rows)}</table></div>\n"
-        '<p class="muted">Tip: click a client below to copy its id for '
-        "<code>inspect --client</code>.</p>"
+        '<p class="hint">Click a kind to show only it; click a client below '
+        "to copy its id for <code>inspect --client</code>.</p>"
     )
 
 
@@ -416,17 +416,22 @@ def _network_table(matrix: NetworkMatrix | None) -> str:
         if len(nets) > 1
         else ""
     )
+    # Up-front affordance cue (italic/grey); the caption below carries the finer points.
+    hint = (
+        '<p class="hint">Click a cell to filter the report to that kind and network — '
+        "use “Show all” (by the filter box) to clear.</p>"
+    )
     caption = (
-        '<p class="muted">Click any number to jump to that kind and filter the clients '
-        "below by that network (a Total-column number jumps without a network filter; "
-        f"“{_esc(OTHER_HOSTING)}” filters to the folded small datacentres). "
-        "Counts default; the toggle switches to row or column shares "
+        '<p class="muted">A Total-column number filters by kind only; an All-kinds '
+        f"number by network only; “{_esc(OTHER_HOSTING)}” covers the folded small "
+        "datacentres. Counts default; the toggle switches to row or column shares "
         "(the Total column keeps the raw count). Cell shading tracks the same axis — "
         "across each kind, or down each network. "
         f"<span class='netwide'>{spatial}</span>{narrow}</p>"
     )
     return (
         "<h2>Requests by kind and network</h2>\n"
+        + hint
         + control
         + f"<div class='tscroll'><table id='nettab'>{head}{''.join(rows)}</table></div>\n"
         + caption
@@ -672,7 +677,8 @@ def _kind_section(
             f"<code>agent-census inspect --kind {kind.value}</code></p>"
         )
     body = "\n".join(parts)
-    return f'<section class="kind">{body}</section>'
+    # data-kind lets the filter script isolate this section when its kind is picked.
+    return f'<section class="kind" data-kind="{kind.value}">{body}</section>'
 
 
 def render_report_html(
@@ -700,12 +706,23 @@ def render_report_html(
         _meta_list(result, source, robots_note, elapsed),
         _summary_table(result),
         _network_table(matrix),
+        # Search box + active-filter pills + "Show all" pinned together: clicking a
+        # table can isolate a kind / network and scroll far down, so these controls
+        # must stay in view for the reader to see and clear the active filters.
+        # The pills and button are filled / shown by the page script.
+        '<div class="filterbar">'
         '<input id="clientfilter" class="filter" type="search" '
         'placeholder="filter all clients by IP, User-Agent, AS name, or tag…" '
         'aria-label="filter clients">'
-        # Shown by the script while a cross-tab number is filtering by network;
-        # click (or Enter/Space) to clear.
-        ' <span id="netfilter" class="netfilter" role="button" tabindex="0" hidden></span>',
+        '<span class="activefilters">'
+        '<span id="kindfilter" class="fchip" role="button" tabindex="0" '
+        'title="Clear kind filter" hidden></span>'
+        '<span id="netfilter" class="fchip" role="button" tabindex="0" '
+        'title="Clear network filter" hidden></span>'
+        '<button id="clearfilters" type="button" class="clearfilters" hidden>'
+        "Show all</button>"
+        "</span>"
+        "</div>",
         # Filled and shown by the filter script when a query hides every client.
         '<p id="nomatch" class="muted" role="status" hidden></p>',
     ]

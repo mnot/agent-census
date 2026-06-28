@@ -179,9 +179,11 @@ _TAG_HELP: dict[str, str] = {
     "crawler is configured to use -- corroboration, a lighter check than DNS / IP-range "
     "verification (which take precedence when available).",
     "declares-known-bot": "User-Agent names a known crawler (identity verified separately).",
-    "user-triggered": "User-Agent names a fetcher that acts on behalf of a present user "
-    "(a '-User' / on-behalf-of proxy like ChatGPT-User or Amzn-User), rather than crawling "
-    "autonomously.",
+    "user-triggered": "User-Agent names an on-behalf-of proxy (a '-User' fetcher like "
+    "ChatGPT-User or Amzn-User) that the operator designates as acting for a present user "
+    "rather than crawling autonomously. The user-driven part is taken on trust -- not "
+    "observable here, and identity verification confirms who the agent is, not that a user "
+    "drove the request.",
     "unverified": "Declared a crawler we could check by reverse DNS or IP range, but the check "
     "didn't confirm it — it failed, or was inconclusive (a DNS timeout, unfetchable ranges). "
     "The mirror of 'verified'; the kind and verdict are unchanged.",

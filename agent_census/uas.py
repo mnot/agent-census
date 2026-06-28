@@ -171,12 +171,15 @@ def names_known_crawler(ua: str | None) -> bool:
 
 @lru_cache(maxsize=16384)
 def names_user_triggered_agent(ua: str | None) -> bool:
-    """True if the UA names a known agent that fetches on behalf of a present user.
+    """True if the UA names a known agent the operator designates as user-driven.
 
     These are the ``-User`` / on-behalf-of proxies (ChatGPT-User, Amzn-User,
-    YandexUserproxy …) whose spec sets ``user_triggered``. Orthogonal to the kind:
-    such an agent is still an ai_crawler or search_engine, just driven by a live
-    user action rather than autonomous crawling.
+    YandexUserproxy …) whose spec sets ``user_triggered``. The flag records the
+    operator's stated purpose for the token -- a fetch made in response to a present
+    user's action rather than autonomous crawling -- which we take on trust: whether
+    a human actually prompted any given request isn't observable here, and identity
+    verification (where available) confirms who the agent is, not that a user drove
+    it. Orthogonal to the kind: such an agent is still an ai_crawler or search_engine.
     """
     for category in KNOWN_CRAWLER_CATEGORIES:
         match = match_category(ua, category)

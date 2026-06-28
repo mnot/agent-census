@@ -359,8 +359,8 @@ def _fact_tags(
         tags["declares-known-bot"] = "User-Agent names a known crawler"
     if uas.names_user_triggered_agent(features.user_agent):
         tags["user-triggered"] = (
-            "User-Agent names a fetcher that acts on behalf of a present user, "
-            "not an autonomous crawler"
+            "User-Agent names a fetcher the operator designates as acting on behalf "
+            "of a present user, not an autonomous crawler"
         )
     # Only the actionable robots case is tagged; respecting it is the quiet norm.
     if compliance is not None and compliance.verdict is RobotsVerdict.IGNORES:

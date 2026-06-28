@@ -484,12 +484,11 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         return {"mean": mean, "median": median, "p95": p95, "min": self._iat_min, "cv": cv}
 
     def _request_buckets(self) -> tuple[int, ...]:
-        """Fold the per-minute counts into ``_REQUEST_BUCKETS`` equal slices of the
-        client's active span -- the source histogram for the report's request-pattern
-        sparkline. The first minute lands in bucket 0 and the last in the final
-        bucket, so the shape fills the whole width. Empty when there is nothing
-        plottable: no timestamps, or a span that fits inside a single minute (a
-        sub-minute burst has no cadence at the resolution we recorded)."""
+        """Fold the per-minute counts into ``_REQUEST_BUCKETS`` equal-width slices
+        of the client's active span -- the source histogram for the report's
+        request-pattern sparkline. Empty when there is nothing plottable: no
+        timestamps, or a span that fits inside a single minute (a sub-minute burst
+        has no cadence at the resolution we recorded)."""
         counts = self._minute_counts
         if not counts or self.first_seen is None or self.last_seen is None:
             return ()
@@ -500,7 +499,11 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         last_idx = _REQUEST_BUCKETS - 1
         buckets = [0] * _REQUEST_BUCKETS
         for minute, hits in counts.items():
-            idx = ((minute - first) * last_idx) // span
+            # Scale by the bucket *count* for even-width bins: every bucket covers a
+            # span/_REQUEST_BUCKETS slice. The final minute scales to exactly
+            # _REQUEST_BUCKETS and the clamp folds it into the last bin. (Scaling by
+            # the last index instead would make the last bin a single-minute sliver.)
+            idx = ((minute - first) * _REQUEST_BUCKETS) // span
             buckets[min(last_idx, max(0, idx))] += hits
         return tuple(buckets)
 

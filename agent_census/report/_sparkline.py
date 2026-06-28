@@ -21,7 +21,7 @@ from collections.abc import Iterable
 from datetime import datetime
 
 from ..model import ClientProfile
-from .format import truncate
+from .format import top_evidence, truncate
 
 _BUCKETS = 40  # time slices across the report-wide window
 _W = 200  # px; the caption below wraps to this width
@@ -51,11 +51,13 @@ def project_buckets(profile: ClientProfile, window: Window) -> list[int]:
         return out
     c0 = first.timestamp()
     span = last.timestamp() - c0
-    last_local = len(buckets) - 1
+    nbins = len(buckets)
     for i, hits in enumerate(buckets):
         if not hits:
             continue
-        local_t = c0 + (i / last_local) * span if last_local else c0
+        # Bucket i is the local slice [i, i + 1) / nbins; place it by its midpoint,
+        # so a client spanning the whole window maps back onto the global grid 1:1.
+        local_t = c0 + ((i + 0.5) / nbins) * span
         idx = int((local_t - w0) / full * _BUCKETS)
         out[min(_BUCKETS - 1, max(0, idx))] += hits
     return out
@@ -105,6 +107,17 @@ def pattern_cell(buckets: list[int], evidence: str, request_count: int) -> str:
     if request_count >= _MIN_REQUESTS and any(buckets):
         return sparkline_svg(buckets) + cap
     return cap
+
+
+def pattern_cell_for(profile: ClientProfile, window: Window) -> str:
+    """The 'Request pattern' cell for a standalone or folded client: its own
+    projected cadence over its top-evidence caption. (An actor-group summary draws
+    its cell from an *aggregate* of members, so it calls the parts directly.)"""
+    return pattern_cell(
+        project_buckets(profile, window),
+        top_evidence(profile),
+        profile.features.request_count,
+    )
 
 
 def member_pattern(profile: ClientProfile, window: Window) -> str:

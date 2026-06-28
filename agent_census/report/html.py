@@ -19,7 +19,7 @@ from ._sparkline import Window as _Window
 from ._sparkline import aggregate_buckets as _aggregate_buckets
 from ._sparkline import member_pattern as _member_pattern
 from ._sparkline import pattern_cell as _pattern_cell
-from ._sparkline import project_buckets as _project_buckets
+from ._sparkline import pattern_cell_for as _pattern_cell_for
 from .aggregate import (
     BREAKOUT_MIN_SHARE,
     KIND_BLURB,
@@ -215,9 +215,7 @@ def _robots_bar(respects: int, ignores: int, unk: int) -> str:
         if seg_count == 0:
             continue
         pct = seg_count / total * 100
-        segments.append(
-            f'<span style="width:{pct:.3f}%;background:{color}"></span>'
-        )
+        segments.append(f'<span style="width:{pct:.3f}%;background:{color}"></span>')
     summary = f"{respects:,} respect / {ignores:,} violate / {unk:,} can't tell"
     return f'<div class="rbar" title="{_esc(summary)}">{"".join(segments)}</div>'
 
@@ -506,11 +504,7 @@ def _client_row(
     window: _Window = None,
 ) -> str:
     cls = profile.classification
-    pattern = _pattern_cell(
-        _project_buckets(profile, window),
-        top_evidence(profile),
-        profile.features.request_count,
-    )
+    pattern = _pattern_cell_for(profile, window)
     attrs = ""
     if filterable:
         _, org, _ = client_id_parts(profile)  # include the shown AS name in the filter
@@ -589,11 +583,7 @@ def _folded_tbody(
     cls = profile.classification
     prefix, org, ua = client_id_parts(profile)
     members = profile.member_ips
-    pattern = _pattern_cell(
-        _project_buckets(profile, window),
-        top_evidence(profile),
-        profile.features.request_count,
-    )
+    pattern = _pattern_cell_for(profile, window)
     org_html = f" <span class='cid-as'>{_esc(org)}</span>" if org else ""
     row_attrs = "class='asum'"
     if filterable:

@@ -22,6 +22,8 @@ dependencies = [
     # RFC 8941 structured-field parser/serializer (the reference implementation),
     # for the Web Bot Auth signature headers. Pure-Python, no native build.
     "http-sf>=1.3",
+    # Ed25519 verification of Web Bot Auth signatures (ships binary wheels).
+    "cryptography>=43",
 ]
 
 [project.optional-dependencies]

@@ -1,4 +1,4 @@
-"""Web Bot Auth: parse the signature headers a client logs, no crypto yet.
+"""Web Bot Auth: parse and cryptographically verify a client's signed requests.
 
 Web Bot Auth (``draft-meunier-web-bot-auth-architecture``) lets a bot sign its
 requests with an Ed25519 key the operator publishes in a JWK directory. A signed
@@ -26,14 +26,29 @@ canonicalisation is measured against, rather than a bespoke re-serialiser.
 
 A header that doesn't parse yields ``None`` (not a claim) or an empty mapping,
 never an exception that would abort a run.
+
+Verification (:func:`verify_claim`) rebuilds the RFC 9421 signature base from the
+logged values -- field components verbatim (OWS-trimmed), derived components
+(``@authority``/``@method``/``@path``/``@scheme``) as the spec defines, and the
+terminal ``@signature-params`` re-serialised from the logged ``Signature-Input`` --
+then checks the Ed25519 signature against the operator's key. Only a signature
+that *fails* against an authentic key is forgery; a base we can't rebuild (a
+covered field we didn't log, a signed body) is ``UNVERIFIABLE``, never forgery.
+The key itself (fetching it, thumbprint-checking it, caching it) is handled by the
+caller; this module verifies a claim against a key it is given.
 """
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import json
 from dataclasses import dataclass
 from typing import Any, cast
 
 import http_sf
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from http_sf import Token
 
 from .dataload import load_wba_operators
@@ -299,3 +314,137 @@ def build_claim(
         scheme="https",
         timestamp=timestamp,
     )
+
+
+# --- verification (RFC 9421 base rebuild + Ed25519) ------------------------------
+
+
+def _b64url_decode(text: str) -> bytes:
+    """Decode unpadded base64url (JWK ``x``, a keyid thumbprint)."""
+    return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
+
+
+def jwk_thumbprint(jwk: dict[str, Any]) -> str | None:
+    """The RFC 7638 thumbprint of an Ed25519 JWK (its content-addressed ``keyid``).
+
+    Built over exactly the required members (``crv``, ``kty``, ``x``) in lexical
+    order with no whitespace, SHA-256, base64url without padding. Returns ``None``
+    for a JWK that isn't a well-formed Ed25519 (OKP) public key.
+    """
+    try:
+        if jwk.get("kty") != "OKP" or jwk.get("crv") != "Ed25519" or "x" not in jwk:
+            return None
+        canonical = json.dumps(
+            {"crv": "Ed25519", "kty": "OKP", "x": jwk["x"]},
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("ascii")
+    except (TypeError, ValueError):
+        return None
+    return base64.urlsafe_b64encode(hashlib.sha256(canonical).digest()).rstrip(b"=").decode("ascii")
+
+
+def public_key_from_jwk(jwk: dict[str, Any]) -> Ed25519PublicKey | None:
+    """An ``Ed25519PublicKey`` from a JWK's ``x`` member, or ``None`` if malformed."""
+    x_b64 = jwk.get("x")  # the JWK's public-key member, base64url
+    if not isinstance(x_b64, str):
+        return None
+    try:
+        return Ed25519PublicKey.from_public_bytes(_b64url_decode(x_b64))
+    except (ValueError, TypeError):
+        return None
+
+
+# Derived components we can supply from a logged request; the value rules are
+# RFC 9421 §2.2 (@authority lowercased, @method upper-case, @path, @scheme).
+def _derived_value(claim: WbaClaim, component: str) -> str | None:
+    if component == "@authority":
+        return claim.authority
+    if component == "@method":
+        return claim.method
+    if component == "@path":
+        return claim.path
+    if component == "@scheme":
+        return claim.scheme
+    return None
+
+
+def _signature_params_value(signature_input: str, label: str) -> str | None:
+    """Re-serialise the chosen label's member as the ``@signature-params`` value.
+
+    Reuses ``http-sf``'s deterministic serializer over the parsed member, so the
+    terminal base line matches a conformant signer's canonicalisation (verified
+    against real signatures). ``None`` if the header no longer parses.
+    """
+    try:
+        parsed = cast(
+            dict[str, Any], http_sf.parse(signature_input.encode("utf-8"), tltype="dictionary")
+        )
+    except http_sf.StructuredFieldError:
+        return None
+    if label not in parsed:
+        return None
+    serialised = http_sf.ser({label: parsed[label]})  # a one-member dictionary
+    return serialised[len(label) + 1 :]  # drop the "label=" prefix
+
+
+# A covered component value is None when we can't supply it: either a signed body
+# (content-digest) or a covered field the log didn't carry. Either way -> the base
+# can't be rebuilt, so the verdict is UNVERIFIABLE (never forgery), with a hint.
+def build_signature_base(claim: WbaClaim) -> tuple[str | None, str]:
+    """Rebuild the RFC 9421 signature base for a claim, or explain why we can't.
+
+    Returns ``(base, "")`` on success, or ``(None, reason)`` when a covered
+    component can't be supplied from the log -- a signed request body
+    (``content-digest``) or a covered header that wasn't logged. The reason names
+    the missing component so a user can add it to their LogFormat.
+    """
+    lines: list[str] = []
+    for component in claim.params.components:
+        if component == "content-digest":
+            return None, "the request body was signed (content-digest); the log can't carry it"
+        if component.startswith("@"):
+            value = _derived_value(claim, component)
+        elif component == "signature-agent":
+            value = claim.signature_agent.strip() if claim.signature_agent else None
+        else:
+            value = None  # a covered header we didn't log
+        if value is None:
+            return None, f"covered component {component!r} was not available from the log"
+        lines.append(f'"{component}": {value}')
+    params_value = _signature_params_value(claim.signature_input, claim.label)
+    if params_value is None:
+        return None, "could not re-serialise the signature parameters"
+    lines.append(f'"@signature-params": {params_value}')
+    return "\n".join(lines), ""
+
+
+def verify_claim(claim: WbaClaim, public_key: Ed25519PublicKey) -> tuple[WbaStatus, str]:
+    """Verify a claim's signature against ``public_key`` -> ``(status, reason)``.
+
+    ``public_key`` must already be the authentic operator key (thumbprint-checked
+    against the ``keyid`` by the caller). The outcomes:
+
+    * ``VERIFIED`` -- the Ed25519 signature checks out and the request is within the
+      signature's freshness window.
+    * ``EXPIRED`` -- it checks out, but the request post-dates ``expires`` (a valid
+      signature, replayed or simply old; still the operator's key).
+    * ``FORGED`` -- the signature fails against this authentic key. The only forgery
+      verdict.
+    * ``UNVERIFIABLE`` -- the base couldn't be rebuilt (signed body / unlogged
+      covered field) or the signature bytes are missing. Never forgery.
+    """
+    base, problem = build_signature_base(claim)
+    if base is None:
+        return WbaStatus.UNVERIFIABLE, problem
+    signature = parse_signature(claim.signature).get(claim.label)
+    if signature is None:
+        return WbaStatus.UNVERIFIABLE, "no signature bytes for the web-bot-auth label"
+    try:
+        public_key.verify(signature, base.encode("utf-8"))
+    except InvalidSignature:
+        return WbaStatus.FORGED, "Ed25519 signature does not verify against the operator's key"
+    expires = claim.params.expires
+    if expires is not None and claim.timestamp is not None and claim.timestamp > expires:
+        return WbaStatus.EXPIRED, "valid signature, but the request post-dates its `expires`"
+    return WbaStatus.VERIFIED, "valid Ed25519 signature, within its freshness window"

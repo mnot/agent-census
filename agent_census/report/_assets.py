@@ -165,8 +165,22 @@ tr.amem td.cid { padding-left: 1.6rem; }
 tr.amem .cid-as { color: var(--muted); font-size: .82rem; }
 /* Search box and active-network pill pinned together so jumping to a kind keeps
    the filter (and its clear control) in view. Opaque base so rows scroll under it. */
-.filterbar { position: sticky; top: 0; z-index: 1; background: Canvas;
+.filterbar { position: sticky; top: 0; z-index: 2; background: Canvas;
   padding: .5rem 0; margin: .5rem 0; border-bottom: 1px solid #8883; }
+/* The kind's heading + blurb stay pinned at the top while the reader scrolls that
+   kind's client list, so which kind (and its caveat) they're reading is always
+   visible. It sticks within its own <section>, so it scrolls off as the next kind
+   arrives -- the pinned header always names the kind currently in view. `top`
+   tracks the filter bar's live height (published as --filterbar-h by the script,
+   since it grows when filter pills appear) so the two never overlap; the opaque
+   base hides rows scrolling underneath. The inter-section gap moves from the h2's
+   top margin to the section itself -- inside the sticky box it would show as dead
+   space above the heading once pinned. */
+section.kind { margin-top: 2.25rem; }
+.kindhead { position: sticky; top: var(--filterbar-h, 0px); z-index: 1;
+  background: Canvas; padding-bottom: .3rem; }
+.kindhead h2 { margin-top: 0; }
+.kindhead .blurb { margin-bottom: 0; }
 input.filter { display: block; width: 100%; max-width: 30rem; margin: 0;
   padding: .4rem .55rem; border: 1px solid #8886; border-radius: 6px;
   background: Canvas; color: CanvasText; font: inherit; }
@@ -318,6 +332,7 @@ function applyFilters() {
   var clear = document.getElementById('clearfilters');
   if (clear) clear.hidden = !on;
   markScrollables();  // hiding rows can change a table's width and overflow
+  syncFilterbarHeight();  // showing/hiding pills changes the bar's height
 }
 
 // Set / clear the table-driven filters. Pass null for a dimension to leave it
@@ -415,12 +430,20 @@ function scrollLabel(el) {
   }
   return 'Table';
 }
+// Publish the filter bar's current height so the sticky kind headers can pin just
+// below it (top: var(--filterbar-h)). It grows when filter pills wrap, so this is
+// re-run after every filter change and on resize, not just once.
+function syncFilterbarHeight() {
+  var bar = document.querySelector('.filterbar');
+  if (bar) document.documentElement.style.setProperty('--filterbar-h', bar.offsetHeight + 'px');
+}
+syncFilterbarHeight();
 markScrollables();
 (function () {
   var t;
   window.addEventListener('resize', function () {
     clearTimeout(t);
-    t = setTimeout(markScrollables, 150);
+    t = setTimeout(function () { markScrollables(); syncFilterbarHeight(); }, 150);
   }, false);
 })();
 """.strip()

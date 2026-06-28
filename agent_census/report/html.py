@@ -648,8 +648,12 @@ def _kind_section(
     footprint = f"{count(rollup.clients, 'client')} · {count(rollup.requests, 'request')}"
     title = f"{_kind_badge(kind)} {footprint}"
     parts = [
-        f'<h2 id="{kind.value}">{title}</h2>',
-        f'<p class="blurb">{_esc(KIND_BLURB.get(kind, ""))}</p>',
+        # Heading + blurb in one box so they stick together at the top while the
+        # reader scrolls this kind's clients (see .kindhead in the stylesheet).
+        '<div class="kindhead">'
+        f'<h2 id="{kind.value}">{title}</h2>'
+        f'<p class="blurb">{_esc(KIND_BLURB.get(kind, ""))}</p>'
+        "</div>",
     ]
     shown = "".join(
         _actor_tbody(a, flags=flags, filterable=True, net_col=net_col) for a in actors[:top]

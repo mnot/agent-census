@@ -4,8 +4,9 @@ Three jobs: the counts/% toggle (``#netmode``) that repaints the heat map down
 columns or across rows; pinning the Kind column (left) and the Other / off-network
 / Total columns (right) while the named-datacentre columns scroll between them; and
 keeping the pinned "Other datacenters" column live -- it tallies the folded tail
-plus whatever datacentre columns are currently scrolled out of view, with a ``+N``
-header cue. On a phone the table folds to one column instead (see the media query),
+plus whatever datacentre columns are still scrolled off to the right (not yet
+revealed), with a ``+N`` header cue. On a phone the table folds to one column
+instead (see the media query),
 so the pinning and live tally switch off there.
 """
 
@@ -48,11 +49,10 @@ NET_SCRIPT = """
   //     left/right frozen widths used to decide which datacentre columns are hidden.
   var headRow=tab.rows[0];
   var stickR=[].slice.call(headRow.cells).filter(function(c){return c.classList.contains('stick-r');});
-  var leftW=0, rightW=0;
+  var rightW=0;
   function isPhone(){ return window.matchMedia && window.matchMedia('(max-width: 640px)').matches; }
   function layout(){
-    if(isPhone()){ leftW=0; rightW=0; return; }
-    leftW=headRow.cells[0].getBoundingClientRect().width;
+    if(isPhone()){ rightW=0; return; }
     var acc=0;
     for(var i=stickR.length-1;i>=0;i--){
       var ci=stickR[i].cellIndex, off=Math.ceil(acc);  // ceil so pinned columns overlap, not gap
@@ -62,7 +62,7 @@ NET_SCRIPT = """
     rightW=Math.ceil(acc);
   }
 
-  // --- live "Other datacenters": fold in datacentre columns scrolled out of view.
+  // --- live "Other datacenters": fold in datacentre columns scrolled off to the right.
   var otherCells=[].slice.call(tab.querySelectorAll('td.othercol'));
   var otherTot=tab.querySelector('td.othertot');
   var cue=tab.querySelector('.othercue');
@@ -78,11 +78,15 @@ NET_SCRIPT = """
       if(cue) cue.textContent='';
       paint(sel?sel.value:'count'); return;
     }
-    var tr=track.getBoundingClientRect(), bandL=tr.left+leftW, bandR=tr.right-rightW;
+    // Only fold datacentre columns scrolled off to the RIGHT (still hidden behind
+    // the pinned Other column -- not yet revealed). Columns scrolled past to the
+    // left, under Kind, have already been read; re-adding them to Other just
+    // double-counts what the reader already accounted for.
+    var bandR=track.getBoundingClientRect().right-rightW;
     var hidden={}, n=0;
     dcsHd.forEach(function(th){
       var r=th.getBoundingClientRect();
-      if(r.width && (r.right<=bandL+0.5 || r.left>=bandR-0.5)){ hidden[th.cellIndex]=1; n++; }
+      if(r.width && r.left>=bandR-0.5){ hidden[th.cellIndex]=1; n++; }
     });
     otherCells.forEach(function(oc){ oc._v=rowSum(oc.parentNode, +oc.getAttribute('data-agg'), hidden); });
     if(otherTot){

@@ -406,3 +406,42 @@ def test_aggregate_buckets_reveals_rotation() -> None:
     expected = sum(project_buckets(first_half, window)) + sum(project_buckets(second_half, window))
     assert sum(agg) == expected
     assert any(agg[:20]) and any(agg[20:])  # coverage on both halves
+
+
+def test_summary_table_kind_sparklines_share_one_peak() -> None:
+    # The 'Summary by kind' table draws a per-kind cadence glyph, but unlike the
+    # per-client rows it scales every kind to one shared peak -- so a busier kind
+    # is visibly taller, conveying magnitude between kinds, not just shape.
+    from datetime import datetime, timedelta, timezone
+    from types import SimpleNamespace
+
+    from agent_census.pipeline import KindRollup
+    from agent_census.report._sparkline import kind_sparklines
+    from agent_census.report.html import _summary_table
+
+    start = datetime(2023, 10, 10, 12, 0, tzinfo=timezone.utc)
+    window = (start, start + timedelta(hours=1))
+    busy = _spark_profile(request_count=400, first=start, last=window[1], buckets=[20] * 40)
+    quiet = _spark_profile(request_count=100, first=start, last=window[1], buckets=[5] * 40)
+    rollups = {
+        Kind.CRAWLER: KindRollup(clients=1, requests=400, total_bytes=400),
+        Kind.AI_CRAWLER: KindRollup(clients=1, requests=100, total_bytes=100),
+    }
+    groups = {Kind.CRAWLER: [busy], Kind.AI_CRAWLER: [quiet]}
+    patterns = kind_sparklines(groups, window, [Kind.CRAWLER, Kind.AI_CRAWLER])
+    html = _summary_table(SimpleNamespace(rollups=rollups), patterns, window)
+
+    assert "<th class='reqpat'>Requests over " in html  # same header as the client table
+    rows = re.findall(r"<tr>.*?</tr>", html)
+    heights = {}
+    for row in rows:
+        label = re.search(r'class="badge"[^>]*>([^<]+)<', row)
+        svg = re.search(r"<svg class='spark'.*?</svg>", row)
+        if label and svg:
+            rects = [int(h) for h in re.findall(r"<rect[^>]*height='(\d+)'", svg.group(0))]
+            heights[label.group(1)] = max(rects)
+    # Shared peak: the busier kind is still taller. Under sqrt scaling the quarter-
+    # volume kind lands at ~half height (sqrt(1/4) = 1/2), not a quarter -- so it
+    # stays legible while the ordering holds.
+    assert heights["crawler"] > heights["ai crawler"]
+    assert heights["ai crawler"] >= heights["crawler"] // 2 - 1

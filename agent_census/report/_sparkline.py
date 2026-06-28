@@ -17,11 +17,11 @@ axis at render time, once the window is in hand.
 from __future__ import annotations
 
 import html
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from datetime import datetime
 
-from ..model import ClientProfile
-from .format import top_evidence, truncate
+from ..model import ClientProfile, Kind
+from .format import fmt_ts, human_duration, top_evidence, truncate
 
 _BUCKETS = 40  # time slices across the report-wide window
 _W = 200  # px; the caption below wraps to this width
@@ -74,17 +74,29 @@ def aggregate_buckets(profiles: Iterable[ClientProfile], window: Window) -> list
     return total
 
 
-def sparkline_svg(buckets: list[int]) -> str:
+def sparkline_svg(buckets: list[int], peak: int | None = None, sqrt: bool = False) -> str:
     """Inline SVG bar sparkline for an already-projected bucket list. Empty string
-    when there is nothing to draw."""
-    peak = max(buckets, default=0)
+    when there is nothing to draw.
+
+    ``peak`` overrides the per-row scale: pass a shared maximum to make a set of
+    sparklines height-comparable, so a taller glyph means more traffic (used by
+    the per-kind summary). Defaults to this row's own peak -- the per-client
+    glyphs scale individually, showing shape rather than magnitude.
+
+    ``sqrt`` draws each bar at the square root of its share of ``peak`` instead of
+    a linear share. Under one shared peak that keeps a quiet kind legible (its bars
+    lift off the floor) while preserving the ordering -- a busier slice is still
+    taller -- at the cost of exaggerating small differences."""
+    if peak is None:
+        peak = max(buckets, default=0)
     if peak <= 0:
         return ""
     gap = 1.0
     bw = (_W - (_BUCKETS - 1) * gap) / _BUCKETS
     bars = []
     for i, hits in enumerate(buckets):
-        height = round(hits / peak * (_H - 2))
+        frac = hits / peak
+        height = round((frac**0.5 if sqrt else frac) * (_H - 2))
         if height <= 0:
             continue
         x_pos = i * (bw + gap)
@@ -126,3 +138,29 @@ def member_pattern(profile: ClientProfile, window: Window) -> str:
     if profile.features.request_count < _MIN_REQUESTS:
         return ""
     return sparkline_svg(project_buckets(profile, window))
+
+
+def axis_span(window: Window) -> str:
+    """The "<duration>" label naming the shared x-axis -- the span every sparkline
+    is drawn against -- with the exact start -> end on hover. Both the per-client
+    header and the per-kind summary header read against it."""
+    detail = "time"
+    title = ""
+    if window is not None:
+        detail = human_duration((window[1] - window[0]).total_seconds())
+        full = f"shared sparkline axis: {fmt_ts(window[0])} → {fmt_ts(window[1])}"
+        title = f' title="{html.escape(full, quote=True)}"'
+    return f"<span class='muted'{title}>{html.escape(detail, quote=True)}</span>"
+
+
+def kind_sparklines(
+    groups: dict[Kind, list[ClientProfile]], window: Window, kinds: Sequence[Kind]
+) -> dict[Kind, str]:
+    """A cadence glyph per kind for the summary table, each summed from the kind's
+    retained clients onto the shared axis. All scaled to one peak across kinds (sqrt,
+    so a busier kind reads taller while quiet kinds stay legible) -- unlike the
+    per-client glyphs, which scale individually to show shape, not magnitude. The
+    cap on retained per-kind profiles means a capped tail is not reflected."""
+    buckets = {kind: aggregate_buckets(groups.get(kind, []), window) for kind in kinds}
+    peak = max((max(b, default=0) for b in buckets.values()), default=0)
+    return {kind: sparkline_svg(b, peak=peak, sqrt=True) for kind, b in buckets.items()}

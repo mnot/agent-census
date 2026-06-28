@@ -95,11 +95,14 @@ NET_SCRIPT = """
     paint(sel?sel.value:'count');
   }
 
-  var raf=0;
-  function onScroll(){ if(raf) return; raf=requestAnimationFrame(function(){raf=0; recomputeOther();}); }
-  function onResize(){ if(raf) return; raf=requestAnimationFrame(function(){raf=0; layout(); recomputeOther();}); }
-  track.addEventListener('scroll', onScroll, {passive:true});
-  window.addEventListener('resize', onResize);
+  // One rAF-throttled frame for both scroll and resize; a pending resize forces a
+  // re-measure even if a scroll frame got queued first (offsets would go stale).
+  var raf=0, needLayout=false;
+  function schedule(){ if(raf) return; raf=requestAnimationFrame(function(){
+    raf=0; if(needLayout){ needLayout=false; layout(); } recomputeOther();
+  }); }
+  track.addEventListener('scroll', schedule, {passive:true});
+  window.addEventListener('resize', function(){ needLayout=true; schedule(); });
 
   // Phone column picker: show only the chosen network column (CSS hides the rest
   // below the breakpoint; on desktop every column shows and this is a no-op).

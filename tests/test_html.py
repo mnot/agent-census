@@ -175,6 +175,50 @@ def test_network_table_renders_with_providers(
     assert "markScrollables" in html  # overflowing tracks are made keyboard-scrollable
 
 
+def test_network_cells_link_client_rows_to_their_column(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Clicking a cross-tab number jumps to its kind and filters the clients below
+    # by that network. Each filterable client row is tagged with the cross-tab
+    # column index/indices it belongs to (data-netcol), matched against the cells'
+    # data-net by the page script.
+    monkeypatch.setattr(pipeline, "datacenter_subnet", lambda ip: None)
+    monkeypatch.setattr(
+        pipeline, "datacenter_provider", lambda ip: "Amazon AWS" if ip.startswith("52.") else None
+    )
+    lines = [
+        '52.1.1.1 - - [10/Oct/2023:12:00:00 +0000] "GET /p HTTP/1.1" 200 100 "-" "curl/8.0"',
+        '9.9.9.9 - - [10/Oct/2023:12:01:00 +0000] "GET /p HTTP/1.1" 200 100 "-" '
+        '"Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 Safari/605.1.15"',
+    ]
+    log = tmp_path / "net.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
+    html = render_report_html(result, source="x")
+
+    # The clearable network-filter pill, the script hook the cross-tab calls, and
+    # the cross-tab click handler that drives it.
+    assert 'id="netfilter"' in html
+    assert "window.setNetFilter" in html
+    assert "setNetFilter(cell.getAttribute('data-net'))" in html
+
+    # Map each column header to its index, then confirm every client row's
+    # data-netcol points at a real column -- and that the two networks present
+    # each tag at least one row.
+    columns = {
+        name: int(idx)
+        for idx, name in re.findall(r"data-net='(\d+)'[^>]*><span>([^<]*)</span>", html)
+    }
+    assert "Amazon AWS" in columns and RESIDENTIAL_NETWORK in columns
+    tagged = [set(v.split()) for v in re.findall(r'data-netcol="([^"]*)"', html)]
+    assert tagged, "client rows should carry data-netcol"
+    valid = {str(i) for i in columns.values()}
+    assert all(cols <= valid for cols in tagged)
+    assert any(str(columns["Amazon AWS"]) in cols for cols in tagged)
+    assert any(str(columns[RESIDENTIAL_NETWORK]) in cols for cols in tagged)
+
+
 def test_network_table_folds_datacenters_into_pinned_other(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

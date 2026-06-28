@@ -20,6 +20,7 @@ from .aggregate import (
     KIND_BLURB,
     KIND_ORDER,
     ActorGroup,
+    NetworkMatrix,
     by_kind,
     group_actors,
     network_matrix,
@@ -242,12 +243,41 @@ def _num(value: int) -> str:
     return f"{value:,}" if value else "–"
 
 
-def _network_table(result: AnalysisResult, *, breakout_min_share: float) -> str:
-    matrix = network_matrix(
-        result.network_rollups,
-        result.network_categories,
-        min_breakout_share=breakout_min_share,
-    )
+def _net_col_index(
+    matrix: NetworkMatrix | None, network_rollups: dict[str, dict[Kind, KindRollup]]
+) -> dict[str, int]:
+    """Map each raw origin-network name to the cross-tab column index it lands in.
+
+    A named column maps to itself; every datacentre folded into ``OTHER_HOSTING``
+    (and the literal ``OTHER_HOSTING`` fallback) maps to that column. This is the
+    same collapse :func:`network_matrix` applies, so a client row's column matches
+    the cell the reader clicks. Used to tag client rows for the network filter.
+    """
+    if matrix is None:
+        return {}
+    index = {net: i for i, net in enumerate(matrix.networks)}
+    out: dict[str, int] = {}
+    for net in network_rollups:
+        col = net if net in index else OTHER_HOSTING
+        if col in index:
+            out[net] = index[col]
+    return out
+
+
+def _netcol_attr(profiles: list[ClientProfile], net_col: dict[str, int]) -> str:
+    """``data-netcol`` listing the column indices an actor's members occupy.
+
+    An actor group folds clients that differ only by IP/ASN, so its members can
+    span several networks; the network filter shows the row if *any* member is in
+    the chosen column.
+    """
+    if not net_col:
+        return ""
+    idxs = sorted({net_col[p.network] for p in profiles if p.network in net_col})
+    return f' data-netcol="{" ".join(str(i) for i in idxs)}"' if idxs else ""
+
+
+def _network_table(matrix: NetworkMatrix | None) -> str:
     if matrix is None:
         return ""
     nets = matrix.networks
@@ -301,7 +331,7 @@ def _network_table(result: AnalysisResult, *, breakout_min_share: float) -> str:
         alpha = value / peak * 0.8
         return (
             ' style="background-image:linear-gradient('
-            f"rgba(220,38,38,{alpha:.3f}),rgba(220,38,38,{alpha:.3f}))\""
+            f'rgba(220,38,38,{alpha:.3f}),rgba(220,38,38,{alpha:.3f}))"'
         )
 
     def cell_cls(i: int, net: str) -> str:
@@ -387,7 +417,10 @@ def _network_table(result: AnalysisResult, *, breakout_min_share: float) -> str:
         else ""
     )
     caption = (
-        '<p class="muted">Counts default; the toggle switches to row or column shares '
+        '<p class="muted">Click any number to jump to that kind and filter the clients '
+        "below by that network (a Total-column number jumps without a network filter; "
+        f"“{_esc(OTHER_HOSTING)}” filters to the folded small datacentres). "
+        "Counts default; the toggle switches to row or column shares "
         "(the Total column keeps the raw count). Cell shading tracks the same axis — "
         "across each kind, or down each network. "
         f"<span class='netwide'>{spatial}</span>{narrow}</p>"
@@ -435,6 +468,7 @@ def _client_row(
     *,
     flag: str = "",
     filterable: bool = False,
+    net_col: dict[str, int] | None = None,
 ) -> str:
     cls = profile.classification
     evidence = _esc(truncate(top_evidence(profile)))
@@ -449,7 +483,9 @@ def _client_row(
                 *ordered_tags(cls.tags),  # the tags shown in the Tags column
             )
         ).lower()
-        attrs = f' class="frow" data-filter="{_esc(haystack)}"'
+        attrs = (
+            f' class="frow" data-filter="{_esc(haystack)}"{_netcol_attr([profile], net_col or {})}'
+        )
     return (
         f"<tr{attrs}>{_client_cell(profile, flag)}"
         f"<td class='num'>{profile.features.request_count:,}</td>"
@@ -501,6 +537,7 @@ def _folded_tbody(
     flag: str = "",
     flags: CountryFlags | None = None,
     filterable: bool = False,
+    net_col: dict[str, int] | None = None,
 ) -> str:
     """A single entry that folded many IPs into one (an ASN operator, a verified
     bot, an egress/subnet cluster): a collapsible summary over its clustered IPs."""
@@ -513,7 +550,10 @@ def _folded_tbody(
         haystack = " ".join(
             (prefix, ua or "", org or "", *members, *ordered_tags(cls.tags))
         ).lower()
-        row_attrs = f"class='asum frow' data-filter=\"{_esc(haystack)}\""
+        row_attrs = (
+            f"class='asum frow' data-filter=\"{_esc(haystack)}\""
+            f"{_netcol_attr([profile], net_col or {})}"
+        )
     toggle = _disclosure(f"Show {count(len(members), 'member IP')} of {prefix}")
     summary = (
         f"<tr {row_attrs}><td class='cid'>{toggle}"
@@ -536,6 +576,7 @@ def _actor_tbody(
     *,
     flags: CountryFlags | None = None,
     filterable: bool = False,
+    net_col: dict[str, int] | None = None,
 ) -> str:
     """One actor as a ``<tbody>``: a lone client, or a collapsible summary + members.
 
@@ -543,13 +584,15 @@ def _actor_tbody(
     hidden until the summary row is clicked (toggled by the page script).
     """
     cf = flags or CountryFlags()
+    net_col = net_col or {}
     flag = _flag_html(cf.for_actor(actor.lead.client_id))
     if not actor.collapsed:
         if len(actor.lead.member_ips) >= 2:
-            return _folded_tbody(actor.lead, flag=flag, flags=cf, filterable=filterable)
-        return (
-            f"<tbody>{_client_row(actor.lead, flag=flag, filterable=filterable)}</tbody>"
-        )
+            return _folded_tbody(
+                actor.lead, flag=flag, flags=cf, filterable=filterable, net_col=net_col
+            )
+        row = _client_row(actor.lead, flag=flag, filterable=filterable, net_col=net_col)
+        return f"<tbody>{row}</tbody>"
     cls = actor.lead.classification
     _, _, ua = client_id_parts(actor.lead)
     shared = actor.shared_asn
@@ -568,7 +611,10 @@ def _actor_tbody(
                 *ordered_tags(cls.tags),  # the tags shown in the Tags column
             )
         ).lower()
-        row_attrs = f"class='asum frow' data-filter=\"{_esc(haystack)}\""
+        row_attrs = (
+            f"class='asum frow' data-filter=\"{_esc(haystack)}\""
+            f"{_netcol_attr(list(actor.members), net_col)}"
+        )
     toggle = _disclosure(f"Show {count(len(actor.members), 'grouped client')}")
     summary = (
         f"<tr {row_attrs}>"
@@ -589,8 +635,10 @@ def _kind_section(
     rollup: KindRollup,
     top: int,
     flags: CountryFlags | None = None,
+    net_col: dict[str, int] | None = None,
 ) -> str:
     flags = flags or CountryFlags()
+    net_col = net_col or {}
     actors = group_actors(group)
     footprint = f"{count(rollup.clients, 'client')} · {count(rollup.requests, 'request')}"
     title = f"{_kind_badge(kind)} {footprint}"
@@ -598,11 +646,15 @@ def _kind_section(
         f'<h2 id="{kind.value}">{title}</h2>',
         f'<p class="blurb">{_esc(KIND_BLURB.get(kind, ""))}</p>',
     ]
-    shown = "".join(_actor_tbody(a, flags=flags, filterable=True) for a in actors[:top])
+    shown = "".join(
+        _actor_tbody(a, flags=flags, filterable=True, net_col=net_col) for a in actors[:top]
+    )
     parts.append(f"<div class='tscroll'><table><thead>{_SECTION_HEAD}</thead>{shown}</table></div>")
     extra = actors[top:_EXPAND_LIMIT]
     if extra:
-        extra_rows = "".join(_actor_tbody(a, flags=flags, filterable=True) for a in extra)
+        extra_rows = "".join(
+            _actor_tbody(a, flags=flags, filterable=True, net_col=net_col) for a in extra
+        )
         parts.append(
             # Shared name -> native exclusive accordion: opening one closes the rest.
             # The page filter (above all sections) suspends the name while active.
@@ -636,22 +688,31 @@ def render_report_html(
     """Render the full analysis report as a standalone HTML page."""
     flags = country_flags or CountryFlags()
     groups = by_kind(result.profiles)
+    matrix = network_matrix(
+        result.network_rollups,
+        result.network_categories,
+        min_breakout_share=breakout_min_share,
+    )
+    net_col = _net_col_index(matrix, result.network_rollups)
     heading = "Agent Census" + (f" — {result.site}" if result.site else "")
     parts = [
         f"<h1>{_esc(heading)}</h1>",
         _meta_list(result, source, robots_note, elapsed),
         _summary_table(result),
-        _network_table(result, breakout_min_share=breakout_min_share),
-        '<input class="filter" type="search" '
+        _network_table(matrix),
+        '<input id="clientfilter" class="filter" type="search" '
         'placeholder="filter all clients by IP, User-Agent, AS name, or tag…" '
-        'aria-label="filter clients">',
+        'aria-label="filter clients">'
+        # Shown by the script while a cross-tab number is filtering by network;
+        # click (or Enter/Space) to clear.
+        ' <span id="netfilter" class="netfilter" role="button" tabindex="0" hidden></span>',
         # Filled and shown by the filter script when a query hides every client.
         '<p id="nomatch" class="muted" role="status" hidden></p>',
     ]
     for kind in KIND_ORDER:
         rollup = result.rollups.get(kind)
         if rollup and rollup.clients:
-            parts.append(_kind_section(kind, groups.get(kind, []), rollup, top, flags))
+            parts.append(_kind_section(kind, groups.get(kind, []), rollup, top, flags, net_col))
     return _page(heading, "\n".join(parts))
 
 

@@ -30,6 +30,12 @@ The simplest case is analyzing one or more Apache logs in the default `combined`
 agent-census analyze access.log* > census.html
 ```
 
+Several rotated logs are pooled into one analysis. You can pass them in any order
+(a shell glob is fine): each file is peeked and the set is sorted into
+chronological order before analysis, so a client spanning rotations is treated as
+one and timing metrics see requests in time order. Plain and `.gz` files mix
+freely.
+
 The presets `common`, `combined`, and `vhost_combined` are available via
 `--log-format-preset`.
 
@@ -74,6 +80,18 @@ agent-census analyze access.log --md
 ```
 agent-census analyze access.log --log-format-preset vhost_combined \
     --vhost mnot.net --vhost www.mnot.net
+```
+
+**Time window**: `--since` limits the analysis to recent traffic (e.g. `1w`, `36h`,
+`90m`; units `s`/`m`/`h`/`d`/`w`). A log file that falls entirely outside the
+window is skipped without being read — and the count of skipped files is reported
+so it's never a silent omission. The window is anchored at the current time by default; for
+archived logs whose newest entry is itself in the past, add `--from-latest` to
+anchor it at the newest timestamp in the logs instead.
+
+```
+agent-census analyze access.log* --since 1w
+agent-census analyze archive/access.log.*.gz --since 1w --from-latest
 ```
 
 **Client identity**: Use `--identity` to change how requests are associated with clients. The
@@ -154,7 +172,8 @@ Required (all present in `combined`):
 - **Client address** (`%h`) -- the identity everything else groups on, and the
   basis for the network, datacentre, and crawler-verification checks.
 - **Timestamp** (`%t`) -- timing regularity, peak request rate, the reported time
-  range, and (with `--quiescent-hours`) freeing memory mid-run.
+  range, ordering and `--since` windowing across multiple files, and (with
+  `--quiescent-hours`) freeing memory mid-run.
 - **Request line** (`"%r"`) -- the method and path; the most load-bearing field,
   behind vulnerability probing, feed detection, path coverage, and crawl shape.
 - **Status code** (`%>s`) -- the status mix, 404 storms, `304 Not Modified` (the

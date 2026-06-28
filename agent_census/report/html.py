@@ -170,12 +170,19 @@ def _meta_list(
         f"<strong>Source:</strong> <code>{_esc(source)}</code>",
         f"<strong>Lines:</strong> {skips.total_lines:,} total · {skips.parsed:,} parsed · "
         f"{skips.skipped:,} skipped"
-        + (f" · {skips.excluded:,} excluded (--vhost)" if skips.excluded else ""),
+        + (f" · {skips.excluded:,} excluded (--vhost)" if skips.excluded else "")
+        + (f" · {skips.out_of_window:,} before --since" if skips.out_of_window else ""),
         f"<strong>Time range:</strong> {_esc(fmt_ts(start))} → {_esc(fmt_ts(end))}",
         f"<strong>Identity:</strong> <code>{_esc(result.identity_strategy)}</code> "
         f"({count(stats.client_count, 'client')}; {count(stats.singletons, 'singleton')}; "
         f"{count(stats.ips_with_multiple_uas, 'IP')} with multiple UAs)",
     ]
+    if result.skipped_files:
+        items.insert(
+            2,
+            f"<strong>Skipped:</strong> {count(len(result.skipped_files), 'file')} "
+            "entirely before --since",
+        )
     if robots_note:
         cls = "warn" if "differ" in robots_note else ""
         items.append(f'<strong>robots.txt:</strong> <span class="{cls}">{_esc(robots_note)}</span>')

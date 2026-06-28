@@ -157,25 +157,24 @@ def test_collapsed_group_with_several_asns_keeps_the_count() -> None:
     assert "AS64500" not in md
 
 
-def test_typical_conduct_hoisted_to_header_and_dropped_from_rows() -> None:
-    from agent_census.report.aggregate import typical_conduct
-
+def test_conduct_tags_shown_on_every_row_not_hoisted() -> None:
+    # A conduct tag shared by all of a kind's clients (probe-paths on scanners) is
+    # shown on each row, not summarised in a section header -- an omitted tag that
+    # still fires is more confusing than the repetition.
     profs = [
         _profile(f"9.9.9.{i}", "scan/1", tags=frozenset({"probe-paths", "bursty"}), requests=5)
         for i in range(4)
     ]
-    # Only the conduct tag is "typical"; bursty is a fingerprint dimension.
-    assert typical_conduct(profs) == frozenset({"probe-paths"})
 
     md = md_section(Kind.VULN_SCANNER, profs, _rollup(clients=4, requests=20), top=5)
     text = "\n".join(md)
-    assert "_Typically: probe-paths._" in text
-    # the conduct tag is hoisted: rows show the fingerprint (bursty) but not the baseline.
+    assert "Typically:" not in text
     rows = [ln for ln in md if "scan/1" in ln]
-    assert rows and all("bursty" in ln and "probe-paths" not in ln for ln in rows)
+    assert rows and all("bursty" in ln and "probe-paths" in ln for ln in rows)
 
     html = html_section(Kind.VULN_SCANNER, profs, _rollup(clients=4, requests=20), top=5)
-    assert "Typically:" in html
+    assert "Typically:" not in html
+    assert "probe-paths" in html
 
 
 def test_html_single_client_is_not_collapsed() -> None:

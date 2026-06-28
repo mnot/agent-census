@@ -275,8 +275,7 @@ def test_filter_haystack_includes_as_name() -> None:
 
 def test_filter_haystack_includes_visible_tags() -> None:
     # The tags shown in the Tags column are folded into data-filter so the search
-    # box matches on a tag name. Suppressed (section-baseline) tags are not shown,
-    # so they stay out of the haystack.
+    # box matches on a tag name.
     profile = ClientProfile(
         client_id=ClientId(ip="52.1.1.0/24", user_agent="curl/8.0"),
         entries=(),
@@ -288,10 +287,10 @@ def test_filter_haystack_includes_visible_tags() -> None:
             tags=frozenset({"datacenter", "scraper"}),
         ),
     )
-    haystack = _client_row(profile, filterable=True, suppress=frozenset({"scraper"}))
+    haystack = _client_row(profile, filterable=True)
     haystack = haystack[haystack.index('data-filter="') :].split('"', 2)[1]
     assert "datacenter" in haystack  # a visible tag is searchable
-    assert "scraper" not in haystack  # the suppressed tag is not shown, so not in filter
+    assert "scraper" in haystack  # all shown tags are in the filter
 
 
 def test_tags_have_hover_descriptions() -> None:

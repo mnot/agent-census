@@ -12,7 +12,6 @@ from .aggregate import (
     group_actors,
     network_matrix,
     time_range,
-    typical_conduct,
 )
 from .format import (
     actor_spread,
@@ -191,24 +190,19 @@ def _kind_section(
 ) -> list[str]:
     flags = flags or CountryFlags()
     actors = group_actors(group)
-    typical = typical_conduct(group)
     lines = [
         f"## {kind_label(kind)} "
         f"({count(rollup.clients, 'client')}, {count(rollup.requests, 'request')})",
         "",
         KIND_BLURB.get(kind, ""),
         "",
-    ]
-    if typical:
-        lines += [f"_Typically: {', '.join(ordered_tags(typical))}._", ""]
-    lines += [
         "| Client | Requests | Bandwidth | Conf. | Tags | Evidence |",
         "| --- | --: | --: | --: | --- | --- |",
     ]
     shown = actors[:top]
     for actor in shown:
         cls = actor.lead.classification
-        tags = ", ".join(ordered_tags(cls.tags - typical)) or "–"
+        tags = ", ".join(ordered_tags(cls.tags)) or "–"
         evidence = md_escape(truncate(top_evidence(actor.lead)))
         lines.append(
             f"| {_actor_label(actor, flags)} | {actor.requests:,} | "

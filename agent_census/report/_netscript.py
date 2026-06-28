@@ -22,6 +22,7 @@ NET_SCRIPT = """
   var byRow={}, byCol={};
   cells.forEach(function(c){
     var r=c.parentNode.rowIndex, col=c.cellIndex; c._v=+c.getAttribute('data-v');
+    c._other=c.classList.contains('othercol');  // live aggregate: keep it out of the scale
     (byRow[r]=byRow[r]||[]).push(c);
     (byCol[col]=byCol[col]||[]).push(c);
   });
@@ -32,13 +33,18 @@ NET_SCRIPT = """
     var groups=(mode==='col')?byCol:byRow;
     cells.forEach(function(c){c.style.backgroundImage='';c.style.fontWeight='';});
     Object.keys(groups).forEach(function(k){
-      var g=groups[k], tot=0, mx=0;
-      g.forEach(function(c){tot+=c._v; if(c._v>mx)mx=c._v;});
+      var g=groups[k], tot=0, mx=0, any=false;
+      // Scale to the static cells only. The live "Other" cell's value moves as you
+      // scroll (it folds in hidden columns); letting it set mx/tot would re-shade
+      // every named column on every frame -- the blue "shift". Its own column (col
+      // mode) is all-Other, so fall back to scaling it among itself.
+      g.forEach(function(c){if(!c._other){any=true; tot+=c._v; if(c._v>mx)mx=c._v;}});
+      if(!any) g.forEach(function(c){tot+=c._v; if(c._v>mx)mx=c._v;});
       g.forEach(function(c){
         var v=c._v;
         c.textContent=(mode==='count')?(v?v.toLocaleString():'\\u2013')
                                        :((v&&tot)?Math.round(v/tot*100)+'%':'\\u2013');
-        if(v>0&&mx>0){var a=(v/mx*0.8).toFixed(3);
+        if(v>0&&mx>0){var a=(Math.min(v/mx,1)*0.8).toFixed(3);
           c.style.backgroundImage='linear-gradient(rgb(var(--heat) / '+a+'),rgb(var(--heat) / '+a+'))';}
         if(v>0&&v===mx) c.style.fontWeight='500';
       });

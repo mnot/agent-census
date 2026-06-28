@@ -10,11 +10,10 @@ cheap second pass via :func:`collect_entries`.
 
 from __future__ import annotations
 
-import gzip
 import heapq
 import itertools
 from collections import Counter, OrderedDict, defaultdict
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
@@ -38,6 +37,7 @@ from .hosting import (
     subnet_of,
 )
 from .identity import ClientKeyStrategy
+from .logsource import order_logs, read_many
 from .maxmind import AsnResolver
 from .model import (
     BotVerification,
@@ -198,7 +198,10 @@ class SkipStats:
 
     ``excluded`` counts lines dropped on purpose by a ``--vhost`` filter -- kept
     separate from ``skipped`` (parse failures), so a deliberate filter never
-    inflates the unparse rate, which is itself a diagnostic.
+    inflates the unparse rate, which is itself a diagnostic. ``out_of_window``
+    counts lines dropped by a ``--since`` time filter, for the same reason (it is
+    only the lines from *read* files; whole files skipped before reading are not
+    counted here).
     """
 
     total_lines: int
@@ -206,6 +209,7 @@ class SkipStats:
     skipped: int
     reasons: dict[str, int] = field(default_factory=dict)
     excluded: int = 0
+    out_of_window: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -299,28 +303,17 @@ class AnalysisResult:
     # Each network label's category (datacenter / egress / residential), so the
     # report can collapse only the datacenter tail.
     network_categories: dict[str, str] = field(default_factory=dict)
+    # Basenames of input files skipped unread because they fell entirely before a
+    # --since window (see :func:`order_logs`). Reported so a dropped file is never
+    # silent: its lines are in none of the counts above precisely because it was
+    # never read. Empty without --since.
+    skipped_files: tuple[str, ...] = ()
     # The site analysed: the first --vhost if one was given, else the most common
     # served host (logged %v, else the Host header). None if the log carries none.
     site: str | None = None
     # Site-relative tag calibration: the reference-browser pool sizes and the
     # per-metric thresholds derived from them. None only when no analysis ran.
     reference_calibration: ReferenceCalibration | None = None
-
-
-def read_lines(path: Path) -> Iterator[str]:
-    """Yield lines from a plain or gzip-compressed log file."""
-    if path.suffix == ".gz":
-        with gzip.open(path, "rt", encoding="utf-8", errors="replace") as handle:
-            yield from handle
-    else:
-        with path.open("rt", encoding="utf-8", errors="replace") as handle:
-            yield from handle
-
-
-def read_many(paths: Sequence[Path]) -> Iterator[str]:
-    """Yield lines from several log files in order, as one stream."""
-    for path in paths:
-        yield from read_lines(path)
 
 
 def _disallowed_check(rules: RobotsRules, token: str | None) -> DisallowedCheck:
@@ -391,12 +384,23 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
     max_per_kind: int = DEFAULT_MAX_PER_KIND,
     vhosts: Sequence[str] | None = None,
     asn_resolver: AsnResolver | None = None,
+    since_seconds: float | None = None,
+    from_latest: bool = False,
+    now: float | None = None,
 ) -> AnalysisResult:
     """Stream one or more log files into per-client profiles.
 
-    Multiple files are read in order as one stream and pooled, so a client that
-    appears across rotated logs is treated as one. Entries are not retained;
-    pass the result to :func:`collect_entries` if you need raw request traces.
+    Multiple files are sorted into chronological order (by each file's first
+    timestamp; see :func:`order_logs`) and read as one pooled stream, so a client
+    that appears across rotated logs is treated as one and timing metrics see
+    requests in time order regardless of the order the files were given. Entries
+    are not retained; pass the result to :func:`collect_entries` if you need raw
+    request traces.
+
+    ``since_seconds`` keeps only requests newer than that span, dropping older
+    ones and skipping any log file that falls entirely before the window without
+    reading it. The window is anchored at ``now`` (wall clock) by default, or at
+    the newest log timestamp when ``from_latest``.
 
     With ``quiescent_seconds`` set, a client that has been silent for that long
     (relative to the latest log timestamp) is finalised and its live accumulator
@@ -412,6 +416,12 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
     through a CDN under another name).
     """
     paths = [logs] if isinstance(logs, Path) else list(logs)
+    ordered, window_start = order_logs(
+        paths, parser, since_seconds=since_seconds, from_latest=from_latest, now=now
+    )
+    kept_paths = set(ordered)
+    skipped_files = tuple(p.name for p in paths if p not in kept_paths)
+    paths = ordered
     resident: dict[ClientId, FeatureAccumulator] = {}
     evictable: OrderedDict[ClientId, FeatureAccumulator] = OrderedDict()
     retired: OrderedDict[ClientId, FeatureAccumulator] = OrderedDict()
@@ -454,7 +464,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
     rel_config = load_relative_tags()
     collector = make_collector()
     seq = itertools.count()
-    total = parsed = skipped = excluded = 0
+    total = parsed = skipped = excluded = out_of_window = 0
     client_count = singleton_count = multi_ua_ips = 0
     host_counts: Counter[str] = Counter()  # served host -> line count, for the site label
     latest_ts: float | None = None
@@ -678,6 +688,15 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             skipped += 1
             reasons[outcome.skip_reason or "unknown"] += 1
             continue
+        if (
+            window_start is not None
+            and entry.timestamp is not None
+            and entry.timestamp.timestamp() < window_start
+        ):
+            # Older than the --since window; a straddling file is read but trimmed
+            # here (whole files before the window were skipped in order_logs).
+            out_of_window += 1
+            continue
         if _excluded_by_vhost(entry, vhosts):
             excluded += 1
             continue
@@ -820,7 +839,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         site = top[0][0] if top else None
     return AnalysisResult(
         profiles=tuple(profiles),
-        skips=SkipStats(total, parsed, skipped, dict(reasons), excluded),
+        skips=SkipStats(total, parsed, skipped, dict(reasons), excluded, out_of_window),
         identity_strategy=strategy.name,
         identity_stats=IdentityStats(client_count, singleton_count, multi_ua_ips),
         rollups={kind: acc.freeze() for kind, acc in rollups.items()},
@@ -829,6 +848,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             for net, kinds in net_rollups.items()
         },
         network_categories=dict(net_categories),
+        skipped_files=skipped_files,
         site=site,
         reference_calibration=calibration,
     )
@@ -840,24 +860,37 @@ def collect_entries(
     strategy: ClientKeyStrategy,
     profiles: Sequence[ClientProfile],
     vhosts: Sequence[str] | None = None,
+    since_seconds: float | None = None,
+    from_latest: bool = False,
+    now: float | None = None,
 ) -> dict[ClientId, tuple[LogEntry, ...]]:
     """Re-read the logs, keeping raw entries only for the given client profiles.
 
     Used by ``inspect`` after analysis has identified which clients to show, so
     only the selected clients' requests are held in memory. A merged verified-bot
     profile is matched by its member IPs rather than by the identity key. ``vhosts``
-    applies the same filter :func:`analyze` did, so a trace never picks up lines
-    the analysis excluded.
+    and the ``since_seconds`` / ``from_latest`` / ``now`` time window apply the same
+    filters :func:`analyze` did, so a trace never picks up lines the analysis
+    excluded. Pass the same ``now`` the analysis used so the window doesn't drift.
     """
     if not profiles:
         return {}
     paths = [logs] if isinstance(logs, Path) else list(logs)
+    paths, window_start = order_logs(
+        paths, parser, since_seconds=since_seconds, from_latest=from_latest, now=now
+    )
     by_key = {p.client_id: p for p in profiles if not p.member_ips}
     by_ip = {ip: p for p in profiles for ip in p.member_ips}
     buckets: dict[ClientId, list[LogEntry]] = {p.client_id: [] for p in profiles}
     for outcome in parser.parse_lines(read_many(paths)):
         entry = outcome.entry
         if entry is None or _excluded_by_vhost(entry, vhosts):
+            continue
+        if (
+            window_start is not None
+            and entry.timestamp is not None
+            and entry.timestamp.timestamp() < window_start
+        ):
             continue
         profile = by_key.get(strategy.key(entry)) or by_ip.get(entry.remote_host)
         if profile is not None:

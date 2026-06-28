@@ -55,11 +55,16 @@ def _header(
         f"- **Source:** `{source}`",
         f"- **Lines:** {skips.total_lines:,} total · {skips.parsed:,} parsed · "
         f"{skips.skipped:,} skipped"
-        + (f" · {skips.excluded:,} excluded (--vhost)" if skips.excluded else ""),
+        + (f" · {skips.excluded:,} excluded (--vhost)" if skips.excluded else "")
+        + (f" · {skips.out_of_window:,} before --since" if skips.out_of_window else ""),
     ]
     if skips.reasons:
         detail = "; ".join(f"{count:,} {reason}" for reason, count in sorted(skips.reasons.items()))
         lines.append(f"  - Skips: {detail}")
+    if result.skipped_files:
+        lines.append(
+            f"- **Skipped:** {count(len(result.skipped_files), 'file')} entirely before --since"
+        )
     lines.extend(
         [
             f"- **Time range:** {fmt_ts(start)} → {fmt_ts(end)}",

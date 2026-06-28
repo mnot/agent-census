@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import re
 import sys
 import time
 from collections.abc import Sequence
@@ -47,8 +48,12 @@ examples:
   # simplest case: a log in the default Apache "combined" format
   agent-census analyze access.log
 
-  # several rotated logs, pooled into one analysis (shell glob is fine)
-  agent-census analyze access.log access.log.1 access.log.2.gz
+  # several rotated logs, pooled into one analysis (any order: they are sorted
+  # into time order by peeking at each file, so a shell glob is fine)
+  agent-census analyze access.log access.log.*
+
+  # only the last week of traffic; logs entirely older than that aren't read
+  agent-census analyze access.log access.log.*.gz --since 1w
 
   # a custom Apache LogFormat, pasted verbatim from your config (quote it!)
   agent-census analyze access.log \\
@@ -97,6 +102,28 @@ def _percent(value: str) -> float:
     return pct
 
 
+_DURATION_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
+
+
+def _duration(value: str) -> float:
+    """An argparse type for a time span like '1w', '36h', '90m' -> seconds.
+
+    A bare number is read as seconds. The unit set (s/m/h/d/w) stops at weeks on
+    purpose: months and years aren't fixed-length, so they'd be a lie here.
+    """
+    match = re.fullmatch(r"(\d+(?:\.\d+)?)\s*([smhdw]?)", value.strip().lower())
+    if match is None:
+        raise argparse.ArgumentTypeError(
+            f"invalid duration {value!r}; use a number with an optional unit "
+            "s/m/h/d/w (e.g. 1w, 36h, 90m)"
+        )
+    number, unit = match.groups()
+    seconds = float(number) * _DURATION_UNITS[unit or "s"]
+    if seconds <= 0:
+        raise argparse.ArgumentTypeError("duration must be positive")
+    return seconds
+
+
 def _add_shared(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "logfiles",
@@ -134,6 +161,22 @@ def _add_shared(parser: argparse.ArgumentParser) -> None:
         help="analyse only lines served for a virtual host matching SUBSTRING "
         "(matched against the logged %%v, else the Host header); scopes a multi-site "
         "log to one site. Repeatable: a line is kept if it matches any --vhost",
+    )
+
+    window_group = parser.add_argument_group("time window (optional)")
+    window_group.add_argument(
+        "--since",
+        type=_duration,
+        metavar="DUR",
+        help="ignore requests older than this span (e.g. 1w, 36h, 90m); a log file "
+        "that falls entirely outside the window is skipped without being read. "
+        "Anchored at the current time by default (see --from-latest)",
+    )
+    window_group.add_argument(
+        "--from-latest",
+        action="store_true",
+        help="anchor --since at the newest timestamp in the logs instead of now -- "
+        "for archived logs whose newest entry is itself in the past",
     )
 
     robots_group = parser.add_argument_group("robots.txt (optional)")
@@ -418,6 +461,9 @@ class _RunContext:
     robots_note: str | None
     elapsed: float
     country_flags: CountryFlags
+    # The wall-clock anchor the analysis used for --since, so inspect's re-read
+    # windows against the same instant rather than drifting by a few seconds.
+    anchor_now: float
 
 
 def _apply_persisted_settings(args: argparse.Namespace) -> None:
@@ -563,6 +609,9 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
     asn_path, country_path = _maxmind_paths(args)
     asn_resolver = open_asn_db(asn_path) if asn_path else None
 
+    # One wall-clock anchor for --since, captured before the run and reused by a
+    # later inspect re-read so its window matches the analysis exactly.
+    anchor_now = time.time()
     start = time.monotonic()
     try:
         result = pipeline.analyze(
@@ -577,6 +626,9 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
             max_per_kind=args.max_per_kind,
             vhosts=args.vhost,
             asn_resolver=asn_resolver,
+            since_seconds=args.since,
+            from_latest=args.from_latest,
+            now=anchor_now,
         )
     finally:
         if asn_resolver is not None:
@@ -601,13 +653,23 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
         robots_note=robots_note,
         elapsed=elapsed,
         country_flags=flags,
+        anchor_now=anchor_now,
     )
 
 
 def _inspect_text(ctx: _RunContext, args: argparse.Namespace) -> str:
     """Render inspect output, collecting raw entries only for the matched clients."""
     selected = select_profiles(ctx.result, client=args.client, kind=args.kind, network=args.network)
-    entries = collect_entries(args.logfiles, ctx.parser, ctx.strategy, selected, vhosts=args.vhost)
+    entries = collect_entries(
+        args.logfiles,
+        ctx.parser,
+        ctx.strategy,
+        selected,
+        vhosts=args.vhost,
+        since_seconds=args.since,
+        from_latest=args.from_latest,
+        now=ctx.anchor_now,
+    )
     selected = [dataclasses.replace(p, entries=entries.get(p.client_id, ())) for p in selected]
     if args.md:
         return render_inspect(selected, limit=args.limit, full=args.full)

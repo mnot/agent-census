@@ -130,6 +130,12 @@ tr:hover td { background: #8881; }
 .hint { font-style: italic; color: var(--muted); font-size: .9rem; margin: .25rem 0 .6rem; }
 .hint code { font-style: normal; }
 .bar { background: #8883; border-radius: 4px; height: .7rem; min-width: 2px; }
+/* Stacked robots-compliance bar. Segments are flex children sized by % width;
+   the track background shows through any gap. cursor:help signals the per-segment
+   count tooltips. */
+.rbar { display: flex; width: 6rem; height: .55rem; border-radius: 3px;
+  overflow: hidden; background: #8883; cursor: help; }
+.rbar > span { height: 100%; min-width: 1px; }
 .card { border: 1px solid #8884; border-radius: 10px; padding: 1rem 1.1rem; margin: 1rem 0; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem;
   word-break: break-all; }

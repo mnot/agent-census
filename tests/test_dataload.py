@@ -38,6 +38,14 @@ def test_ranges_url_loaded() -> None:
     assert spec.ranges_url == "https://openai.com/searchbot.json"
 
 
+def test_user_triggered_flag_loaded() -> None:
+    ai = dict(load_tokens("ai_crawler"))
+    assert ai["ChatGPT-User"].user_triggered is True
+    assert ai["Amzn-User"].user_triggered is True
+    assert ai["GPTBot"].user_triggered is False  # autonomous crawler, default
+    assert dict(load_tokens("search_engine"))["YandexUserproxy"].user_triggered is True
+
+
 def test_browser_releases_load() -> None:
     from datetime import date
 

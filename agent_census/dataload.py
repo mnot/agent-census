@@ -185,6 +185,7 @@ _AGENT_SCHEMA = {
     "asns": "int[]",
     "asn_primary": "bool",
     "rdns_fallback": "bool",
+    "user_triggered": "bool",
 }
 _SOURCE_SCHEMA = {
     "name": "str",
@@ -233,6 +234,10 @@ class CrawlerSpec:
     # isn't reliable: ranges become primary and the domains are only a fallback
     # used when the ranges can't be obtained.
     rdns_fallback: bool = False
+    # The agent fetches on behalf of a present user (a "-User" / on-behalf-of proxy
+    # like ChatGPT-User or Amzn-User), rather than crawling autonomously. Orthogonal
+    # to the kind -- it surfaces as the ``user-triggered`` tag, not a kind of its own.
+    user_triggered: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -415,6 +420,7 @@ def load_tokens(category: str) -> tuple[tuple[str, CrawlerSpec], ...]:
             fmt=entry.get("format", "prefixes"),
             asns=tuple(entry.get("asns", [])),
             rdns_fallback=bool(entry.get("rdns_fallback", False)),
+            user_triggered=bool(entry.get("user_triggered", False)),
         )
         pairs.append((ua, spec))
     return tuple(pairs)

@@ -169,6 +169,22 @@ def names_known_crawler(ua: str | None) -> bool:
     return any(match_category(ua, category) is not None for category in KNOWN_CRAWLER_CATEGORIES)
 
 
+@lru_cache(maxsize=16384)
+def names_user_triggered_agent(ua: str | None) -> bool:
+    """True if the UA names a known agent that fetches on behalf of a present user.
+
+    These are the ``-User`` / on-behalf-of proxies (ChatGPT-User, Amzn-User,
+    YandexUserproxy …) whose spec sets ``user_triggered``. Orthogonal to the kind:
+    such an agent is still an ai_crawler or search_engine, just driven by a live
+    user action rather than autonomous crawling.
+    """
+    for category in KNOWN_CRAWLER_CATEGORIES:
+        match = match_category(ua, category)
+        if match is not None and match[1].user_triggered:
+            return True
+    return False
+
+
 @lru_cache(maxsize=None)
 def _asn_index(category: str) -> dict[int, str]:
     return dict(load_asn_agents(category))

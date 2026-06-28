@@ -112,6 +112,7 @@ domains = ["yandex.com", "yandex.net", "yandex.ru"]
 [[agent]]
 ua_substring = "YandexUserproxy"
 domains = ["yandex.com", "yandex.net", "yandex.ru"]
+user_triggered = true
 
 [[agent]]
 # https://support.apple.com/en-us/119829

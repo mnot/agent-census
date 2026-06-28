@@ -39,7 +39,7 @@ def _robots_summary(rollup: KindRollup) -> str:
     if not (respects or ignores or unknown):
         return "–"
     # respects + ignores + unknown == clients (when robots data is present).
-    return f"{respects}✓ / {ignores}✗ / {unknown}?"
+    return f"{respects:,}✓ / {ignores:,}✗ / {unknown:,}?"
 
 
 def _header(

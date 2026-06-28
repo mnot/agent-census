@@ -189,14 +189,45 @@ def _share_bar(fraction: float) -> str:
     )
 
 
+# Stacked robots-compliance bar: respect (green) / ignore (red) / can't-tell
+# (grey). Each segment carries its own count tooltip; the wrapper carries the
+# full breakdown for hovers that land on a segment border or the rounded ends.
+_ROBOTS_SEGMENTS = (
+    ("respects_robots", "#34a853", "respect"),
+    ("ignores_robots", "#e2574c", "ignore"),
+    ("unknown_robots", "#d0d4da", "can't tell"),
+)
+
+
+def _robots_bar(respects: int, ignores: int, unk: int) -> str:
+    total = respects + ignores + unk
+    if total == 0:
+        return '<span class="muted">–</span>'
+    counts = {"respects_robots": respects, "ignores_robots": ignores, "unknown_robots": unk}
+    segments = []
+    for key, color, label in _ROBOTS_SEGMENTS:
+        seg_count = counts[key]
+        if seg_count == 0:
+            continue
+        pct = seg_count / total * 100
+        seg_title = f"{seg_count:,} {label} ({pct:.0f}%)"
+        segments.append(
+            f'<span style="width:{pct:.3f}%;background:{color}" '
+            f'title="{_esc(seg_title)}"></span>'
+        )
+    summary = f"{respects:,} respect / {ignores:,} ignore / {unk:,} can't tell"
+    return f'<div class="rbar" title="{_esc(summary)}">{"".join(segments)}</div>'
+
+
 def _summary_table(result: AnalysisResult) -> str:
     rollups = result.rollups
     total = sum(r.requests for r in rollups.values()) or 1
     total_bytes = sum(r.total_bytes for r in rollups.values()) or 1
     robots_help = (
-        "✓ respect: requested no disallowed paths\n"
-        "✗ ignore: requested disallowed paths\n"
-        "? can't tell: fewer than 5 requests, or no applicable rule"
+        "Share of clients by robots.txt compliance — hover a bar for counts.\n"
+        "green respect: requested no disallowed paths\n"
+        "red ignore: requested disallowed paths\n"
+        "grey can't tell: fewer than 5 requests, or no applicable rule"
     )
     head = (
         "<tr><th>Kind</th><th class='num'>Clients</th><th class='num'>Requests</th>"
@@ -208,15 +239,10 @@ def _summary_table(result: AnalysisResult) -> str:
         rollup = rollups.get(kind)
         if rollup is None or rollup.clients == 0:
             continue
-        respects, ignores, unk = (
+        robots = _robots_bar(
             rollup.respects_robots,
             rollup.ignores_robots,
             rollup.unknown_robots,
-        )
-        robots = (
-            f"{respects}✓ / {ignores}✗ / {unk}?"
-            if (respects or ignores or unk)
-            else '<span class="muted">–</span>'
         )
         rows.append(
             f'<tr><td><a href="#{kind.value}">{_kind_badge(kind)}</a></td>'

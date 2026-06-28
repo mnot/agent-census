@@ -306,15 +306,25 @@ def human_bytes(num: int) -> str:
 
 
 def human_duration(seconds: float) -> str:
-    """Render a duration in seconds as e.g. ``2h 5m`` or ``45s``."""
+    """Render a duration in seconds as two tiers, e.g. ``1w 3d`` or ``2h 5m``.
+
+    Picks the largest fitting unit (week / day / hour / minute / second) and
+    pairs it with the next one down, but drops that lower unit when it's zero --
+    so a whole week reads ``1w`` rather than ``7d 0h``, and ``3d`` rather than
+    ``3d 0h``.
+    """
     secs = int(seconds)
     if secs < 60:
         return f"{secs}s"
-    if secs < 3600:
-        return f"{secs // 60}m {secs % 60}s"
-    if secs < 86400:
-        return f"{secs // 3600}h {(secs % 3600) // 60}m"
-    return f"{secs // 86400}d {(secs % 86400) // 3600}h"
+    for unit, size in (("w", 604800), ("d", 86400), ("h", 3600), ("m", 60)):
+        if secs >= size:
+            lower, lsize = {"w": ("d", 86400), "d": ("h", 3600), "h": ("m", 60), "m": ("s", 1)}[
+                unit
+            ]
+            high, rem = secs // size, secs % size
+            low = rem // lsize
+            return f"{high}{unit} {low}{lower}" if low else f"{high}{unit}"
+    return f"{secs}s"
 
 
 def fmt_ts(stamp: datetime | None) -> str:

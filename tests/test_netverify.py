@@ -342,9 +342,13 @@ def test_rdns_fallback_impostor_when_dns_also_fails(monkeypatch: pytest.MonkeyPa
 
 def test_verified_bot_ips_merge_into_one_entry(monkeypatch: pytest.MonkeyPatch) -> None:
     # Real Googlebot entry verifies by published range; its IPs collapse to one.
+    # Googlebot declares both ranges and domains, so strict verification also runs
+    # reverse/forward DNS -- stub it so the test never touches the live network.
     monkeypatch.setattr(
         netverify, "_fetch_ranges_text", lambda url, name=None: '{"prefixes": [{"ipv4Prefix": "66.249.66.0/24"}]}'
     )
+    monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: ("crawl.googlebot.com", False))
+    monkeypatch.setattr(netverify, "_forward_ips", lambda host: {f"66.249.66.{i}" for i in range(4)})
     lines = [
         f'66.249.66.{i} - - [10/Oct/2023:13:0{i}:00 -0700] "GET /p{i} HTTP/1.1" 200 100 "-" '
         f'"{GOOGLEBOT}"'

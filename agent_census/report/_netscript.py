@@ -118,6 +118,22 @@ NET_SCRIPT = """
     showcol(colsel.value);
   }
   if(sel) sel.addEventListener('change',function(){paint(sel.value);});
+
+  // Click any number to jump to its kind and filter the client list by its network.
+  // The Kind cell keeps its own anchor (skip it). A network cell carries data-net
+  // (its column index) -> filter that column; a Total-column number has none ->
+  // clear the network filter. A kind row links to its section; the All-kinds row
+  // has no link, so it jumps to the client filter box (the top of the kind list).
+  tab.addEventListener('click',function(ev){
+    var cell=ev.target.closest('td');
+    if(!cell||cell.classList.contains('stick-l')) return;
+    if(window.setNetFilter) window.setNetFilter(cell.getAttribute('data-net'));
+    var link=cell.parentNode.querySelector('a[href^="#"]');
+    var target=link?document.querySelector(link.getAttribute('href')):document.querySelector('input.filter');
+    if(target&&target.scrollIntoView)
+      requestAnimationFrame(function(){target.scrollIntoView({behavior:'smooth',block:'start'});});
+  });
+
   layout(); paint('count'); recomputeOther();
   requestAnimationFrame(function(){ layout(); recomputeOther(); });  // re-measure once laid out
 })();

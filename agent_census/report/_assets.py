@@ -75,6 +75,16 @@ th.vh > span { display: inline-block; writing-mode: vertical-rl;
 .othercue:empty { display: none; }
 .netctl { font-size: .9rem; color: var(--muted); margin: .25rem 0 .6rem; }
 .netctl select { font: inherit; margin-left: .35rem; }
+/* Every cross-tab number jumps to its kind and filters the clients by its network;
+   the Kind label keeps its own anchor, so leave it alone. */
+#nettab td:not(.stick-l) { cursor: pointer; }
+/* Active-network-filter pill beside the client filter box; click / Enter / Space
+   clears it (handled in the page script). */
+.netfilter { display: inline-block; margin-left: .4rem; padding: .15rem .55rem;
+  border-radius: 999px; font-size: .85rem; cursor: pointer; user-select: none;
+  background: color-mix(in srgb, #2563eb 16%, Canvas); border: 1px solid #2563eb88; }
+.netfilter[hidden] { display: none; }
+.netfilter:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
 /* On a phone the cross-tab can't show every network column at readable width, so
    it folds to Kind | one chosen network | Total and the picker swaps the column
    in place (same idea as the desktop "break out" control). Desktop shows all. */
@@ -197,11 +207,27 @@ document.addEventListener('click', function (event) {
   });
 }, false);
 
-document.addEventListener('input', function (event) {
-  var input = event.target;
-  if (!input.classList || !input.classList.contains('filter')) return;
-  var query = input.value.trim().toLowerCase();
-  var on = query.length > 0;
+// The client list answers to two filters at once: the text box and a network
+// column picked by clicking a "Requests by kind and network" number. A row shows
+// only when it matches both (network is null = any). activeNet is a column-index
+// string matching the cross-tab cells' data-net / the rows' data-netcol.
+var activeNet = null;
+
+function netName(idx) {
+  var th = document.querySelector('#nettab th[data-net="' + idx + '"]');
+  if (!th) return 'network ' + idx;
+  var span = th.querySelector('span');
+  return (span ? span.textContent : th.textContent).trim();
+}
+function rowInNet(row, idx) {
+  var attr = row.getAttribute('data-netcol');
+  return !!attr && (' ' + attr + ' ').indexOf(' ' + idx + ' ') !== -1;
+}
+
+function applyFilters() {
+  var input = document.querySelector('input.filter');
+  var query = input ? input.value.trim().toLowerCase() : '';
+  var on = query.length > 0 || activeNet !== null;
   // While filtering, force every "Show more" disclosure open so hidden matches
   // surface, and suspend the exclusive-accordion name= so all stay open at once;
   // restore both (name re-applied, disclosures re-collapsed) when cleared.
@@ -211,11 +237,13 @@ document.addEventListener('input', function (event) {
     if (det.hasAttribute(from)) { det.setAttribute(to, det.getAttribute(from)); det.removeAttribute(from); }
     det.open = on;
   }
-  // Toggle every client row across every kind against the one query.
+  // Toggle every client row across every kind against the text query AND the network.
   var rows = document.querySelectorAll('tr.frow');
   for (var i = 0; i < rows.length; i++) {
     var hay = rows[i].getAttribute('data-filter') || '';
-    rows[i].style.display = hay.indexOf(query) === -1 ? 'none' : '';
+    var textok = query === '' || hay.indexOf(query) !== -1;
+    var netok = activeNet === null || rowInNet(rows[i], activeNet);
+    rows[i].style.display = (textok && netok) ? '' : 'none';
   }
   // Collapse a section (header and all) or an emptied disclosure when no client
   // row in it survives the filter; restore when cleared.
@@ -224,18 +252,55 @@ document.addEventListener('input', function (event) {
     var live = boxes[b].querySelectorAll('tr.frow:not([style*="none"])');
     boxes[b].style.display = (!on || live.length) ? '' : 'none';
   }
-  // When a query hides every client, say so -- otherwise the client area just
+  // When the filters hide every client, say so -- otherwise the client area just
   // collapses to nothing and the reader can't tell a narrow query from a bug.
   var msg = document.getElementById('nomatch');
   if (msg) {
     if (on && !document.querySelector('tr.frow:not([style*="none"])')) {
-      msg.textContent = 'No clients match \\u201c' + input.value.trim() + '\\u201d.';
+      var bits = [];
+      if (query) bits.push('\\u201c' + (input ? input.value.trim() : '') + '\\u201d');
+      if (activeNet !== null) bits.push('the ' + netName(activeNet) + ' network');
+      msg.textContent = 'No clients match ' + bits.join(' in ') + '.';
       msg.hidden = false;
     } else {
       msg.hidden = true;
     }
   }
+  // The pill shows / hides the active network filter.
+  var chip = document.getElementById('netfilter');
+  if (chip) {
+    if (activeNet !== null) {
+      chip.textContent = 'Network: ' + netName(activeNet) + '  \\u00d7';
+      chip.title = 'Clear network filter';
+      chip.hidden = false;
+    } else {
+      chip.textContent = '';
+      chip.hidden = true;
+    }
+  }
   markScrollables();  // hiding rows can change a table's width and overflow
+}
+
+// Called by the cross-tab click handler (in the network-table script); pass null
+// to clear. Exposed on window so the two scripts stay decoupled.
+window.setNetFilter = function (idx) {
+  activeNet = (idx === null || idx === undefined || idx === '') ? null : String(idx);
+  applyFilters();
+};
+
+document.addEventListener('input', function (event) {
+  if (event.target.classList && event.target.classList.contains('filter')) applyFilters();
+}, false);
+
+// Clear the network filter from its pill (click, or Enter / Space for keyboard).
+document.addEventListener('click', function (event) {
+  if (event.target.closest('#netfilter')) window.setNetFilter(null);
+}, false);
+document.addEventListener('keydown', function (event) {
+  if (!event.target.closest || !event.target.closest('#netfilter')) return;
+  if (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar') {
+    event.preventDefault(); window.setNetFilter(null);
+  }
 }, false);
 
 // Make a table's horizontal-scroll track keyboard-operable, but ONLY while it

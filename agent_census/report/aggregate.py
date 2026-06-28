@@ -179,9 +179,10 @@ def time_range(
 MAX_DATACENTER_COLUMNS = 6
 
 # A folded datacentre is offered in the HTML "break out" selector only if it
-# carries at least this share of total traffic; the long tail below it stays in
-# the aggregate but is not individually selectable.
-BREAKOUT_MIN_SHARE = 0.05
+# carries at least this share of *some single kind's* traffic; the long tail below
+# it stays in the aggregate but is not individually selectable. Keyed per kind (not
+# overall) so a provider concentrated in one category still surfaces.
+BREAKOUT_MIN_SHARE = 0.10
 
 
 @dataclass(frozen=True)
@@ -224,8 +225,9 @@ def network_matrix(
     network beyond residential appears (the table would be a single column).
 
     ``collapsed`` reports the folded providers worth offering in the HTML break-out
-    selector -- those carrying at least ``min_breakout_share`` of total traffic --
-    so the long tail below that floor stays aggregated but off the menu.
+    selector -- those carrying at least ``min_breakout_share`` of *some single
+    kind's* traffic -- so the long tail below that floor stays aggregated but off
+    the menu, while a provider concentrated in one category still surfaces.
     """
     if not any(cat != "residential" for cat in network_categories.values()):
         return None
@@ -258,14 +260,22 @@ def network_matrix(
             if net in collapsed:
                 folded[net][kind] += rollup.requests
 
-    # Collapsed datacentres big enough to be worth offering, biggest-first, so the
-    # HTML can break each out in place of the aggregated Other column. The long
-    # tail below the share floor stays folded but off the selector.
-    floor = min_breakout_share * sum(net_total.values())
+    # Collapsed datacentres worth offering, biggest-first, so the HTML can break
+    # each out in place of the aggregated Other column. A provider qualifies when it
+    # carries at least ``min_breakout_share`` of *some kind's* traffic -- so one
+    # concentrated in a single category still surfaces even when it is a sliver of
+    # overall volume. The long tail below that floor stays folded but off the menu.
+    def clears_floor(net: str) -> bool:
+        return any(
+            count >= min_breakout_share * row_totals[kind]
+            for kind, count in folded[net].items()
+            if row_totals[kind]
+        )
+
     collapsed_breakdown = tuple(
         (net, dict(folded[net]))
         for net in sorted(folded, key=lambda n: net_total.get(n, 0), reverse=True)
-        if net_total.get(net, 0) >= floor
+        if clears_floor(net)
     )
 
     # Group hosting on the left (named providers biggest-first, then the Other

@@ -289,10 +289,11 @@ def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argumen
     analyze_out.add_argument(
         "--breakout-min-pct",
         type=_percent,
-        default=5.0,
+        default=10.0,
         metavar="PCT",
         help="HTML report: smallest folded datacentre offered in the network "
-        "table's break-out selector, as a %% of total traffic (default: 5)",
+        "table's break-out selector, as a %% of any single kind's traffic "
+        "(default: 10)",
     )
 
     calibrate = sub.add_parser(

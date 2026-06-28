@@ -11,12 +11,15 @@ from agent_census.model import (
     Kind,
     VerificationStatus,
 )
+import pytest
+
 from agent_census.report.format import (
     as_label,
     client_label,
     count,
     elide_ua,
     feature_rows,
+    human_duration,
     top_evidence,
     truncate,
 )
@@ -132,3 +135,22 @@ def test_count_pluralises_to_match() -> None:
     assert count(3, "member IP") == "3 member IPs"
     assert count(1234, "request") == "1,234 requests"  # thousands separator kept
     assert count(1, "IP", "IPs") == "1 IP"  # explicit plural for an irregular noun
+
+
+@pytest.mark.parametrize(
+    "seconds,text",
+    [
+        (45, "45s"),
+        (90, "1m 30s"),
+        (300, "5m"),  # a zero trailing unit is dropped, not shown as "5m 0s"
+        (3600, "1h"),
+        (3900, "1h 5m"),
+        (3 * 86400, "3d"),
+        (3 * 86400 + 4 * 3600, "3d 4h"),
+        (604800, "1w"),  # a whole week, not "7d 0h"
+        (604800 + 3 * 86400, "1w 3d"),
+        (14 * 86400, "2w"),
+    ],
+)
+def test_human_duration(seconds: int, text: str) -> None:
+    assert human_duration(seconds) == text

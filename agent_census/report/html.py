@@ -233,7 +233,7 @@ def _summary_table(result: AnalysisResult) -> str:
     head = (
         "<tr><th>Kind</th><th class='num'>Clients</th><th class='num'>Requests</th>"
         "<th>Req share</th><th class='num'>Avg/client</th><th class='num'>Bandwidth</th>"
-        f'<th>BW share</th><th title="{_esc(robots_help)}">robots ⓘ</th></tr>'
+        f'<th>BW share</th><th title="{_esc(robots_help)}">robots.txt compliance ⓘ</th></tr>'
     )
     rows = []
     for kind in KIND_ORDER:

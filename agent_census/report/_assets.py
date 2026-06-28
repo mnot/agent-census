@@ -142,7 +142,15 @@ tr:hover td { background: #8881; }
 .spark { display: block; width: 200px; max-width: 100%; height: 26px; }
 .spark rect { fill: color-mix(in srgb, CanvasText 66%, Canvas); }
 .spark .sparkbase { stroke: #8884; stroke-width: 1; }
-.spark-cap { color: var(--muted); font-size: .82rem; margin-top: .15rem; max-width: 200px; }
+/* anywhere: probe paths are long unbroken tokens (e.g. /wp-content/.../wp_file…)
+   with no spaces; without this the caption blows past max-width and drags the
+   column -- and the whole table -- wider than the page. */
+.spark-cap { color: var(--muted); font-size: .82rem; margin-top: .15rem;
+  max-width: 200px; overflow-wrap: anywhere; }
+/* Pin the request-pattern column near the sparkline's own width so the glyph
+   keeps its full size and the (greedier) Tags column yields the surplus instead
+   of squeezing the sparkline to a sliver. */
+td.reqpat, th.reqpat { width: 220px; }
 .card { border: 1px solid #8884; border-radius: 10px; padding: 1rem 1.1rem; margin: 1rem 0; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem;
   word-break: break-all; }

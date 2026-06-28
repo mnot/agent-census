@@ -467,17 +467,20 @@ def _network_table(matrix: NetworkMatrix | None) -> str:
 
 
 def _section_head(window: _Window) -> str:
-    """The client-table header row. The request-pattern column names the span its
-    shared x-axis covers (every sparkline in the report is drawn against it), with
-    the exact start -> end on hover."""
-    span = ""
+    """The client-table header row. The request-pattern column reads "Requests over
+    <span>", naming the span its shared x-axis covers (every sparkline in the report
+    is drawn against it), with the exact start -> end on hover. Phrasing it as a
+    single line keeps the header from wrapping a parenthetical mid-word."""
+    title = ""
+    detail = "time"
     if window is not None:
-        duration = human_duration((window[1] - window[0]).total_seconds())
+        detail = human_duration((window[1] - window[0]).total_seconds())
         full = f"shared sparkline axis: {fmt_ts(window[0])} → {fmt_ts(window[1])}"
-        span = f" <span class='muted' title=\"{_esc(full)}\">({_esc(duration)})</span>"
+        title = f' title="{_esc(full)}"'
+    span = f"<span class='muted'{title}>{_esc(detail)}</span>"
     return (
         "<tr><th>Client</th><th class='num'>Requests</th><th class='num'>Bandwidth</th>"
-        f"<th class='num'>Conf.</th><th>Tags</th><th>Request pattern{span}</th></tr>"
+        f"<th class='num'>Conf.</th><th>Tags</th><th class='reqpat'>Requests over {span}</th></tr>"
     )
 
 
@@ -535,7 +538,7 @@ def _client_row(
         f"<td class='num'>{profile.features.request_count:,}</td>"
         f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
         f"<td class='num'>{cls.confidence:.0%}</td>"
-        f"<td>{_tags_html(cls.tags)}</td><td>{pattern}</td></tr>"
+        f"<td>{_tags_html(cls.tags)}</td><td class='reqpat'>{pattern}</td></tr>"
     )
 
 
@@ -562,7 +565,7 @@ def _member_tr(profile: ClientProfile, flag: str = "", window: _Window = None) -
         f"{flag}<span class='mono'>{_esc(prefix)}</span>{asn_html}</td>"
         f"<td class='num'>{profile.features.request_count:,}</td>"
         f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
-        f"<td></td><td></td><td>{_member_pattern(profile, window)}</td></tr>"
+        f"<td></td><td></td><td class='reqpat'>{_member_pattern(profile, window)}</td></tr>"
     )
 
 
@@ -615,7 +618,7 @@ def _folded_tbody(
         f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
         f"<td class='num'>{cls.confidence:.0%}</td>"
         f"<td>{_tags_html(cls.tags)}</td>"
-        f"<td>{pattern}</td></tr>"
+        f"<td class='reqpat'>{pattern}</td></tr>"
     )
     cf = flags or CountryFlags()
     rows = "".join(_ip_member_tr(ip, _flag_html(cf.for_ip(ip))) for ip in members)
@@ -687,7 +690,7 @@ def _actor_tbody(
         f"<td class='num'>{actor.requests:,}</td>"
         f"<td class='num'>{human_bytes(actor.total_bytes)}</td>"
         f"<td class='num'>{cls.confidence:.0%}</td>"
-        f"<td>{_tags_html(cls.tags)}</td><td>{pattern}</td></tr>"
+        f"<td>{_tags_html(cls.tags)}</td><td class='reqpat'>{pattern}</td></tr>"
     )
     members = "".join(
         _member_tr(m, _flag_html(cf.for_member(m.client_id)), window) for m in actor.members

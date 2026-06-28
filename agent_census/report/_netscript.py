@@ -4,8 +4,9 @@ Three jobs: the counts/% toggle (``#netmode``) that repaints the heat map down
 columns or across rows; pinning the Kind column (left) and the Other / off-network
 / Total columns (right) while the named-datacentre columns scroll between them; and
 keeping the pinned "Other datacenters" column live -- it tallies the folded tail
-plus whatever datacentre columns are currently scrolled out of view, with a ``+N``
-header cue. On a phone the table folds to one column instead (see the media query),
+plus whatever datacentre columns are still scrolled off to the right (not yet
+revealed), with a ``+N`` header cue. On a phone the table folds to one column
+instead (see the media query),
 so the pinning and live tally switch off there.
 """
 
@@ -61,7 +62,7 @@ NET_SCRIPT = """
     rightW=Math.ceil(acc);
   }
 
-  // --- live "Other datacenters": fold in datacentre columns scrolled out of view.
+  // --- live "Other datacenters": fold in datacentre columns scrolled off to the right.
   var otherCells=[].slice.call(tab.querySelectorAll('td.othercol'));
   var otherTot=tab.querySelector('td.othertot');
   var cue=tab.querySelector('.othercue');

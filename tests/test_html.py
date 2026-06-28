@@ -326,10 +326,15 @@ def _spark_profile(
 
 
 def test_report_html_has_request_pattern_column() -> None:
-    # The cadence sparkline replaces the old free-text evidence column.
+    # The cadence sparkline replaces the old free-text evidence column, and its
+    # header conveys the shared time span the x-axis covers.
     html = render_report_html(_run(), source="sample")
-    assert "<th>Request pattern</th>" in html
+    assert "<th>Request pattern" in html
     assert "Top evidence" not in html
+    # The span the sparklines share is named in the header (e.g. "(2h 5m)") with
+    # the exact range on hover.
+    assert "shared sparkline axis:" in html
+    assert re.search(r"Request pattern <span class='muted' title=\"[^\"]+\">\([^)]+\)</span>", html)
 
 
 def test_client_row_renders_sparkline_with_caption() -> None:

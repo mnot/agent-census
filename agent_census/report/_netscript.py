@@ -1,9 +1,12 @@
 """Client-side script for the "Requests by kind and network" table.
 
-Drives two controls: the counts/% toggle (``#netmode``) that repaints the heat
-map down columns or across rows, and the break-out selector (``#netbreakout``)
-that swaps the aggregated "Other datacenters" column for a single folded-in
-provider's per-kind numbers.
+Three jobs: the counts/% toggle (``#netmode``) that repaints the heat map down
+columns or across rows; pinning the Kind column (left) and the Other / off-network
+/ Total columns (right) while the named-datacentre columns scroll between them; and
+keeping the pinned "Other datacenters" column live -- it tallies the folded tail
+plus whatever datacentre columns are currently scrolled out of view, with a ``+N``
+header cue. On a phone the table folds to one column instead (see the media query),
+so the pinning and live tally switch off there.
 """
 
 from __future__ import annotations
@@ -12,7 +15,8 @@ NET_SCRIPT = """
 <script>
 (function(){
   var tab=document.getElementById('nettab'); if(!tab) return;
-  var sel=document.getElementById('netmode'); if(!sel) return;
+  var track=tab.parentNode;
+  var sel=document.getElementById('netmode');
   var cells=[].slice.call(tab.querySelectorAll('td.mxcell'));
   var byRow={}, byCol={};
   cells.forEach(function(c){
@@ -20,54 +24,95 @@ NET_SCRIPT = """
     (byRow[r]=byRow[r]||[]).push(c);
     (byCol[col]=byCol[col]||[]).push(c);
   });
+  function red(a){ return 'linear-gradient(rgba(220,38,38,'+a+'),rgba(220,38,38,'+a+'))'; }
+  // Heat is a background-IMAGE layer over each cell's opaque base, so a pinned cell
+  // stays solid above the columns scrolling behind it.
   function paint(mode){
     var groups=(mode==='col')?byCol:byRow;
-    cells.forEach(function(c){c.style.background='';c.style.fontWeight='';});
+    cells.forEach(function(c){c.style.backgroundImage='';c.style.fontWeight='';});
     Object.keys(groups).forEach(function(k){
       var g=groups[k], tot=0, mx=0;
       g.forEach(function(c){tot+=c._v; if(c._v>mx)mx=c._v;});
       g.forEach(function(c){
         var v=c._v;
-        c.textContent = (mode==='count') ? (v?v.toLocaleString():'\\u2013')
-                                         : ((v&&tot)?Math.round(v/tot*100)+'%':'\\u2013');
-        if(v>0&&mx>0) c.style.background='rgb(var(--heat) / '+(v/mx*0.8).toFixed(3)+')';
+        c.textContent=(mode==='count')?(v?v.toLocaleString():'\\u2013')
+                                       :((v&&tot)?Math.round(v/tot*100)+'%':'\\u2013');
+        if(v>0&&mx>0){var a=(v/mx*0.8).toFixed(3);
+          c.style.backgroundImage='linear-gradient(rgb(var(--heat) / '+a+'),rgb(var(--heat) / '+a+'))';}
         if(v>0&&v===mx) c.style.fontWeight='500';
       });
     });
   }
-  var bsel=document.getElementById('netbreakout');
-  var bdataEl=document.getElementById('netbreakdata');
-  if(bsel&&bdataEl){
-    var bdata=JSON.parse(bdataEl.textContent);
-    var others=[].slice.call(tab.querySelectorAll('td.othercol'));
-    var otot=tab.querySelector('td.othertot');
-    var ohd=document.getElementById('netotherhd');
-    var ohdspan=ohd?ohd.querySelector('span'):null;  // header text lives in a span (vertical header)
-    var oname=ohdspan?ohdspan.textContent:'';
-    bsel.addEventListener('change',function(){
-      var name=bsel.value, m=name?bdata[name]:null, sum=0;
-      others.forEach(function(c){
-        var v=name?(m[c.getAttribute('data-kind')]||0):(+c.getAttribute('data-agg'));
-        c._v=v; sum+=v;
-      });
-      if(otot){var tv=name?sum:(+otot.getAttribute('data-agg'));otot.textContent=tv.toLocaleString();}
-      if(ohdspan) ohdspan.textContent=name||oname;
-      paint(sel.value);
-    });
+
+  // --- pinned-column geometry: set each right-pinned column's offset, measure the
+  //     left/right frozen widths used to decide which datacentre columns are hidden.
+  var headRow=tab.rows[0];
+  var stickR=[].slice.call(headRow.cells).filter(function(c){return c.classList.contains('stick-r');});
+  var leftW=0, rightW=0;
+  function isPhone(){ return window.matchMedia && window.matchMedia('(max-width: 640px)').matches; }
+  function layout(){
+    if(isPhone()){ leftW=0; rightW=0; return; }
+    leftW=headRow.cells[0].getBoundingClientRect().width;
+    var acc=0;
+    for(var i=stickR.length-1;i>=0;i--){
+      var ci=stickR[i].cellIndex, off=Math.ceil(acc);  // ceil so pinned columns overlap, not gap
+      for(var r=0;r<tab.rows.length;r++){var cell=tab.rows[r].cells[ci]; if(cell) cell.style.right=off+'px';}
+      acc+=stickR[i].getBoundingClientRect().width;
+    }
+    rightW=Math.ceil(acc);
   }
+
+  // --- live "Other datacenters": fold in datacentre columns scrolled out of view.
+  var otherCells=[].slice.call(tab.querySelectorAll('td.othercol'));
+  var otherTot=tab.querySelector('td.othertot');
+  var cue=tab.querySelector('.othercue');
+  var dcsHd=[].slice.call(tab.querySelectorAll('th.dcs'));
+  function rowSum(row, base, hidden){
+    var s=base; for(var k in hidden){var c=row.cells[k]; if(c) s+=(+c.getAttribute('data-v')||0);} return s;
+  }
+  function recomputeOther(){
+    if(!otherCells.length) return;
+    if(isPhone()){  // folded view: Other is just its static tail
+      otherCells.forEach(function(oc){oc._v=+oc.getAttribute('data-agg');});
+      if(otherTot) otherTot.textContent=(+otherTot.getAttribute('data-agg')).toLocaleString();
+      if(cue) cue.textContent='';
+      paint(sel?sel.value:'count'); return;
+    }
+    var tr=track.getBoundingClientRect(), bandL=tr.left+leftW, bandR=tr.right-rightW;
+    var hidden={}, n=0;
+    dcsHd.forEach(function(th){
+      var r=th.getBoundingClientRect();
+      if(r.width && (r.right<=bandL+0.5 || r.left>=bandR-0.5)){ hidden[th.cellIndex]=1; n++; }
+    });
+    otherCells.forEach(function(oc){ oc._v=rowSum(oc.parentNode, +oc.getAttribute('data-agg'), hidden); });
+    if(otherTot){
+      var t=rowSum(otherTot.parentNode, +otherTot.getAttribute('data-agg'), hidden);
+      otherTot.textContent=t.toLocaleString();
+      var peak=+otherTot.getAttribute('data-peak')||0;
+      otherTot.style.backgroundImage=(peak>0&&t>0)?red((Math.min(t/peak,1)*0.8).toFixed(3)):'';
+    }
+    if(cue) cue.textContent=n?('+'+n):'';
+    paint(sel?sel.value:'count');
+  }
+
+  var raf=0;
+  function onScroll(){ if(raf) return; raf=requestAnimationFrame(function(){raf=0; recomputeOther();}); }
+  function onResize(){ if(raf) return; raf=requestAnimationFrame(function(){raf=0; layout(); recomputeOther();}); }
+  track.addEventListener('scroll', onScroll, {passive:true});
+  window.addEventListener('resize', onResize);
+
   // Phone column picker: show only the chosen network column (CSS hides the rest
   // below the breakpoint; on desktop every column shows and this is a no-op).
   var colsel=document.getElementById('netcol');
   if(colsel){
     var colcells=[].slice.call(tab.querySelectorAll('[data-net]'));
-    function showcol(idx){
-      colcells.forEach(function(c){c.classList.toggle('colshow',c.getAttribute('data-net')===idx);});
-    }
+    function showcol(idx){ colcells.forEach(function(c){c.classList.toggle('colshow',c.getAttribute('data-net')===idx);}); }
     colsel.addEventListener('change',function(){showcol(colsel.value);});
     showcol(colsel.value);
   }
-  sel.addEventListener('change',function(){paint(sel.value);});
-  paint('count');
+  if(sel) sel.addEventListener('change',function(){paint(sel.value);});
+  layout(); paint('count'); recomputeOther();
+  requestAnimationFrame(function(){ layout(); recomputeOther(); });  // re-measure once laid out
 })();
 </script>
 """.strip()

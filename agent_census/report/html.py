@@ -9,7 +9,6 @@ external assets, no dependencies.
 from __future__ import annotations
 
 import html
-import json
 
 from .. import __version__
 from ..model import Classification, ClientProfile, Kind
@@ -105,7 +104,10 @@ _NETWORK_HELP: dict[str, str] = {
     "VPNs": "Consumer VPN exit pools (e.g. NordVPN) — many users behind a shared address pool.",
     "Corporate proxies": "Enterprise security gateways / SASE fronting a company's users "
     "(Zscaler, Netskope).",
-    OTHER_HOSTING: "Hosting providers too small for their own column, folded together.",
+    OTHER_HOSTING: (
+        "Hosting providers too small for their own column, plus any datacentre "
+        "columns currently scrolled out of view, tallied together."
+    ),
     RESIDENTIAL_NETWORK: "Consumer ISP, mobile, and otherwise unrecognised networks.",
 }
 
@@ -250,8 +252,9 @@ def _network_table(result: AnalysisResult, *, breakout_min_share: float) -> str:
     if matrix is None:
         return ""
     nets = matrix.networks
-    # The first non-hosting column gets the thick hosted|off-network rule; the
-    # Total column gets one too. Non-hosting headers carry a faint grey wash.
+    has_other = OTHER_HOSTING in nets
+    # The first non-hosting column gets the thick hosted|off-network rule. Non-hosting
+    # headers carry a faint grey wash.
     first_off = next((i for i, n in enumerate(nets) if not matrix.is_hosting(n)), None)
 
     def div(i: int) -> str:
@@ -261,15 +264,29 @@ def _network_table(result: AnalysisResult, *, breakout_min_share: float) -> str:
         desc = _network_title(net, matrix.categories.get(net, ""))
         return f' title="{_esc(desc)}"' if desc else ""
 
+    def is_dc(net: str) -> bool:
+        return matrix.is_hosting(net) and net != OTHER_HOSTING
+
+    # Column roles. Named datacentres scroll horizontally (class ``dcs``); the pinned
+    # "Other datacenters", the off-network columns and Total stay put (``stick-r``),
+    # as does Kind on the left (``stick-l``). Other reads as part of the datacentre
+    # group, so the heavy group rule sits after it (the ``netdiv`` before off-network).
+    def role(net: str) -> str:
+        return " dcs" if is_dc(net) else " stick-r"
+
     def hd(i: int, net: str) -> str:
-        cls = f"num vh{div(i)}" + ("" if matrix.is_hosting(net) else " netoff")
+        cls = f"num vh{div(i)}{role(net)}" + ("" if matrix.is_hosting(net) else " netoff")
         hid = " id='netotherhd'" if net == OTHER_HOSTING else ""
-        return f"<th class='{cls}'{hid}{title(net)} data-net='{i}'><span>{_esc(net)}</span></th>"
+        cue = "<b class='othercue' aria-hidden='true'></b>" if net == OTHER_HOSTING else ""
+        return (
+            f"<th class='{cls}'{hid}{title(net)} data-net='{i}'>"
+            f"<span>{_esc(net)}</span>{cue}</th>"
+        )
 
     head = (
-        "<tr><th>Kind</th>"
+        "<tr><th class='stick-l'>Kind</th>"
         + "".join(hd(i, n) for i, n in enumerate(nets))
-        + "<th class='num netdiv'>Total</th></tr>"
+        + "<th class='num netdiv stick-r'>Total</th></tr>"
     )
 
     # The Total column and All-kinds row carry their own (red) heat, keyed to the
@@ -277,56 +294,55 @@ def _network_table(result: AnalysisResult, *, breakout_min_share: float) -> str:
     peak_row = max(matrix.row_totals.values(), default=0)
     peak_col = max(matrix.col_totals.values(), default=0)
 
-    def red(value: int, peak: int) -> str:
+    def heat(value: int, peak: int) -> str:
+        # Red magnitude heat as a background-IMAGE (over the cell's opaque base) so a
+        # pinned cell stays solid above the datacentre columns scrolling behind it.
         if value <= 0 or peak <= 0:
             return ""
-        return f' style="background:rgba(220,38,38,{value / peak * 0.8:.3f})"'
+        alpha = value / peak * 0.8
+        return (
+            ' style="background-image:linear-gradient('
+            f"rgba(220,38,38,{alpha:.3f}),rgba(220,38,38,{alpha:.3f}))\""
+        )
 
-    def cell_extra(net: str, kind: Kind) -> str:
-        # Tag the Other-datacentre cells so the break-out control can rewrite them.
+    def cell_cls(i: int, net: str) -> str:
+        return f"num mxcell{div(i)}{role(net)}" + (" othercol" if net == OTHER_HOSTING else "")
+
+    def cell_attrs(net: str, kind: Kind) -> str:
+        # The pinned Other body cells fold in whatever datacentre columns are scrolled
+        # out of view; data-agg is the static folded tail those are added onto.
         if net != OTHER_HOSTING:
             return ""
-        return f" othercol' data-kind='{kind.value}' data-agg='{matrix.cell(net, kind)}"
+        return f" data-kind='{kind.value}' data-agg='{matrix.cell(net, kind)}'"
 
     rows = []
     for kind in matrix.kinds:
         cells = "".join(
-            f"<td class='num mxcell{div(i)}{cell_extra(n, kind)}' data-v='{matrix.cell(n, kind)}'"
-            f" data-net='{i}'>{_num(matrix.cell(n, kind))}</td>"
+            f"<td class='{cell_cls(i, n)}' data-v='{matrix.cell(n, kind)}' "
+            f"data-net='{i}'{cell_attrs(n, kind)}>{_num(matrix.cell(n, kind))}</td>"
             for i, n in enumerate(nets)
         )
         rows.append(
-            f'<tr><td><a href="#{kind.value}">{_kind_badge(kind)}</a></td>'
-            f"{cells}<td class='num netdiv'{red(matrix.row_totals[kind], peak_row)}>"
+            f'<tr><td class="stick-l"><a href="#{kind.value}">{_kind_badge(kind)}</a></td>'
+            f"{cells}<td class='num netdiv stick-r'{heat(matrix.row_totals[kind], peak_row)}>"
             f"{matrix.row_totals[kind]:,}</td></tr>"
         )
 
     def total_cell(i: int, net: str) -> str:
         col = matrix.col_totals[net]
-        # Only the swappable Other column needs its aggregate stashed for restore.
-        tag = f" othertot' data-agg='{col}" if net == OTHER_HOSTING else ""
-        return f"<td class='num{div(i)}{tag}'{red(col, peak_col)} data-net='{i}'>{col:,}</td>"
+        cls = f"num{div(i)}{role(net)}" + (" othertot" if net == OTHER_HOSTING else "")
+        # The pinned Other total grows as datacentres scroll out of view; stash its
+        # aggregate (folded tail) and the peak so the script can re-tally and re-heat.
+        agg = f" data-agg='{col}' data-peak='{peak_col}'" if net == OTHER_HOSTING else ""
+        return f"<td class='{cls}'{heat(col, peak_col)} data-net='{i}'{agg}>{col:,}</td>"
 
     totals = "".join(total_cell(i, n) for i, n in enumerate(nets))
     rows.append(
-        "<tr class='netall'><td><strong>All kinds</strong></td>"
-        f"{totals}<td class='num netdiv' style=\"background:rgba(220,38,38,0.8)\">"
+        "<tr class='netall'><td class='stick-l'><strong>All kinds</strong></td>"
+        f"{totals}<td class='num netdiv stick-r'"
+        ' style="background-image:linear-gradient(rgba(220,38,38,0.8),rgba(220,38,38,0.8))">'
         f"{matrix.total:,}</td></tr>"
     )
-    breakout = ""
-    if matrix.collapsed:
-        data = {name: {k.value: v for k, v in counts.items()} for name, counts in matrix.collapsed}
-        blob = json.dumps(data, separators=(",", ":")).replace("<", "\\u003c")
-        opts = "".join(
-            f"<option value='{_esc(name)}'>{_esc(name)} ({sum(counts.values()):,})</option>"
-            for name, counts in matrix.collapsed
-        )
-        breakout = (
-            " <label>Break out <select id='netbreakout'>"
-            f"<option value=''>{_esc(OTHER_HOSTING)} (all)</option>{opts}"
-            "</select></label>"
-            f"<script type='application/json' id='netbreakdata'>{blob}</script>"
-        )
     # Phone fallback: a picker for the single network column shown when the matrix
     # folds (see the .netcolctl media query). Defaults to the busiest network.
     colpick = ""
@@ -345,18 +361,19 @@ def _network_table(result: AnalysisResult, *, breakout_min_share: float) -> str:
         "<option value='count'>counts</option>"
         "<option value='row'>% of kind</option>"
         "<option value='col'>% of network</option>"
-        "</select></label>" + breakout + colpick + "</div>"
+        "</select></label>" + colpick + "</div>"
     )
     # The spatial guidance only makes sense with every column visible (desktop);
     # on a phone the table folds to one network, so swap in a note about the picker.
     spatial = (
         "Hosting reads left of the thick rule, off-network "
-        "(relays / Tor / residential) to its right; smallest hosters fold into "
-        f"“{_esc(OTHER_HOSTING)}”"
+        "(relays / Tor / residential) to its right."
         + (
-            ", and the break-out control swaps that column to show one of them on its own."
-            if matrix.collapsed
-            else "."
+            " The named datacentres scroll horizontally; the smallest fold into the "
+            f"pinned “{_esc(OTHER_HOSTING)}” column, which tallies whatever is scrolled "
+            "out of view."
+            if has_other
+            else ""
         )
     )
     narrow = (

@@ -189,12 +189,12 @@ def _share_bar(fraction: float) -> str:
     )
 
 
-# Stacked robots-compliance bar: respect (green) / ignore (red) / can't-tell
-# (grey). Each segment carries its own count tooltip; the wrapper carries the
-# full breakdown for hovers that land on a segment border or the rounded ends.
+# Stacked robots-compliance bar: respect (green) / violate (red) / can't-tell
+# (grey). Only the wrapper carries a tooltip — the full three-way breakdown —
+# so a hover anywhere on the bar shows every count, even on a thin slice.
 _ROBOTS_SEGMENTS = (
     ("respects_robots", "#34a853", "respect"),
-    ("ignores_robots", "#e2574c", "ignore"),
+    ("ignores_robots", "#e2574c", "violate"),
     ("unknown_robots", "#d0d4da", "can't tell"),
 )
 
@@ -205,17 +205,15 @@ def _robots_bar(respects: int, ignores: int, unk: int) -> str:
         return '<span class="muted">–</span>'
     counts = {"respects_robots": respects, "ignores_robots": ignores, "unknown_robots": unk}
     segments = []
-    for key, color, label in _ROBOTS_SEGMENTS:
+    for key, color, _label in _ROBOTS_SEGMENTS:
         seg_count = counts[key]
         if seg_count == 0:
             continue
         pct = seg_count / total * 100
-        seg_title = f"{seg_count:,} {label} ({pct:.0f}%)"
         segments.append(
-            f'<span style="width:{pct:.3f}%;background:{color}" '
-            f'title="{_esc(seg_title)}"></span>'
+            f'<span style="width:{pct:.3f}%;background:{color}"></span>'
         )
-    summary = f"{respects:,} respect / {ignores:,} ignore / {unk:,} can't tell"
+    summary = f"{respects:,} respect / {ignores:,} violate / {unk:,} can't tell"
     return f'<div class="rbar" title="{_esc(summary)}">{"".join(segments)}</div>'
 
 
@@ -226,7 +224,7 @@ def _summary_table(result: AnalysisResult) -> str:
     robots_help = (
         "Share of clients by robots.txt compliance — hover a bar for counts.\n"
         "green respect: requested no disallowed paths\n"
-        "red ignore: requested disallowed paths\n"
+        "red violate: requested disallowed paths\n"
         "grey can't tell: fewer than 5 requests, or no applicable rule"
     )
     head = (

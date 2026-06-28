@@ -42,92 +42,88 @@ def test_collapses_smallest_datacenter_providers_into_other() -> None:
     assert matrix.kinds == (Kind.BROWSER, Kind.SCRAPER)
 
 
-def test_collapsed_breakdown_lists_each_folded_provider_biggest_first() -> None:
-    # Eight datacenters; DC6 and DC7 fold into Other and should each appear in
-    # the collapsed breakdown, busiest first, with their own per-kind counts.
+def test_promotes_substantial_datacenter_beyond_top_n() -> None:
+    # Top six always shown; a seventh that's big enough earns its own column, an
+    # eighth that's negligible folds into Other.
     rollups: dict[str, dict[Kind, KindRollup]] = {}
     categories: dict[str, str] = {}
-    for i in range(8):
-        rollups[f"DC{i}"] = {Kind.SCRAPER: _rollup(100 - i)}
+    for i in range(6):
+        rollups[f"DC{i}"] = {Kind.SCRAPER: _rollup(1000)}
         categories[f"DC{i}"] = "datacenter"
-    rollups[RESIDENTIAL_NETWORK] = {Kind.BROWSER: _rollup(500)}
-    categories[RESIDENTIAL_NETWORK] = "residential"
+    rollups["Promoted"] = {Kind.SCRAPER: _rollup(800)}  # clears the per-kind floor + guard
+    categories["Promoted"] = "datacenter"
+    rollups["TinyFold"] = {Kind.SCRAPER: _rollup(50)}  # below the 100-request guard
+    categories["TinyFold"] = "datacenter"
 
     matrix = network_matrix(rollups, categories, max_datacenter=6)
 
     assert matrix is not None
-    names = [name for name, _ in matrix.collapsed]
-    assert names == ["DC6", "DC7"]  # only the folded ones, busiest first
-    by_name = dict(matrix.collapsed)
-    assert by_name["DC6"] == {Kind.SCRAPER: 100 - 6}
-    assert by_name["DC7"] == {Kind.SCRAPER: 100 - 7}
-    # The breakdown sums back to the aggregated Other column, per kind.
-    assert sum(c[Kind.SCRAPER] for _, c in matrix.collapsed) == matrix.cell(
-        OTHER_HOSTING, Kind.SCRAPER
-    )
+    assert "Promoted" in matrix.networks  # its own column
+    assert "TinyFold" not in matrix.networks  # folded
+    assert matrix.cell(OTHER_HOSTING, Kind.SCRAPER) == 50
 
 
-def test_breakout_selector_drops_long_tail_below_share_floor() -> None:
-    # Six big named datacenters keep their columns; two more fold -- one sizeable,
-    # one tiny. Only the sizeable one clears the break-out share floor.
+def test_top_n_always_shown_exempt_from_guard() -> None:
+    # Seven datacentres, all below the 100-request guard. The top six are shown
+    # regardless; the seventh, beyond the baseline, folds.
     rollups: dict[str, dict[Kind, KindRollup]] = {}
     categories: dict[str, str] = {}
-    for i in range(6):
-        rollups[f"DC{i}"] = {Kind.SCRAPER: _rollup(100)}
+    for i in range(7):
+        rollups[f"DC{i}"] = {Kind.SCRAPER: _rollup(20 - i)}  # all tiny, below the guard
         categories[f"DC{i}"] = "datacenter"
-    rollups["BigFold"] = {Kind.SCRAPER: _rollup(80)}
-    categories["BigFold"] = "datacenter"
-    rollups["TinyFold"] = {Kind.SCRAPER: _rollup(5)}
-    categories["TinyFold"] = "datacenter"
 
-    # Single kind, so per-kind share == overall: scraper total = 685, floor at
-    # 10% = 68.5, BigFold (80) clears, TinyFold (5) does not.
-    matrix = network_matrix(rollups, categories, max_datacenter=6, min_breakout_share=0.1)
+    matrix = network_matrix(rollups, categories, max_datacenter=6)
 
     assert matrix is not None
-    assert [name for name, _ in matrix.collapsed] == ["BigFold"]
-    # Both are still folded into the aggregate Other column, only off the selector.
-    assert matrix.cell(OTHER_HOSTING, Kind.SCRAPER) == 85
-    # A zero floor offers the whole tail again.
-    everything = network_matrix(rollups, categories, max_datacenter=6, min_breakout_share=0.0)
-    assert everything is not None
-    assert [name for name, _ in everything.collapsed] == ["BigFold", "TinyFold"]
+    for i in range(6):
+        assert f"DC{i}" in matrix.networks  # top six shown despite < 100 requests each
+    assert "DC6" not in matrix.networks  # seventh folds
+    assert OTHER_HOSTING in matrix.networks
 
 
-def test_breakout_floor_is_per_kind_not_overall() -> None:
-    # Six big scraper-only datacenters keep their columns; two fold. "Niche" is a
-    # sliver of overall traffic but dominates the (small) browser kind, so the
-    # per-kind floor still offers it; "Tiny" clears no kind's floor.
+def test_guard_blocks_tiny_provider_that_dominates_a_small_kind() -> None:
+    # Niche owns 91% of the (tiny) browser kind but only 20 requests overall: the
+    # per-kind floor alone would promote it, but the absolute guard folds it.
     rollups: dict[str, dict[Kind, KindRollup]] = {}
     categories: dict[str, str] = {}
     for i in range(6):
-        rollups[f"DC{i}"] = {Kind.SCRAPER: _rollup(100)}
+        rollups[f"DC{i}"] = {Kind.SCRAPER: _rollup(1000)}
         categories[f"DC{i}"] = "datacenter"
     rollups["Niche"] = {Kind.BROWSER: _rollup(20)}
     categories["Niche"] = "datacenter"
-    rollups["Tiny"] = {Kind.BROWSER: _rollup(2)}
-    categories["Tiny"] = "datacenter"
 
-    # Browser total = 22: Niche 20 (91%) clears the 10% floor, Tiny 2 (9%) doesn't.
-    # Overall total = 622, so Niche is ~3% -- an overall floor would have dropped it.
-    matrix = network_matrix(rollups, categories, max_datacenter=6, min_breakout_share=0.1)
-
+    matrix = network_matrix(rollups, categories, max_datacenter=6)
     assert matrix is not None
-    assert [name for name, _ in matrix.collapsed] == ["Niche"]
-    assert dict(matrix.collapsed)["Niche"] == {Kind.BROWSER: 20}
+    assert "Niche" not in matrix.networks  # 20 < 100-request guard
+    assert matrix.cell(OTHER_HOSTING, Kind.BROWSER) == 20
+
+    # Drop the guard and the per-kind win alone promotes it.
+    noguard = network_matrix(
+        rollups, categories, max_datacenter=6, guard_requests=0, guard_share=0.0
+    )
+    assert noguard is not None
+    assert "Niche" in noguard.networks
 
 
-def test_collapsed_breakdown_empty_when_nothing_folds() -> None:
-    rollups = {
-        "DC0": {Kind.SCRAPER: _rollup(100)},
-        RESIDENTIAL_NETWORK: {Kind.BROWSER: _rollup(200)},
-    }
-    categories = {"DC0": "datacenter", RESIDENTIAL_NETWORK: "residential"}
+def test_per_kind_floor_promotes_provider_concentrated_in_one_kind() -> None:
+    # A provider that's a sliver of overall traffic but a big share of one small
+    # kind -- and clears the absolute guard -- earns its own column; a same-size
+    # provider that clears the guard but no kind's 10% folds.
+    rollups: dict[str, dict[Kind, KindRollup]] = {}
+    categories: dict[str, str] = {}
+    for i in range(6):
+        rollups[f"DC{i}"] = {Kind.SCRAPER: _rollup(5000)}
+        categories[f"DC{i}"] = "datacenter"
+    rollups["Niche"] = {Kind.BROWSER: _rollup(300)}  # 100% of a tiny kind, > guard
+    categories["Niche"] = "datacenter"
+    rollups["Spread"] = {Kind.SCRAPER: _rollup(120)}  # clears guard, but <10% of any kind
+    categories["Spread"] = "datacenter"
+
     matrix = network_matrix(rollups, categories, max_datacenter=6)
 
     assert matrix is not None
-    assert matrix.collapsed == ()
-    assert OTHER_HOSTING not in matrix.networks
+    assert "Niche" in matrix.networks  # promoted on its browser share
+    assert "Spread" not in matrix.networks  # negligible within every kind
 
 
 def test_egress_networks_are_never_collapsed() -> None:

@@ -171,18 +171,24 @@ def time_range(
     return (min(firsts) if firsts else None, max(lasts) if lasts else None)
 
 
-# How many distinct datacenter providers get their own column before the rest are
-# folded into an "Other datacenters" column. The cross-tab's vertical column
-# headers size each column to its number rather than its label, so six named
-# hosters (plus Other, egress, residential, Total) still fit a desktop width
-# without horizontal scrolling; egress-heavy logs fall back to the scroll track.
+# The busiest this-many datacentres always get their own column in the cross-tab.
+# Beyond it, a datacentre is promoted to its own column only when it is substantial
+# (see ``network_matrix``); the rest fold into "Other datacenters". The datacentre
+# columns scroll horizontally in the HTML report while Other stays pinned.
 MAX_DATACENTER_COLUMNS = 6
 
-# A folded datacentre is offered in the HTML "break out" selector only if it
-# carries at least this share of *some single kind's* traffic; the long tail below
-# it stays in the aggregate but is not individually selectable. Keyed per kind (not
-# overall) so a provider concentrated in one category still surfaces.
+# Promotion floor (per kind): beyond the always-shown top columns, a datacentre
+# earns its own column when it carries at least this share of *some single kind's*
+# traffic -- keyed per kind (not overall) so a provider concentrated in one
+# category surfaces even when it is a sliver of total volume. (Still the
+# ``--breakout-min-pct`` flag, for continuity.)
 BREAKOUT_MIN_SHARE = 0.10
+
+# Absolute guard on promotion: 10% of a tiny kind is only a handful of requests, so
+# a promoted datacentre must also clear this floor -- the larger of a share of total
+# traffic or an absolute request count. The always-shown top columns are exempt.
+PROMOTE_GUARD_SHARE = 0.0001  # 0.01% of total requests
+PROMOTE_GUARD_REQUESTS = 100
 
 
 @dataclass(frozen=True)
@@ -196,11 +202,6 @@ class NetworkMatrix:
     row_totals: dict[Kind, int]
     total: int
     categories: dict[str, str]  # column -> datacenter | egress | residential
-    # Per-kind requests for each datacentre folded into OTHER_HOSTING that clears
-    # the break-out threshold, biggest provider first. Lets the HTML "break out"
-    # one of them in place of the aggregated Other column. Empty when nothing was
-    # collapsed (or no folded provider is big enough to offer).
-    collapsed: tuple[tuple[str, dict[Kind, int]], ...] = ()
 
     def cell(self, network: str, kind: Kind) -> int:
         return self.requests.get((network, kind), 0)
@@ -216,18 +217,18 @@ def network_matrix(
     *,
     max_datacenter: int = MAX_DATACENTER_COLUMNS,
     min_breakout_share: float = BREAKOUT_MIN_SHARE,
+    guard_share: float = PROMOTE_GUARD_SHARE,
+    guard_requests: int = PROMOTE_GUARD_REQUESTS,
 ) -> NetworkMatrix | None:
     """Build the kind x network request cross-tab, or None if not worth showing.
 
-    Only datacenter providers are collapsible: the busiest ``max_datacenter`` keep
-    their own column and the rest fold into ``OTHER_HOSTING``. Shared-egress
-    networks and the residential bucket always stand alone. Returns None when no
-    network beyond residential appears (the table would be a single column).
-
-    ``collapsed`` reports the folded providers worth offering in the HTML break-out
-    selector -- those carrying at least ``min_breakout_share`` of *some single
-    kind's* traffic -- so the long tail below that floor stays aggregated but off
-    the menu, while a provider concentrated in one category still surfaces.
+    The busiest ``max_datacenter`` datacentres always get their own column. Beyond
+    those, a datacentre is promoted to its own column when it carries at least
+    ``min_breakout_share`` of *some single kind's* traffic (so a provider big within
+    one category surfaces) **and** clears an absolute guard -- ``guard_requests`` or
+    ``guard_share`` of total traffic, whichever is larger. Every other datacentre
+    folds into ``OTHER_HOSTING``. Shared-egress networks and the residential bucket
+    always stand alone. Returns None when no network beyond residential appears.
     """
     if not any(cat != "residential" for cat in network_categories.values()):
         return None
@@ -235,48 +236,47 @@ def network_matrix(
     net_total = {
         net: sum(r.requests for r in kinds.values()) for net, kinds in network_rollups.items()
     }
+    row_totals: dict[Kind, int] = defaultdict(int)
+    for kinds in network_rollups.values():
+        for kind, rollup in kinds.items():
+            row_totals[kind] += rollup.requests
+    grand_total = sum(net_total.values())
+
     datacenters = sorted(
         (n for n, c in network_categories.items() if c == "datacenter"),
         key=lambda n: net_total.get(n, 0),
         reverse=True,
     )
-    collapsed = set(datacenters[max_datacenter:])
+    # The busiest few are always shown. Beyond them a datacentre needs both a per-kind
+    # share (it matters within some category) and an absolute floor (it is not
+    # negligible overall) to earn its own column; the rest fold into Other.
+    guard = max(guard_share * grand_total, guard_requests)
+
+    def promotable(net: str) -> bool:
+        if net_total[net] < guard:
+            return False
+        return any(
+            rollup.requests >= min_breakout_share * row_totals[kind]
+            for kind, rollup in network_rollups[net].items()
+            if row_totals[kind]
+        )
+
+    shown = set(datacenters[:max_datacenter])
+    shown.update(net for net in datacenters[max_datacenter:] if promotable(net))
+    collapsed = set(datacenters) - shown
 
     def column_of(net: str) -> str:
         return OTHER_HOSTING if net in collapsed else net
 
     requests: dict[tuple[str, Kind], int] = defaultdict(int)
     col_totals: dict[str, int] = defaultdict(int)
-    row_totals: dict[Kind, int] = defaultdict(int)
     categories: dict[str, str] = {OTHER_HOSTING: "datacenter"}
-    folded: dict[str, dict[Kind, int]] = defaultdict(lambda: defaultdict(int))
     for net, kinds in network_rollups.items():
         col = column_of(net)
         categories.setdefault(col, network_categories.get(net, "residential"))
         for kind, rollup in kinds.items():
             requests[(col, kind)] += rollup.requests
             col_totals[col] += rollup.requests
-            row_totals[kind] += rollup.requests
-            if net in collapsed:
-                folded[net][kind] += rollup.requests
-
-    # Collapsed datacentres worth offering, biggest-first, so the HTML can break
-    # each out in place of the aggregated Other column. A provider qualifies when it
-    # carries at least ``min_breakout_share`` of *some kind's* traffic -- so one
-    # concentrated in a single category still surfaces even when it is a sliver of
-    # overall volume. The long tail below that floor stays folded but off the menu.
-    def clears_floor(net: str) -> bool:
-        return any(
-            count >= min_breakout_share * row_totals[kind]
-            for kind, count in folded[net].items()
-            if row_totals[kind]
-        )
-
-    collapsed_breakdown = tuple(
-        (net, dict(folded[net]))
-        for net in sorted(folded, key=lambda n: net_total.get(n, 0), reverse=True)
-        if clears_floor(net)
-    )
 
     # Group hosting on the left (named providers biggest-first, then the Other
     # hosting catch-all), then the non-hosting columns: egress networks, then the
@@ -300,5 +300,4 @@ def network_matrix(
         row_totals=dict(row_totals),
         total=sum(col_totals.values()),
         categories=categories,
-        collapsed=collapsed_breakdown,
     )

@@ -159,7 +159,8 @@ def test_network_table_renders_with_providers(
     # The residential (non-hosting) column header carries the grey-wash + divider
     # and a hover description.
     assert f"<span>{_esc(RESIDENTIAL_NETWORK)}</span></th>" in html  # vertical header
-    assert "class='num vh netdiv netoff'" in html  # first non-hosting col: divider + grey
+    # first non-hosting col: divider + grey, pinned to the right edge
+    assert "class='num vh netdiv stick-r netoff'" in html
     assert "Consumer ISP" in html  # residential column-header tooltip
     # Body cells carry their raw count for the JS toggle; the control + script are present.
     assert "td class='num mxcell" in html and "data-v=" in html
@@ -173,19 +174,16 @@ def test_network_table_renders_with_providers(
     assert "markScrollables" in html  # overflowing tracks are made keyboard-scrollable
 
 
-def test_network_table_offers_breakout_for_folded_datacenters(
+def test_network_table_folds_datacenters_into_pinned_other(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Eight distinct datacenter providers (one per /8) so two fold into Other;
-    # the HTML should offer a break-out selector and tag the Other column.
+    # Eight distinct datacenter providers (one per /8), all below the promotion
+    # guard, so the busiest six show and the two smallest fold into a pinned,
+    # live "Other datacenters" column. No break-out selector any more.
     monkeypatch.setattr(pipeline, "datacenter_subnet", lambda ip: None)
     monkeypatch.setattr(
         pipeline, "datacenter_provider", lambda ip: f"Provider {int(ip.split('.')[0])}"
     )
-    # One provider per /8 (octets 11..18). Volume decreases with the octet so the
-    # two smallest providers (17, 18) fold into Other; with the single curl kind,
-    # both still carry >10% of that kind's traffic (24 and 23 of 212) and clear the
-    # break-out floor, so each is offered in the selector.
     weighted = []
     for rank, octet in enumerate(range(11, 19)):
         line = (
@@ -199,13 +197,15 @@ def test_network_table_offers_breakout_for_folded_datacenters(
     result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
     html = render_report_html(result, source="x")
 
-    assert "id='netbreakout'" in html  # the selector
-    assert "id='netbreakdata'" in html  # embedded per-provider data
-    assert "id='netotherhd'" in html  # Other header is tagged for relabelling
-    assert "othercol" in html and "othertot" in html  # Other cells are tagged
-    assert "data-kind=" in html and "data-agg=" in html  # break-out lookup data
-    # A folded provider appears as an option in the selector.
-    assert "<option value='Provider 18'>" in html
+    assert "id='netbreakout'" not in html  # the break-out selector is gone
+    # The pinned, live Other column and its scaffolding.
+    assert "id='netotherhd'" in html  # Other header (carries the +N cue)
+    assert "othercol" in html and "othertot" in html  # Other cells tagged for the live tally
+    assert "data-kind=" in html and "data-agg=" in html  # per-kind + folded-tail lookup
+    assert "class='othercue'" in html  # running "+N hidden" header cue
+    # Pinned and scrolling column roles.
+    assert "stick-l" in html and "stick-r" in html  # Kind / Other+off-network+Total pinned
+    assert " dcs'" in html or " dcs " in html  # named datacentres scroll
 
 
 def test_filter_haystack_includes_as_name() -> None:

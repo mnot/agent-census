@@ -41,8 +41,13 @@ table { border-collapse: collapse; width: 100%; margin: .5rem 0 1rem; font-size:
 th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid #8884; vertical-align: top; }
 th { font-weight: 600; border-bottom: 2px solid #8886; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-.netdiv { border-left: 2px solid #8887; }
-th.netoff { background: #8881; }
+/* Heavy ink rule between column groups: datacentres | off-network, and before
+   Total (and, via .stick-l below, after Kind). CanvasText so it's a black line on
+   light, a white one on dark -- a deliberate step up from the row hairlines. */
+.netdiv { border-left: 2px solid CanvasText; }
+/* Grey wash on off-network headers, as an image layer so it composites over the
+   pinned cell's opaque Canvas base (a flat background-color would not). */
+th.netoff { background-image: linear-gradient(#8881, #8881); }
 tr.netall td { border-top: 2px solid #8887; }
 /* Vertical column headers for the network columns of the kind x network cross-tab
    (not the Total column, nor the Summary table). A column no wider than its number
@@ -52,6 +57,22 @@ th.vh { vertical-align: bottom; text-align: center; white-space: nowrap;
   padding: .5rem .35rem .3rem; }
 th.vh > span { display: inline-block; writing-mode: vertical-rl;
   transform: rotate(180deg); line-height: 1.1; }
+/* Pin Kind (left) and the Other / off-network / Total columns (right) while the
+   named-datacentre columns scroll between them. Every cell carries an opaque base
+   so a pinned column stays solid over the columns scrolling behind it; heat is a
+   background-image layer on top (set inline and by _netscript). */
+/* Separate borders so the pinned columns reliably paint their own group rules
+   (collapsed borders drop or mis-merge on sticky cells). */
+#nettab { border-collapse: separate; border-spacing: 0; }
+#nettab th, #nettab td { background-color: Canvas; }
+#nettab .stick-l, #nettab .stick-r { position: sticky; z-index: 2; }
+#nettab .stick-l { left: 0; border-right: 2px solid CanvasText; }  /* group rule after Kind */
+#nettab .stick-r { right: 0; }  /* _netscript overrides with each column's offset */
+#netotherhd { position: relative; }
+/* Running "+N hidden" cue at the top of the pinned Other header; empty -> gone. */
+.othercue { position: absolute; top: .2rem; left: 0; right: 0; text-align: center;
+  font-size: .68rem; font-weight: 600; color: var(--muted); }
+.othercue:empty { display: none; }
 .netctl { font-size: .9rem; color: var(--muted); margin: .25rem 0 .6rem; }
 .netctl select { font: inherit; margin-left: .35rem; }
 /* On a phone the cross-tab can't show every network column at readable width, so
@@ -63,6 +84,9 @@ th.vh > span { display: inline-block; writing-mode: vertical-rl;
   /* Rotated headers don't pay off on a phone (the cross-tab folds to one network
      and the summary table scrolls in its track); read them flat instead. */
   th.vh > span { writing-mode: horizontal-tb; transform: none; }
+  /* The fold replaces the scroll, so unpin the columns and drop the running cue. */
+  #nettab .stick-l, #nettab .stick-r { position: static; }
+  .othercue { display: none; }
   #nettab th[data-net], #nettab td[data-net] { display: none; }
   #nettab th[data-net].colshow, #nettab td[data-net].colshow { display: table-cell; }
   /* The cross-tab caption's spatial guidance describes columns the folded table

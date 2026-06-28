@@ -291,9 +291,9 @@ def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argumen
         type=_percent,
         default=10.0,
         metavar="PCT",
-        help="HTML report: smallest folded datacentre offered in the network "
-        "table's break-out selector, as a %% of any single kind's traffic "
-        "(default: 10)",
+        help="HTML report: beyond the always-shown busiest six, a datacentre earns "
+        "its own (scrollable) column in the network table when it carries this %% of "
+        "some single kind's traffic (default: 10)",
     )
 
     calibrate = sub.add_parser(

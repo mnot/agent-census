@@ -171,8 +171,11 @@ def time_range(
     return (min(firsts) if firsts else None, max(lasts) if lasts else None)
 
 
-# How many distinct datacenter providers get their own column before the rest
-# are folded into an "Other datacenters" column.
+# How many distinct datacenter providers get their own column before the rest are
+# folded into an "Other datacenters" column. The cross-tab's vertical column
+# headers size each column to its number rather than its label, so six named
+# hosters (plus Other, egress, residential, Total) still fit a desktop width
+# without horizontal scrolling; egress-heavy logs fall back to the scroll track.
 MAX_DATACENTER_COLUMNS = 6
 
 # A folded datacentre is offered in the HTML "break out" selector only if it

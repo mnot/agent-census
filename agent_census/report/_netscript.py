@@ -42,7 +42,8 @@ NET_SCRIPT = """
     var others=[].slice.call(tab.querySelectorAll('td.othercol'));
     var otot=tab.querySelector('td.othertot');
     var ohd=document.getElementById('netotherhd');
-    var oname=ohd?ohd.textContent:'';
+    var ohdspan=ohd?ohd.querySelector('span'):null;  // header text lives in a span (vertical header)
+    var oname=ohdspan?ohdspan.textContent:'';
     bsel.addEventListener('change',function(){
       var name=bsel.value, m=name?bdata[name]:null, sum=0;
       others.forEach(function(c){
@@ -50,7 +51,7 @@ NET_SCRIPT = """
         c._v=v; sum+=v;
       });
       if(otot){var tv=name?sum:(+otot.getAttribute('data-agg'));otot.textContent=tv.toLocaleString();}
-      if(ohd) ohd.textContent=name||oname;
+      if(ohdspan) ohdspan.textContent=name||oname;
       paint(sel.value);
     });
   }

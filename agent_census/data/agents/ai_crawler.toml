@@ -15,6 +15,7 @@ ua_substring = "ChatGPT-User"
 domains = ["openai.com"]
 ranges_url = "https://openai.com/chatgpt-user.json"
 rdns_fallback = true
+user_triggered = true
 
 [[agent]]
 ua_substring = "OAI-SearchBot"
@@ -37,6 +38,7 @@ rdns_fallback = true
 ua_substring = "Claude-User"
 ranges_url = "https://claude.com/crawling/bots.json"
 rdns_fallback = true
+user_triggered = true
 
 [[agent]]
 # https://developers.google.com/crawling/docs/crawlers-fetchers/google-common-crawlers
@@ -56,11 +58,13 @@ ua_substring = "Perplexity-User"
 domains = ["perplexity.ai"]
 ranges_url = "https://www.perplexity.com/perplexity-user.json"
 rdns_fallback = true
+user_triggered = true
 
 [[agent]]
 # https://docs.mistral.ai/robots
 ua_substring = "MistralAI-User"
 ranges_url = "https://mistral.ai/mistralai-user-ips.json"
+user_triggered = true
 
 [[agent]]
 # https://developer.amazon.com/amazonbot
@@ -75,10 +79,12 @@ rdns_fallback = true
 ua_substring = "Amzn-User"
 ranges_url = "https://developer.amazon.com/amazonbot/live-ip-addresses/"
 format = "amazon"
+user_triggered = true
 
 [[agent]]
 # https://docs.aws.amazon.com/quick/latest/userguide/web-crawler-integration.html
 ua_substring = "amazon-Quick-on-behalf-of-"
+user_triggered = true
 
 [[agent]]
 ua_substring = "Bytespider"

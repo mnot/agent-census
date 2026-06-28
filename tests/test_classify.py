@@ -477,6 +477,37 @@ def test_bot_ua_only_for_unrecognised_bots() -> None:
     assert "bot-ua" in unknown.tags and "declares-known-bot" not in unknown.tags
 
 
+def test_user_triggered_proxy_is_tagged_without_changing_kind() -> None:
+    # A "-User" proxy fetches on behalf of a present user: it keeps its category's
+    # kind (ai_crawler / search_engine) and is marked with the user-triggered tag.
+    ai_user = classify_client(
+        ClientFeatures(
+            request_count=5,
+            ua_empty=False,
+            ua_declares_bot=True,
+            user_agent="Mozilla/5.0 (compatible; ChatGPT-User/1.0; +https://openai.com/bot)",
+        )
+    )
+    assert ai_user.primary is Kind.AI_CRAWLER
+    assert "user-triggered" in ai_user.tags
+    search_user = classify_client(
+        ClientFeatures(request_count=5, ua_empty=False, user_agent="YandexUserproxy")
+    )
+    assert search_user.primary is Kind.SEARCH_ENGINE
+    assert "user-triggered" in search_user.tags
+    # An autonomous crawler in the same category is not user-triggered.
+    autonomous = classify_client(
+        ClientFeatures(
+            request_count=5,
+            ua_empty=False,
+            ua_declares_bot=True,
+            user_agent="Mozilla/5.0 (compatible; GPTBot/1.0; +https://openai.com/gptbot)",
+        )
+    )
+    assert autonomous.primary is Kind.AI_CRAWLER
+    assert "user-triggered" not in autonomous.tags
+
+
 def test_ua_age_tags() -> None:
     from datetime import datetime, timezone
 

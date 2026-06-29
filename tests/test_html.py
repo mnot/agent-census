@@ -418,20 +418,24 @@ def test_summary_table_kind_sparklines_share_one_peak() -> None:
     from datetime import datetime, timedelta, timezone
     from types import SimpleNamespace
 
-    from agent_census.pipeline import KindRollup
+    from agent_census.pipeline import _RollupAcc
     from agent_census.report._sparkline import kind_sparklines
     from agent_census.report.html import _summary_table
 
     start = datetime(2023, 10, 10, 12, 0, tzinfo=timezone.utc)
-    window = (start, start + timedelta(hours=1))
+    window = (start, start + timedelta(hours=12))
     busy = _spark_profile(request_count=400, first=start, last=window[1], buckets=[20] * 40)
     quiet = _spark_profile(request_count=100, first=start, last=window[1], buckets=[5] * 40)
-    rollups = {
-        Kind.CRAWLER: KindRollup(clients=1, requests=400, total_bytes=400),
-        Kind.AI_CRAWLER: KindRollup(clients=1, requests=100, total_bytes=100),
-    }
-    groups = {Kind.CRAWLER: [busy], Kind.AI_CRAWLER: [quiet]}
-    patterns = kind_sparklines(groups, window, [Kind.CRAWLER, Kind.AI_CRAWLER])
+
+    # The summary glyph re-bins each kind's eviction-safe rollup cadence, so build the
+    # rollups through the real accumulator rather than hand-rolling the histogram.
+    def rollup_of(profile: ClientProfile) -> object:
+        acc = _RollupAcc()
+        acc.add(profile.features, respects=False, ignores=False, unknown=False)
+        return acc.freeze()
+
+    rollups = {Kind.CRAWLER: rollup_of(busy), Kind.AI_CRAWLER: rollup_of(quiet)}
+    patterns = kind_sparklines(rollups, window, [Kind.CRAWLER, Kind.AI_CRAWLER])
     html = _summary_table(SimpleNamespace(rollups=rollups), patterns, window)
 
     assert "<th class='reqpat'>Requests over " in html  # same header as the client table

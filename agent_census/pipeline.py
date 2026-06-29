@@ -67,6 +67,15 @@ DEFAULT_MAX_PER_KIND = 1000
 # later return from one of those would re-fragment -- the memory ceiling's cost).
 DEFAULT_RETIRED_CAP = 50_000
 
+# Wall-clock resolution of the per-kind cadence histogram a rollup accumulates for
+# the summary sparkline. Each emitted client's bucketed activity is binned onto this
+# absolute grid as it is seen, so the summary glyph is eviction- and cap-safe (unlike
+# re-aggregating the retained profiles, which omits the long tail the cap dropped).
+# It only needs to be finer than the rendered grid (40 slices) over the report window
+# for the re-bin to be lossless; at 5 minutes that holds for any window above ~3h,
+# while bounding the per-kind dict to window-duration / 5min entries.
+CADENCE_BIN_SECONDS = 300
+
 # Declared-crawler categories, checked individually so per-UA matches cache.
 _CRAWLER_CATEGORIES = (
     "search_engine",
@@ -237,6 +246,11 @@ class KindRollup:
     unknown_robots: int = 0
     first_seen: datetime | None = None
     last_seen: datetime | None = None
+    # Eviction-safe cadence: absolute-time histogram of every client's bucketed
+    # activity (keyed by epoch // CADENCE_BIN_SECONDS), summed over the whole kind.
+    # The summary sparkline re-bins this onto the report window, so its height
+    # reflects all traffic -- not just the capped, retained profiles.
+    cadence: dict[int, int] = field(default_factory=dict)
 
 
 class _RollupAcc:
@@ -244,7 +258,7 @@ class _RollupAcc:
 
     __slots__ = (
         "clients", "requests", "total_bytes", "respects", "ignores", "unknown",
-        "first_seen", "last_seen",
+        "first_seen", "last_seen", "cadence",
     )  # fmt: skip
 
     def __init__(self) -> None:
@@ -252,6 +266,7 @@ class _RollupAcc:
         self.respects = self.ignores = self.unknown = 0
         self.first_seen: datetime | None = None
         self.last_seen: datetime | None = None
+        self.cadence: dict[int, int] = {}
 
     def add(
         self, features: ClientFeatures, *, respects: bool, ignores: bool, unknown: bool
@@ -272,6 +287,21 @@ class _RollupAcc:
             self.first_seen = first
         if last is not None and (self.last_seen is None or last > self.last_seen):
             self.last_seen = last
+        # Fold this client's span-local request histogram onto the shared absolute
+        # grid, placing each bucket by its midpoint (the same projection the report's
+        # sparkline uses), so the per-kind cadence stays exact as clients are evicted.
+        buckets = features.request_buckets
+        if buckets and first is not None and last is not None:
+            c0 = first.timestamp()
+            span = last.timestamp() - c0
+            if span > 0:
+                nbins = len(buckets)
+                cadence = self.cadence
+                for i, hits in enumerate(buckets):
+                    if hits:
+                        midpoint = c0 + ((i + 0.5) / nbins) * span
+                        key = int(midpoint // CADENCE_BIN_SECONDS)
+                        cadence[key] = cadence.get(key, 0) + hits
 
     def freeze(self) -> KindRollup:
         return KindRollup(
@@ -283,6 +313,7 @@ class _RollupAcc:
             unknown_robots=self.unknown,
             first_seen=self.first_seen,
             last_seen=self.last_seen,
+            cadence=self.cadence,
         )
 
 

@@ -3,9 +3,9 @@
 A small cadence glyph per client: request volume over time, drawn as an inline
 SVG bar chart (no JS, no external assets). Every row shares one x-axis -- the
 report-wide window -- so *when* a client was active is comparable down the
-column. Bar height is request count per slice, normalised per row; the Requests
-column already carries absolute volume, so the glyph is there to show shape
-(bursty vs. metronomic), not magnitude.
+column. Bar height is request count per slice, square-rooted against one peak
+shared across the whole client table -- so *how much* a client did is comparable
+too: a taller glyph is more traffic, while the sqrt keeps a quiet row legible.
 
 The source histogram (``ClientFeatures.request_buckets``) is measured over each
 client's own ``[first_seen, last_seen]`` span -- it has to be, because the
@@ -21,6 +21,7 @@ from collections.abc import Iterable, Sequence
 from datetime import datetime
 
 from ..model import ClientProfile, Kind
+from .aggregate import group_actors
 from .format import fmt_ts, human_duration, top_evidence, truncate
 
 _BUCKETS = 40  # time slices across the report-wide window
@@ -74,19 +75,46 @@ def aggregate_buckets(profiles: Iterable[ClientProfile], window: Window) -> list
     return total
 
 
+def client_spark_peak(
+    groups: dict[Kind, list[ClientProfile]], window: Window, limit: int
+) -> int | None:
+    """The single busiest projected time-slice across every request-pattern sparkline
+    the client tables will draw -- the shared peak that makes their heights comparable,
+    so a taller glyph reliably means more traffic (the per-kind summary keeps its own,
+    coarser peak).
+
+    A collapsed actor draws the *aggregate* of its members; a standalone or folded one
+    draws its lead's own projection -- so those are the series to scale against. Member
+    rows never exceed their group's aggregate, so they need no separate look. Only the
+    rendered actors (the first ``limit`` per kind) count; the capped tail isn't drawn."""
+    peak = 0
+    for group in groups.values():
+        for actor in group_actors(group)[:limit]:
+            series = (
+                aggregate_buckets(actor.members, window)
+                if actor.collapsed
+                else project_buckets(actor.lead, window)
+            )
+            if series:
+                peak = max(peak, *series)
+    return peak or None
+
+
 def sparkline_svg(buckets: list[int], peak: int | None = None, sqrt: bool = False) -> str:
     """Inline SVG bar sparkline for an already-projected bucket list. Empty string
     when there is nothing to draw.
 
     ``peak`` overrides the per-row scale: pass a shared maximum to make a set of
-    sparklines height-comparable, so a taller glyph means more traffic (used by
-    the per-kind summary). Defaults to this row's own peak -- the per-client
-    glyphs scale individually, showing shape rather than magnitude.
+    sparklines height-comparable, so a taller glyph means more traffic. Both the
+    per-kind summary and the per-client table pass one (each its own shared peak --
+    one across kinds, one across clients). It defaults to this row's own peak only
+    when a caller draws a glyph in isolation (e.g. a unit test).
 
     ``sqrt`` draws each bar at the square root of its share of ``peak`` instead of
-    a linear share. Under one shared peak that keeps a quiet kind legible (its bars
-    lift off the floor) while preserving the ordering -- a busier slice is still
-    taller -- at the cost of exaggerating small differences."""
+    a linear share. Whether ``peak`` is shared (the per-kind summary) or this row's
+    own (the per-client glyphs), it keeps a quiet slice legible (its bars lift off
+    the floor) while preserving the ordering -- a busier slice is still taller -- at
+    the cost of exaggerating small differences."""
     if peak is None:
         peak = max(buckets, default=0)
     if peak <= 0:
@@ -112,16 +140,21 @@ def sparkline_svg(buckets: list[int], peak: int | None = None, sqrt: bool = Fals
     )
 
 
-def pattern_cell(buckets: list[int], evidence: str, request_count: int) -> str:
+def pattern_cell(
+    buckets: list[int], evidence: str, request_count: int, peak: int | None = None
+) -> str:
     """The 'Request pattern' cell: the cadence sparkline over a caption naming why
-    the client landed in this kind. Below the volume floor, the caption alone."""
+    the client landed in this kind. Below the volume floor, the caption alone.
+
+    ``peak`` is the client table's shared maximum, so the glyph's height is
+    comparable to every other row's (sqrt-scaled, to keep quiet rows legible)."""
     cap = f"<div class='spark-cap'>{html.escape(truncate(evidence), quote=True)}</div>"
     if request_count >= _MIN_REQUESTS and any(buckets):
-        return sparkline_svg(buckets) + cap
+        return sparkline_svg(buckets, peak=peak, sqrt=True) + cap
     return cap
 
 
-def pattern_cell_for(profile: ClientProfile, window: Window) -> str:
+def pattern_cell_for(profile: ClientProfile, window: Window, peak: int | None = None) -> str:
     """The 'Request pattern' cell for a standalone or folded client: its own
     projected cadence over its top-evidence caption. (An actor-group summary draws
     its cell from an *aggregate* of members, so it calls the parts directly.)"""
@@ -129,15 +162,16 @@ def pattern_cell_for(profile: ClientProfile, window: Window) -> str:
         project_buckets(profile, window),
         top_evidence(profile),
         profile.features.request_count,
+        peak,
     )
 
 
-def member_pattern(profile: ClientProfile, window: Window) -> str:
+def member_pattern(profile: ClientProfile, window: Window, peak: int | None = None) -> str:
     """A grouped member's own sparkline (no caption) for its expanded row, or ''
-    when it has too few requests to show a shape."""
+    when it has too few requests to show a shape. Shares the table-wide ``peak``."""
     if profile.features.request_count < _MIN_REQUESTS:
         return ""
-    return sparkline_svg(project_buckets(profile, window))
+    return sparkline_svg(project_buckets(profile, window), peak=peak, sqrt=True)
 
 
 def axis_span(window: Window) -> str:
@@ -158,9 +192,10 @@ def kind_sparklines(
 ) -> dict[Kind, str]:
     """A cadence glyph per kind for the summary table, each summed from the kind's
     retained clients onto the shared axis. All scaled to one peak across kinds (sqrt,
-    so a busier kind reads taller while quiet kinds stay legible) -- unlike the
-    per-client glyphs, which scale individually to show shape, not magnitude. The
-    cap on retained per-kind profiles means a capped tail is not reflected."""
+    so a busier kind reads taller while quiet kinds stay legible) -- a coarser cousin
+    of the per-client table's own shared peak, on a different scale (per-kind totals,
+    not single clients). The cap on retained per-kind profiles means a capped tail is
+    not reflected."""
     buckets = {kind: aggregate_buckets(groups.get(kind, []), window) for kind in kinds}
     peak = max((max(b, default=0) for b in buckets.values()), default=0)
     return {kind: sparkline_svg(b, peak=peak, sqrt=True) for kind, b in buckets.items()}

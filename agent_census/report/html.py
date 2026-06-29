@@ -785,7 +785,10 @@ def render_report_html(
     start, end = time_range(result.rollups)
     window = (start, end) if start is not None and end is not None else None
     # One peak shared across the client tables' sparklines, so their heights compare.
-    spark_peak = _client_spark_peak(groups, window, _EXPAND_LIMIT)
+    # Cover every actor a section renders -- actors[:top] shown plus the
+    # actors[top:_EXPAND_LIMIT] tail -- so a spiky low-ranked row (a high --top can
+    # render past _EXPAND_LIMIT) can't exceed the peak and overflow its glyph.
+    spark_peak = _client_spark_peak(groups, window, max(top, _EXPAND_LIMIT))
     heading = "Agent Census" + (f" — {result.site}" if result.site else "")
     parts = [
         f"<h1>{_esc(heading)}</h1>",

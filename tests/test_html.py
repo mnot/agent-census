@@ -492,3 +492,43 @@ def test_client_table_sparklines_share_one_peak() -> None:
     # Without the shared peak each row scales to itself, so the quiet client would be
     # just as tall -- hiding that it does a quarter of the traffic.
     assert tallest(_client_row(quiet, window=window)) == busy_h
+
+
+def test_client_spark_peak_covers_every_rendered_actor() -> None:
+    # The peak has to span every actor a section renders, not just a prefix: actors
+    # are ordered by total volume, but a lower-volume one (sorted later) can own the
+    # spikiest single slice. Exclude it and its bar would exceed the peak and overflow
+    # the glyph -- so render_report_html passes max(top, _EXPAND_LIMIT), not the bare
+    # cap. (A high --top renders actors past _EXPAND_LIMIT.)
+    from datetime import datetime, timedelta, timezone
+
+    from agent_census.report._sparkline import client_spark_peak
+
+    start = datetime(2023, 10, 10, 12, 0, tzinfo=timezone.utc)
+    window = (start, start + timedelta(hours=1))
+
+    def prof(ip: str, ua: str, buckets: list[int], rc: int) -> ClientProfile:
+        return ClientProfile(
+            client_id=ClientId(ip=ip, user_agent=ua),
+            entries=(),
+            features=ClientFeatures(
+                request_count=rc,
+                first_seen=start,
+                last_seen=window[1],
+                request_buckets=tuple(buckets),
+            ),
+            classification=Classification(
+                primary=Kind.CRAWLER, confidence=0.8, evidence=("c",), tags=frozenset()
+            ),
+        )
+
+    steady = prof("203.0.113.20", "SteadyBot/1.0", [10] * 40, 400)  # higher volume -> sorts first
+    spike = [1] * 40
+    spike[20] = 50  # a single tall slice, the report-wide busiest
+    spiky = prof("203.0.113.21", "SpikyBot/1.0", spike, 89)  # lower volume -> sorts second
+
+    group = {Kind.CRAWLER: [steady, spiky]}
+    # A cap that omits the second (spiky) actor underestimates the peak...
+    assert client_spark_peak(group, window, 1) == 10
+    # ...covering both captures the spike, so no rendered bar can exceed it.
+    assert client_spark_peak(group, window, 2) == 50

@@ -343,7 +343,10 @@ def test_client_row_renders_sparkline_with_caption() -> None:
     start = datetime(2023, 10, 10, 12, 0, tzinfo=timezone.utc)
     end = start + timedelta(hours=1)
     profile = _spark_profile(
-        request_count=200, first=start, last=end, buckets=[5] * 40,
+        request_count=200,
+        first=start,
+        last=end,
+        buckets=[5] * 40,
         evidence="steady, machine-paced cadence",
     )
     cell = _client_row(profile, window=(start, end))
@@ -409,9 +412,9 @@ def test_aggregate_buckets_reveals_rotation() -> None:
 
 
 def test_summary_table_kind_sparklines_share_one_peak() -> None:
-    # The 'Summary by kind' table draws a per-kind cadence glyph, but unlike the
-    # per-client rows it scales every kind to one shared peak -- so a busier kind
-    # is visibly taller, conveying magnitude between kinds, not just shape.
+    # The 'Summary by kind' table draws a per-kind cadence glyph scaled to one peak
+    # across kinds -- so a busier kind is visibly taller, conveying magnitude between
+    # kinds. (The client tables share their own peak, on a per-client scale.)
     from datetime import datetime, timedelta, timezone
     from types import SimpleNamespace
 
@@ -445,3 +448,47 @@ def test_summary_table_kind_sparklines_share_one_peak() -> None:
     # stays legible while the ordering holds.
     assert heights["crawler"] > heights["ai crawler"]
     assert heights["ai crawler"] >= heights["crawler"] // 2 - 1
+
+
+def test_client_table_sparklines_share_one_peak() -> None:
+    # The per-client rows share a single peak across the whole client table, so a
+    # busier client's glyph is taller than a quieter one's -- height conveys volume,
+    # not just shape.
+    from datetime import datetime, timedelta, timezone
+
+    from agent_census.report.html import _client_row, _client_spark_peak
+
+    start = datetime(2023, 10, 10, 12, 0, tzinfo=timezone.utc)
+    window = (start, start + timedelta(hours=1))
+
+    def prof(ip: str, ua: str, per_slice: int, rc: int) -> ClientProfile:
+        return ClientProfile(
+            client_id=ClientId(ip=ip, user_agent=ua),
+            entries=(),
+            features=ClientFeatures(
+                request_count=rc,
+                first_seen=start,
+                last_seen=window[1],
+                request_buckets=tuple([per_slice] * 40),
+            ),
+            classification=Classification(
+                primary=Kind.CRAWLER, confidence=0.8, evidence=("c",), tags=frozenset()
+            ),
+        )
+
+    # Distinct UAs so they stay two standalone rows rather than folding into one actor.
+    busy = prof("203.0.113.10", "BusyBot/1.0", 20, 800)
+    quiet = prof("203.0.113.11", "QuietBot/1.0", 5, 200)  # a quarter of the per-slice volume
+
+    def tallest(cell: str) -> int:
+        return max(int(h) for h in re.findall(r"<rect[^>]*height='(\d+)'", cell))
+
+    peak = _client_spark_peak({Kind.CRAWLER: [busy, quiet]}, window, 200)
+    busy_h = tallest(_client_row(busy, window=window, peak=peak))
+    quiet_h = tallest(_client_row(quiet, window=window, peak=peak))
+    # Busier reads taller; sqrt keeps the quarter-volume client at ~half height, legible.
+    assert busy_h > quiet_h
+    assert quiet_h >= busy_h // 2 - 1
+    # Without the shared peak each row scales to itself, so the quiet client would be
+    # just as tall -- hiding that it does a quarter of the traffic.
+    assert tallest(_client_row(quiet, window=window)) == busy_h

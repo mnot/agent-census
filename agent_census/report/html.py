@@ -11,13 +11,14 @@ from __future__ import annotations
 import html
 
 from .. import __version__
-from ..model import Classification, ClientProfile, Kind
+from ..model import ClientProfile, Kind
 from ..pipeline import OTHER_HOSTING, RESIDENTIAL_NETWORK, AnalysisResult, KindRollup
 from ._assets import CSS, SCRIPT
 from ._netscript import NET_SCRIPT
 from ._sparkline import Window as _Window
 from ._sparkline import aggregate_buckets as _aggregate_buckets
 from ._sparkline import axis_span as _axis_span
+from ._sparkline import client_spark_peak as _client_spark_peak
 from ._sparkline import kind_sparklines as _kind_sparklines
 from ._sparkline import member_pattern as _member_pattern
 from ._sparkline import pattern_cell as _pattern_cell
@@ -37,21 +38,15 @@ from .format import (
     actor_spread,
     as_display,
     client_id_parts,
-    client_label,
     count,
-    elide_ua,
-    feature_rows,
     fmt_ts,
     human_bytes,
-    human_duration,
     kind_label,
     ordered_tags,
     tag_title,
     top_evidence,
-    truncate,
 )
 from .geo import CountryFlags
-from .inspect import ROLLUP_MIN_CLIENTS
 
 # Kind badge fills. White-text badges, so each fill is held at >=4.5:1 against
 # white (deepened along OKLCH lightness from its original hue where needed);
@@ -521,9 +516,10 @@ def _client_row(
     filterable: bool = False,
     net_col: dict[str, int] | None = None,
     window: _Window = None,
+    peak: int | None = None,
 ) -> str:
     cls = profile.classification
-    pattern = _pattern_cell_for(profile, window)
+    pattern = _pattern_cell_for(profile, window, peak)
     attrs = ""
     if filterable:
         _, org, _ = client_id_parts(profile)  # include the shown AS name in the filter
@@ -558,7 +554,9 @@ def _disclosure(label: str) -> str:
     )
 
 
-def _member_tr(profile: ClientProfile, flag: str = "", window: _Window = None) -> str:
+def _member_tr(
+    profile: ClientProfile, flag: str = "", window: _Window = None, peak: int | None = None
+) -> str:
     """A collapsed member as a real table row: IP/AS in Client, its own req/bytes,
     and -- on the shared axis -- its own request-pattern sparkline."""
     prefix, _, _ = client_id_parts(profile)
@@ -570,7 +568,7 @@ def _member_tr(profile: ClientProfile, flag: str = "", window: _Window = None) -
         f"{flag}<span class='mono'>{_esc(prefix)}</span>{asn_html}</td>"
         f"<td class='num'>{profile.features.request_count:,}</td>"
         f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
-        f"<td></td><td></td><td class='reqpat'>{_member_pattern(profile, window)}</td></tr>"
+        f"<td></td><td></td><td class='reqpat'>{_member_pattern(profile, window, peak)}</td></tr>"
     )
 
 
@@ -592,6 +590,7 @@ def _folded_tbody(
     filterable: bool = False,
     net_col: dict[str, int] | None = None,
     window: _Window = None,
+    peak: int | None = None,
 ) -> str:
     """A single entry that folded many IPs into one (an ASN operator, a verified
     bot, an egress/subnet cluster): a collapsible summary over its clustered IPs.
@@ -602,7 +601,7 @@ def _folded_tbody(
     cls = profile.classification
     prefix, org, ua = client_id_parts(profile)
     members = profile.member_ips
-    pattern = _pattern_cell_for(profile, window)
+    pattern = _pattern_cell_for(profile, window, peak)
     org_html = f" <span class='cid-as'>{_esc(org)}</span>" if org else ""
     row_attrs = "class='asum'"
     if filterable:
@@ -637,6 +636,7 @@ def _actor_tbody(
     filterable: bool = False,
     net_col: dict[str, int] | None = None,
     window: _Window = None,
+    peak: int | None = None,
 ) -> str:
     """One actor as a ``<tbody>``: a lone client, or a collapsible summary + members.
 
@@ -658,9 +658,10 @@ def _actor_tbody(
                 filterable=filterable,
                 net_col=net_col,
                 window=window,
+                peak=peak,
             )
         row = _client_row(
-            actor.lead, flag=flag, filterable=filterable, net_col=net_col, window=window
+            actor.lead, flag=flag, filterable=filterable, net_col=net_col, window=window, peak=peak
         )
         return f"<tbody>{row}</tbody>"
     cls = actor.lead.classification
@@ -670,7 +671,7 @@ def _actor_tbody(
     # One AS across the fold -> name it (greyed, like the per-client AS) instead of "1 ASNs".
     asn_html = f" <span class='cid-as'>{_esc(as_display(*shared))}</span>" if shared else ""
     pattern = _pattern_cell(
-        _aggregate_buckets(actor.members, window), top_evidence(actor.lead), actor.requests
+        _aggregate_buckets(actor.members, window), top_evidence(actor.lead), actor.requests, peak
     )
     row_attrs = "class='asum'"
     if filterable:
@@ -698,7 +699,7 @@ def _actor_tbody(
         f"<td>{_tags_html(cls.tags)}</td><td class='reqpat'>{pattern}</td></tr>"
     )
     members = "".join(
-        _member_tr(m, _flag_html(cf.for_member(m.client_id)), window) for m in actor.members
+        _member_tr(m, _flag_html(cf.for_member(m.client_id)), window, peak) for m in actor.members
     )
     return f"<tbody class='actor'>{summary}{members}</tbody>"
 
@@ -711,6 +712,7 @@ def _kind_section(
     flags: CountryFlags | None = None,
     net_col: dict[str, int] | None = None,
     window: _Window = None,
+    peak: int | None = None,
 ) -> str:
     flags = flags or CountryFlags()
     net_col = net_col or {}
@@ -726,7 +728,7 @@ def _kind_section(
         "</div>",
     ]
     shown = "".join(
-        _actor_tbody(a, flags=flags, filterable=True, net_col=net_col, window=window)
+        _actor_tbody(a, flags=flags, filterable=True, net_col=net_col, window=window, peak=peak)
         for a in actors[:top]
     )
     parts.append(
@@ -735,7 +737,7 @@ def _kind_section(
     extra = actors[top:_EXPAND_LIMIT]
     if extra:
         extra_rows = "".join(
-            _actor_tbody(a, flags=flags, filterable=True, net_col=net_col, window=window)
+            _actor_tbody(a, flags=flags, filterable=True, net_col=net_col, window=window, peak=peak)
             for a in extra
         )
         parts.append(
@@ -782,6 +784,8 @@ def render_report_html(
     # The report-wide span every request-pattern sparkline shares as its x-axis.
     start, end = time_range(result.rollups)
     window = (start, end) if start is not None and end is not None else None
+    # One peak shared across the client tables' sparklines, so their heights compare.
+    spark_peak = _client_spark_peak(groups, window, _EXPAND_LIMIT)
     heading = "Agent Census" + (f" — {result.site}" if result.site else "")
     parts = [
         f"<h1>{_esc(heading)}</h1>",
@@ -812,185 +816,8 @@ def render_report_html(
         rollup = result.rollups.get(kind)
         if rollup and rollup.clients:
             parts.append(
-                _kind_section(kind, groups.get(kind, []), rollup, top, flags, net_col, window)
+                _kind_section(
+                    kind, groups.get(kind, []), rollup, top, flags, net_col, window, spark_peak
+                )
             )
     return _page(heading, "\n".join(parts))
-
-
-# --- inspect mode ----------------------------------------------------------
-
-
-def _rationale_html(profile: ClientProfile) -> str:
-    cls = profile.classification
-    signals = sorted(cls.all_signals, key=lambda s: s.confidence, reverse=True)
-    if signals:
-        items = []
-        for signal in signals:
-            primary = signal.kind is cls.primary
-            klass = ' class="primary-sig"' if primary else ""
-            ev = "".join(f"<li>{_esc(item)}</li>" for item in signal.evidence)
-            items.append(
-                f"<li{klass}>{_kind_badge(signal.kind)} "
-                f"<span class='muted'>{signal.confidence:.0%} · {_esc(signal.classifier)}</span>"
-                f'<ul class="evlist">{ev}</ul></li>'
-            )
-        rationale = f"<h3>Why this classification</h3><ul>{''.join(items)}</ul>"
-    else:
-        rationale = (
-            "<h3>Why this classification</h3>"
-            "<p>No classifier produced a signal — left UNKNOWN.</p>"
-        )
-    return rationale + _tags_evidence_html(cls)
-
-
-def _tags_evidence_html(cls: Classification) -> str:
-    """Every tag with the concrete measurement that earned it — the second axis of
-    the verdict, shown alongside the kind signals."""
-    if not cls.tags:
-        return ""
-    evidence = dict(cls.tag_evidence)
-    items = []
-    for tag in ordered_tags(cls.tags):
-        why = evidence.get(tag)
-        chip = f'<span class="tag" title="{_esc(tag_title(tag))}">{_esc(tag)}</span>'
-        detail = f" <span class='muted'>{_esc(why)}</span>" if why else ""
-        items.append(f"<li>{chip}{detail}</li>")
-    return f'<h3>Tags</h3><ul class="evlist">{"".join(items)}</ul>'
-
-
-def _compliance_html(profile: ClientProfile) -> str:
-    report = profile.compliance
-    if report is None:
-        return ""
-    group = _esc(report.matched_group or "–")
-    rows = [
-        f"<li><strong>Verdict:</strong> {_esc(report.verdict.value)}</li>",
-        f"<li><strong>Matched group:</strong> <code>{group}</code></li>",
-        f"<li><strong>Disallowed requested:</strong> {report.disallowed_hits}</li>",
-        f"<li><strong>Fetched robots first:</strong> {report.fetched_robots_first}</li>",
-    ]
-    if report.sample_disallowed:
-        sample = ", ".join(_esc(p) for p in report.sample_disallowed)
-        rows.append(f'<li class="mono">e.g. {sample}</li>')
-    return f'<h3>robots.txt</h3><ul class="meta">{"".join(rows)}</ul>'
-
-
-def _features_html(profile: ClientProfile) -> str:
-    body = "".join(
-        f"<tr><td>{_esc(name)}</td><td>{_esc(value)}</td></tr>"
-        for name, value in feature_rows(profile.features)
-    )
-    return (
-        "<h3>Features</h3><div class='tscroll'><table>"
-        f"<tr><th>Metric</th><th>Value</th></tr>{body}</table></div>"
-    )
-
-
-def _trace_html(profile: ClientProfile, limit: int, full: bool) -> str:
-    entries = sorted(profile.entries, key=lambda e: (e.timestamp is None, e.timestamp or e.line_no))
-    shown = entries if full else entries[:limit]
-    head = (
-        "<tr><th>Time</th><th>Method</th><th>Path</th><th class='num'>Status</th>"
-        "<th class='num'>Bytes</th><th>Referer</th></tr>"
-    )
-    rows = []
-    for entry in shown:
-        request = (entry.path + ("?" + entry.query if entry.query else "")) or entry.raw_request
-        target = request[:90]
-        rows.append(
-            f"<tr><td>{_esc(fmt_ts(entry.timestamp))}</td><td>{_esc(entry.method or '–')}</td>"
-            f'<td class="mono">{_esc(target or "–")}</td>'
-            f"<td class='num'>{entry.status if entry.status is not None else '–'}</td>"
-            f"<td class='num'>{entry.bytes_sent if entry.bytes_sent is not None else '–'}</td>"
-            f'<td class="mono">{_esc((entry.referer or "–")[:60])}</td></tr>'
-        )
-    if not full and len(entries) > limit:
-        rows.append(
-            f'<tr><td class="muted" colspan="6">'
-            f"…{len(entries) - limit:,} more (use --full)</td></tr>"
-        )
-    return (
-        f"<h3>Request trace ({len(shown)} of {len(entries)})</h3>"
-        f"<div class='tscroll'><table>{head}{''.join(rows)}</table></div>"
-    )
-
-
-def _profile_card(profile: ClientProfile, limit: int, full: bool) -> str:
-    feats = profile.features
-    cls = profile.classification
-    conf = f"<span class='muted'>confidence {cls.confidence:.0%}</span>"
-    ua = _esc(elide_ua(feats.user_agent, is_browser=cls.primary is Kind.BROWSER) or "–")
-    seen = f"{_esc(fmt_ts(feats.first_seen))} → {_esc(fmt_ts(feats.last_seen))}"
-    header = (
-        f'<h2 class="mono">{_esc(client_label(profile)[:100])}</h2>'
-        f'<ul class="meta">'
-        f"<li>{_kind_badge(cls.primary)} {conf}</li>"
-        f"<li><strong>IP:</strong> <code>{_esc(profile.client_id.ip)}</code></li>"
-        + (f"<li><strong>Network:</strong> {_esc(profile.network)}</li>" if profile.network else "")
-        + f'<li><strong>User-Agent:</strong> <span class="mono">{ua}</span></li>'
-        f"<li><strong>Requests:</strong> {feats.request_count:,} · "
-        f"<strong>Bandwidth:</strong> {human_bytes(feats.total_bytes)} · "
-        f"<strong>Span:</strong> {human_duration(feats.duration_seconds)}</li>"
-        f"<li><strong>Seen:</strong> {seen}</li>"
-        f"</ul>"
-    )
-    body = "".join(
-        [
-            header,
-            _rationale_html(profile),
-            _compliance_html(profile),
-            _features_html(profile),
-            _trace_html(profile, limit, full),
-        ]
-    )
-    return f'<section class="card">{body}</section>'
-
-
-def _rollup_card(profiles: list[ClientProfile]) -> str:
-    ip = profiles[0].client_id.ip
-    total_requests = sum(p.features.request_count for p in profiles)
-    total_bytes = sum(p.features.total_bytes for p in profiles)
-    head = (
-        "<tr><th>User-Agent</th><th>Kind</th><th class='num'>Conf.</th>"
-        "<th class='num'>Requests</th><th class='num'>Bandwidth</th><th>Tags</th></tr>"
-    )
-    rows = []
-    for profile in profiles:
-        cls = profile.classification
-        ua = elide_ua(profile.features.user_agent, is_browser=cls.primary is Kind.BROWSER) or "–"
-        rows.append(
-            f'<tr><td class="mono">{_esc(truncate(ua, 160))}</td>'
-            f"<td>{_kind_badge(cls.primary)}</td>"
-            f"<td class='num'>{cls.confidence:.0%}</td>"
-            f"<td class='num'>{profile.features.request_count:,}</td>"
-            f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
-            f"<td>{_tags_html(cls.tags)}</td></tr>"
-        )
-    rows.append(
-        f"<tr><td><strong>Total</strong></td><td></td><td></td>"
-        f"<td class='num'>{total_requests:,}</td>"
-        f"<td class='num'>{human_bytes(total_bytes)}</td><td></td></tr>"
-    )
-    intro = (
-        f"<p>This IP presents {count(len(profiles), 'distinct user-agent')} (user-agent rotation). "
-        "Per-client summary below; inspect one by passing a distinctive part of its "
-        "user-agent to <code>--client</code>.</p>"
-    )
-    return (
-        f'<section class="card"><h2 class="mono">{_esc(ip)} — '
-        f"{count(len(profiles), 'client')} on one IP</h2>"
-        f"{intro}<div class='tscroll'><table>{head}{''.join(rows)}</table></div></section>"
-    )
-
-
-def render_inspect_html(
-    selected: list[ClientProfile], *, limit: int = 20, full: bool = False
-) -> str:
-    """Render inspection output for already-selected profiles as an HTML page."""
-    if not selected:
-        return _page("Client Inspection", "<h1>Client Inspection</h1><p>No matching clients.</p>")
-    selected = sorted(selected, key=lambda p: p.features.request_count, reverse=True)
-    if len(selected) >= ROLLUP_MIN_CLIENTS and len({p.client_id.ip for p in selected}) == 1:
-        return _page("Client Inspection", f"<h1>Client Inspection</h1>{_rollup_card(selected)}")
-    cards = "".join(_profile_card(p, limit, full) for p in selected)
-    return _page("Client Inspection", f"<h1>Client Inspection</h1>{cards}")

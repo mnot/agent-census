@@ -45,6 +45,11 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
    Total (and, via .stick-l below, after Kind). CanvasText so it's a black line on
    light, a white one on dark -- a deliberate step up from the row hairlines. */
 .netdiv { border-left: 2px solid CanvasText; }
+/* A pinned divider column sits a sub-pixel right of the non-sticky column scrolling
+   behind it, leaving a ~1px Canvas sliver between that column's fill and the rule.
+   A 1px CanvasText shadow just outside the left border closes it -- the rule reads
+   flush against the last scrolled cell instead of with a hairline gap. */
+#nettab td.netdiv.stick-r, #nettab th.netdiv.stick-r { box-shadow: -1px 0 0 0 CanvasText; }
 /* Grey wash on off-network headers, as an image layer so it composites over the
    pinned cell's opaque Canvas base (a flat background-color would not). */
 th.netoff { background-image: linear-gradient(#8881, #8881); }
@@ -129,7 +134,10 @@ tr:hover td { background: #8881; }
 /* Lightweight affordance cue: italic + muted, so it reads as guidance, not data. */
 .hint { font-style: italic; color: var(--muted); font-size: .9rem; margin: .25rem 0 .6rem; }
 .hint code { font-style: normal; }
-.bar { background: #8883; border-radius: 4px; height: .7rem; min-width: 2px; }
+/* Req/BW share bars share the sparkline's CanvasText mix so the two glyphs in a
+   row read as one family (a flat pale grey was too faint to make out). */
+.bar { background: color-mix(in srgb, CanvasText 66%, Canvas); border-radius: 4px;
+  height: .7rem; min-width: 2px; }
 /* Stacked robots-compliance bar. Segments are flex children sized by % width;
    the track background shows through any gap. cursor:help signals the per-segment
    count tooltips. */
@@ -205,14 +213,16 @@ tr.amem .cid-as { color: var(--muted); font-size: .82rem; }
    base hides rows scrolling underneath. The inter-section gap moves from the h2's
    top margin to the section itself -- inside the sticky box it would show as dead
    space above the heading once pinned. */
-/* scroll-margin-top: jumping to a kind aligns its top with the viewport top,
-   but the sticky filter bar sits there -- so leave room for it (plus a little
-   breathing space) and the heading lands just below the bar, not behind it. */
-section.kind { margin-top: 2.25rem;
-  scroll-margin-top: calc(var(--filterbar-h, 0px) + 0.75rem); }
+section.kind { margin-top: 2.25rem; }
 .kindhead { position: sticky; top: var(--filterbar-h, 0px); z-index: 1;
   background: Canvas; padding-bottom: .3rem; }
-.kindhead h2 { margin-top: 0; }
+/* scroll-margin-top: jumping to a kind aligns its top with the viewport top, but
+   the sticky filter bar sits there -- so leave room for it (plus a little breathing
+   space) and the heading lands just below the bar, not behind it. The id is on this
+   h2, so the offset has to live here: on the section it doesn't apply to the element
+   the jump actually targets, and the heading + first rows land behind the bar. */
+.kindhead h2 { margin-top: 0;
+  scroll-margin-top: calc(var(--filterbar-h, 0px) + 0.75rem); }
 .kindhead .blurb { margin-bottom: 0; }
 input.filter { display: block; width: 100%; max-width: 30rem; margin: 0;
   padding: .4rem .55rem; border: 1px solid #8886; border-radius: 6px;

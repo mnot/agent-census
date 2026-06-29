@@ -17,6 +17,8 @@ from ._assets import CSS, SCRIPT
 from ._netscript import NET_SCRIPT
 from ._sparkline import Window as _Window
 from ._sparkline import aggregate_buckets as _aggregate_buckets
+from ._sparkline import axis_span as _axis_span
+from ._sparkline import kind_sparklines as _kind_sparklines
 from ._sparkline import member_pattern as _member_pattern
 from ._sparkline import pattern_cell as _pattern_cell
 from ._sparkline import pattern_cell_for as _pattern_cell_for
@@ -227,7 +229,9 @@ def _robots_bar(respects: int, ignores: int, unk: int) -> str:
     return f'<div class="rbar" title="{_esc(summary)}">{"".join(segments)}</div>'
 
 
-def _summary_table(result: AnalysisResult) -> str:
+def _summary_table(result: AnalysisResult, patterns: dict[Kind, str], window: _Window) -> str:
+    # `patterns`: per-kind cadence glyph, on the shared sparkline axis (see
+    # `kind_sparklines`). Its "Requests over <span>" header matches the per-client table.
     rollups = result.rollups
     total = sum(r.requests for r in rollups.values()) or 1
     total_bytes = sum(r.total_bytes for r in rollups.values()) or 1
@@ -239,8 +243,9 @@ def _summary_table(result: AnalysisResult) -> str:
     )
     head = (
         "<tr><th>Kind</th><th class='num'>Clients</th><th class='num'>Requests</th>"
-        "<th>Req share</th><th class='num'>Avg/client</th><th class='num'>Bandwidth</th>"
-        f'<th>BW share</th><th title="{_esc(robots_help)}">robots.txt compliance ⓘ</th></tr>'
+        f"<th>Req share</th><th class='reqpat'>Requests over {_axis_span(window)}</th>"
+        "<th class='num'>Bandwidth</th><th>BW share</th>"
+        f'<th title="{_esc(robots_help)}">robots.txt compliance ⓘ</th></tr>'
     )
     rows = []
     for kind in KIND_ORDER:
@@ -256,7 +261,7 @@ def _summary_table(result: AnalysisResult) -> str:
             f'<tr><td><a href="#{kind.value}">{_kind_badge(kind)}</a></td>'
             f"<td class='num'>{rollup.clients:,}</td><td class='num'>{rollup.requests:,}</td>"
             f"<td>{_share_bar(rollup.requests / total)}</td>"
-            f"<td class='num'>{rollup.requests / rollup.clients:,.0f}</td>"
+            f"<td class='reqpat'>{patterns.get(kind, '')}</td>"
             f"<td class='num'>{human_bytes(rollup.total_bytes)}</td>"
             f"<td>{_share_bar(rollup.total_bytes / total_bytes)}</td>"
             f"<td>{robots}</td></tr>"
@@ -476,18 +481,11 @@ def _network_table(matrix: NetworkMatrix | None) -> str:
 def _section_head(window: _Window) -> str:
     """The client-table header row. The request-pattern column reads "Requests over
     <span>", naming the span its shared x-axis covers (every sparkline in the report
-    is drawn against it), with the exact start -> end on hover. Phrasing it as a
-    single line keeps the header from wrapping a parenthetical mid-word."""
-    title = ""
-    detail = "time"
-    if window is not None:
-        detail = human_duration((window[1] - window[0]).total_seconds())
-        full = f"shared sparkline axis: {fmt_ts(window[0])} → {fmt_ts(window[1])}"
-        title = f' title="{_esc(full)}"'
-    span = f"<span class='muted'{title}>{_esc(detail)}</span>"
+    is drawn against it), with the exact start -> end on hover."""
     return (
         "<tr><th>Client</th><th class='num'>Requests</th><th class='num'>Bandwidth</th>"
-        f"<th class='num'>Conf.</th><th>Tags</th><th class='reqpat'>Requests over {span}</th></tr>"
+        f"<th class='num'>Conf.</th><th>Tags</th>"
+        f"<th class='reqpat'>Requests over {_axis_span(window)}</th></tr>"
     )
 
 
@@ -788,7 +786,7 @@ def render_report_html(
     parts = [
         f"<h1>{_esc(heading)}</h1>",
         _meta_list(result, source, robots_note, elapsed),
-        _summary_table(result),
+        _summary_table(result, _kind_sparklines(groups, window, KIND_ORDER), window),
         _network_table(matrix),
         # Search box + active-filter pills + "Show all" pinned together: clicking a
         # table can isolate a kind / network and scroll far down, so these controls

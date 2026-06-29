@@ -193,10 +193,11 @@ def rebin_cadence(cadence: dict[int, int], window: Window) -> list[int]:
 
     The rollup accumulates each kind's activity on a fixed ``CADENCE_BIN_SECONDS``
     grid as clients are seen -- eviction- and cap-safe, so it covers the whole kind,
-    not just the retained profiles. Placing each grid bin by its midpoint reproduces
-    the per-client :func:`project_buckets` projection summed over every client, as
-    long as the grid is finer than the rendered window (it is, for any window above a
-    few hours)."""
+    not just the retained profiles, and (unlike a sum of per-client
+    :func:`project_buckets`) it also carries sub-minute bursts, which have no
+    per-client histogram to project. Each grid bin is placed by its midpoint; the grid
+    is finer than the rendered window, so the re-bin only blurs placement by a fraction
+    of a slice."""
     out = [0] * _BUCKETS
     if not cadence or window is None:
         return out
@@ -215,8 +216,8 @@ def kind_sparklines(
     rollups: dict[Kind, KindRollup], window: Window, kinds: Sequence[Kind]
 ) -> dict[Kind, str]:
     """A cadence glyph per kind for the summary table, each re-binned from the kind's
-    eviction-safe rollup cadence onto the shared axis -- so the glyph covers *all* of
-    the kind's traffic, matching the exact request count beside it, not just the
+    eviction-safe rollup cadence onto the shared axis -- so the glyph covers all of
+    the kind's timestamped traffic, tracking the request count beside it, not just the
     retained profiles the per-kind cap kept. All scaled to one peak across kinds
     (sqrt, so a busier kind reads taller while quiet kinds stay legible) -- a coarser
     cousin of the per-client table's own shared peak, on a different scale (per-kind

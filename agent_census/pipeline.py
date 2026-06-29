@@ -68,12 +68,13 @@ DEFAULT_MAX_PER_KIND = 1000
 DEFAULT_RETIRED_CAP = 50_000
 
 # Wall-clock resolution of the per-kind cadence histogram a rollup accumulates for
-# the summary sparkline. Each emitted client's bucketed activity is binned onto this
-# absolute grid as it is seen, so the summary glyph is eviction- and cap-safe (unlike
-# re-aggregating the retained profiles, which omits the long tail the cap dropped).
-# It only needs to be finer than the rendered grid (40 slices) over the report window
-# for the re-bin to be lossless; at 5 minutes that holds for any window above ~3h,
-# while bounding the per-kind dict to window-duration / 5min entries.
+# the summary sparkline. Each emitted client's activity is binned onto this absolute
+# grid as it is seen, so the summary glyph is eviction- and cap-safe (unlike re-
+# aggregating the retained profiles, which omits the long tail the cap dropped).
+# Quantising to the grid costs up to half a bin (~2.5 min) of placement error:
+# negligible at the day/week windows these reports usually span (a 40-slice week is
+# ~4h per slice), a fraction of a slice only down at a few hours. It also bounds the
+# per-kind dict to window-duration / 5min entries.
 CADENCE_BIN_SECONDS = 300
 
 # Declared-crawler categories, checked individually so per-UA matches cache.
@@ -246,10 +247,12 @@ class KindRollup:
     unknown_robots: int = 0
     first_seen: datetime | None = None
     last_seen: datetime | None = None
-    # Eviction-safe cadence: absolute-time histogram of every client's bucketed
+    # Eviction-safe cadence: absolute-time histogram of every client's request
     # activity (keyed by epoch // CADENCE_BIN_SECONDS), summed over the whole kind.
     # The summary sparkline re-bins this onto the report window, so its height
-    # reflects all traffic -- not just the capped, retained profiles.
+    # reflects all timestamped traffic -- not just the capped, retained profiles.
+    # (Requests with no parseable timestamp can't be placed, so they're absent here
+    # as they are from every other time-based view.)
     cadence: dict[int, int] = field(default_factory=dict)
 
 
@@ -287,21 +290,29 @@ class _RollupAcc:
             self.first_seen = first
         if last is not None and (self.last_seen is None or last > self.last_seen):
             self.last_seen = last
-        # Fold this client's span-local request histogram onto the shared absolute
-        # grid, placing each bucket by its midpoint (the same projection the report's
-        # sparkline uses), so the per-kind cadence stays exact as clients are evicted.
+        # Fold this client's activity onto the shared absolute grid as it is seen, so
+        # the per-kind cadence covers every client with a timestamp -- not just the
+        # high-volume profiles the cap keeps. A client active across more than a minute
+        # carries a span-local histogram (request_buckets); place each bucket by its
+        # midpoint, the same projection the per-client sparkline uses. A client whose
+        # whole span fits in one minute has no such histogram (request_buckets is then
+        # empty -- features.py:_request_buckets), so place its whole burst at its one
+        # point in time: a single page load's flurry of requests still registers
+        # instead of vanishing, which matters for browser-heavy kinds.
+        cadence = self.cadence
         buckets = features.request_buckets
-        if buckets and first is not None and last is not None:
-            c0 = first.timestamp()
-            span = last.timestamp() - c0
-            if span > 0:
-                nbins = len(buckets)
-                cadence = self.cadence
-                for i, hits in enumerate(buckets):
-                    if hits:
-                        midpoint = c0 + ((i + 0.5) / nbins) * span
-                        key = int(midpoint // CADENCE_BIN_SECONDS)
-                        cadence[key] = cadence.get(key, 0) + hits
+        c0 = first.timestamp() if first is not None else None
+        span = last.timestamp() - c0 if c0 is not None and last is not None else 0.0
+        if buckets and c0 is not None and span > 0:
+            nbins = len(buckets)
+            for i, hits in enumerate(buckets):
+                if hits:
+                    midpoint = c0 + ((i + 0.5) / nbins) * span
+                    key = int(midpoint // CADENCE_BIN_SECONDS)
+                    cadence[key] = cadence.get(key, 0) + hits
+        elif c0 is not None:
+            key = int(c0 // CADENCE_BIN_SECONDS)
+            cadence[key] = cadence.get(key, 0) + features.request_count
 
     def freeze(self) -> KindRollup:
         return KindRollup(

@@ -110,7 +110,7 @@ asns = [12076]
 # format = "azure"
 
 [[source]]
-name = "1HostPlanet"
+name = "OneHostPlanet"
 asns = [209155]
 
 [[source]]
@@ -146,7 +146,7 @@ name = "CherryServers"
 asns = [216444, 204770, 16125]
 
 [[source]]
-name = "netcup"
+name = "Anexia"
 asns = [197540, 42473, 51453]
 
 [[source]]
@@ -166,7 +166,7 @@ name = "Akamai"
 asns = [36183, 12222, 17204, 35994]
 
 [[source]]
-name = "ColoCrossing"
+name = "HostPapa"
 asns = [36352, 11989, 23273, 40092]
 
 [[source]]
@@ -222,7 +222,7 @@ name = "GSL Networks"
 asns = [137409]
 
 [[source]]
-name = "ColocationX"
+name = "Malieva"
 asns = [208046]
 
 [[source]]
@@ -279,12 +279,27 @@ asns = [1248]
 
 [[source]]
 name = "GoDaddy"
-asns = [398101, 30083, 26496, 397516, 397519, 397522, 398104, 398109]
+asns = [398101, 26496, 397516, 397519, 397522, 398104, 398109, 400754]
 
 [[source]]
-name = "Park web"
+name = "Velia"
+asns = [30083]
+
+[[source]]
+name = "Host-Telecom"
 asns = [51248]
 
 [[source]]
-name = "TurnItIn"
+name = "Bucklog"
+asns = [211590]
+
+[[source]]
+name = "DMZHost"  # Techoff Srv Limited (dmzhost.co)
+asns = [48090]
+
+[[source]]
+name = "Node4"
+asns = [31727]
+
+[[source]]
 asns = [46851]

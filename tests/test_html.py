@@ -387,6 +387,32 @@ def test_sparkline_projects_onto_shared_axis() -> None:
     assert projected[30] == 0
 
 
+def test_sub_minute_client_projects_as_a_single_spike() -> None:
+    # A client whose whole span fits in one minute has no span-local histogram
+    # (request_buckets is empty), so it used to project to nothing and render a blank
+    # glyph despite real volume. Now its whole volume lands as one spike at its point
+    # in time -- consistent with how the per-kind cadence treats a sub-minute burst.
+    from datetime import datetime, timedelta, timezone
+
+    from agent_census.report._sparkline import project_buckets
+
+    start = datetime(2023, 10, 10, 12, 0, tzinfo=timezone.utc)
+    window = (start, start + timedelta(hours=4))
+    active = start + timedelta(hours=1)  # a quarter of the way into the window
+    profile = _spark_profile(
+        request_count=200, first=active, last=active + timedelta(seconds=30), buckets=[]
+    )
+    assert profile.features.request_buckets == ()  # the burst that used to vanish
+
+    projected = project_buckets(profile, window)
+    assert sum(projected) == 200  # whole volume placed, not dropped
+    assert sum(1 for slot in projected if slot) == 1  # ... as a single spike
+    assert projected[10] == 200  # a quarter into 40 slices
+
+    # and it now renders a glyph rather than a caption-only row
+    assert "<svg class='spark'" in _client_row(profile, window=window)
+
+
 def test_aggregate_buckets_reveals_rotation() -> None:
     # Two members each active in a different half: individually narrow, together
     # they cover the whole window -- the coordination signal the summary shows.

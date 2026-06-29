@@ -40,28 +40,40 @@ def project_buckets(profile: ClientProfile, window: Window) -> list[int]:
 
     Placing the client's own buckets into its slice of the global window is what
     makes every sparkline share one scale. A short-lived client compresses into a
-    narrow band; one that spans the whole capture fills the width."""
-    buckets = profile.features.request_buckets
-    first = profile.features.first_seen
-    last = profile.features.last_seen
+    narrow band; one that spans the whole capture fills the width. A client whose
+    whole span fits in one minute has no span-local histogram (request_buckets is
+    empty -- features._request_buckets); rather than leave its glyph blank, place its
+    whole volume as a single spike at its point in time -- the same way the per-kind
+    rollup cadence handles a sub-minute burst, so the two stay consistent."""
+    features = profile.features
+    buckets = features.request_buckets
+    first = features.first_seen
+    last = features.last_seen
     out = [0] * _BUCKETS
-    if not buckets or first is None or last is None or window is None:
+    if window is None or first is None:
         return out
     w0 = window[0].timestamp()
     full = window[1].timestamp() - w0
     if full <= 0:
         return out
     c0 = first.timestamp()
-    span = last.timestamp() - c0
-    nbins = len(buckets)
-    for i, hits in enumerate(buckets):
-        if not hits:
-            continue
-        # Bucket i is the local slice [i, i + 1) / nbins; place it by its midpoint,
-        # so a client spanning the whole window maps back onto the global grid 1:1.
-        local_t = c0 + ((i + 0.5) / nbins) * span
-        idx = int((local_t - w0) / full * _BUCKETS)
-        out[min(_BUCKETS - 1, max(0, idx))] += hits
+    span = last.timestamp() - c0 if last is not None else 0.0
+    if buckets and span > 0:
+        nbins = len(buckets)
+        for i, hits in enumerate(buckets):
+            if not hits:
+                continue
+            # Bucket i is the local slice [i, i + 1) / nbins; place it by its midpoint,
+            # so a client spanning the whole window maps back onto the global grid 1:1.
+            local_t = c0 + ((i + 0.5) / nbins) * span
+            idx = int((local_t - w0) / full * _BUCKETS)
+            out[min(_BUCKETS - 1, max(0, idx))] += hits
+    else:
+        # Sub-minute burst: no shape to spread, so place the whole volume in the one
+        # slice the client was active in. A tall spike is truthful -- the client had a
+        # high instantaneous rate -- and the shared peak keeps it comparable.
+        idx = int((c0 - w0) / full * _BUCKETS)
+        out[min(_BUCKETS - 1, max(0, idx))] += features.request_count
     return out
 
 

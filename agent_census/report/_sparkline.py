@@ -21,6 +21,7 @@ from collections.abc import Iterable, Sequence
 from datetime import datetime
 
 from ..model import ClientProfile, Kind
+from ..pipeline import CADENCE_BIN_SECONDS, KindRollup
 from .aggregate import group_actors
 from .format import fmt_ts, human_duration, top_evidence, truncate
 
@@ -187,15 +188,43 @@ def axis_span(window: Window) -> str:
     return f"<span class='muted'{title}>{html.escape(detail, quote=True)}</span>"
 
 
+def rebin_cadence(cadence: dict[int, int], window: Window) -> list[int]:
+    """Re-bin a rollup's absolute-time cadence histogram onto the report-wide axis.
+
+    The rollup accumulates each kind's activity on a fixed ``CADENCE_BIN_SECONDS``
+    grid as clients are seen -- eviction- and cap-safe, so it covers the whole kind,
+    not just the retained profiles, and (unlike a sum of per-client
+    :func:`project_buckets`) it also carries sub-minute bursts, which have no
+    per-client histogram to project. Each grid bin is placed by its midpoint; the grid
+    is finer than the rendered window, so the re-bin only blurs placement by a fraction
+    of a slice."""
+    out = [0] * _BUCKETS
+    if not cadence or window is None:
+        return out
+    w0 = window[0].timestamp()
+    full = window[1].timestamp() - w0
+    if full <= 0:
+        return out
+    for grid_bin, hits in cadence.items():
+        midpoint = (grid_bin + 0.5) * CADENCE_BIN_SECONDS
+        idx = int((midpoint - w0) / full * _BUCKETS)
+        out[min(_BUCKETS - 1, max(0, idx))] += hits
+    return out
+
+
 def kind_sparklines(
-    groups: dict[Kind, list[ClientProfile]], window: Window, kinds: Sequence[Kind]
+    rollups: dict[Kind, KindRollup], window: Window, kinds: Sequence[Kind]
 ) -> dict[Kind, str]:
-    """A cadence glyph per kind for the summary table, each summed from the kind's
-    retained clients onto the shared axis. All scaled to one peak across kinds (sqrt,
-    so a busier kind reads taller while quiet kinds stay legible) -- a coarser cousin
-    of the per-client table's own shared peak, on a different scale (per-kind totals,
-    not single clients). The cap on retained per-kind profiles means a capped tail is
-    not reflected."""
-    buckets = {kind: aggregate_buckets(groups.get(kind, []), window) for kind in kinds}
+    """A cadence glyph per kind for the summary table, each re-binned from the kind's
+    eviction-safe rollup cadence onto the shared axis -- so the glyph covers all of
+    the kind's timestamped traffic, tracking the request count beside it, not just the
+    retained profiles the per-kind cap kept. All scaled to one peak across kinds
+    (sqrt, so a busier kind reads taller while quiet kinds stay legible) -- a coarser
+    cousin of the per-client table's own shared peak, on a different scale (per-kind
+    totals, not single clients)."""
+    buckets = {
+        kind: rebin_cadence(rollups[kind].cadence, window) if kind in rollups else [0] * _BUCKETS
+        for kind in kinds
+    }
     peak = max((max(b, default=0) for b in buckets.values()), default=0)
     return {kind: sparkline_svg(b, peak=peak, sqrt=True) for kind, b in buckets.items()}

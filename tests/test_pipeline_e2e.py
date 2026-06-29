@@ -104,6 +104,66 @@ def test_vhost_filter_falls_back_to_host_header(tmp_path: Path) -> None:
     assert {p.client_id.ip for p in result.profiles} == {"1.1.1.1"}
 
 
+def test_summary_cadence_covers_clients_the_cap_dropped(tmp_path: Path) -> None:
+    # The per-kind cap keeps only the highest-volume profiles, but the summary glyph
+    # must reflect the whole kind (it sits beside the exact request count). A long
+    # tail of equal-volume clients, capped to two profiles: the rollup cadence still
+    # accounts for every client's requests, not just the two that were retained.
+    ua = (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/119.0 Safari/537.36"
+    )
+    lines = []
+    for i in range(1, 11):  # ten distinct clients, two requests each across two minutes
+        for minute, path in ((0, "/"), (5, "/about")):
+            lines.append(
+                f'10.0.0.{i} - - [10/Oct/2023:12:{minute:02d}:00 +0000] '
+                f'"GET {path} HTTP/1.1" 200 100 "-" "{ua}"'
+            )
+    log = tmp_path / "tail.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"), max_per_kind=2)
+
+    kind = next(k for k, r in result.rollups.items() if r.clients == 10)
+    rollup = result.rollups[kind]
+    retained = [p for p in result.profiles if p.classification.primary == kind]
+    assert len(retained) == 2  # the cap dropped eight of the ten clients' profiles
+    # ... yet the cadence sums every client's bucketed traffic, matching the exact
+    # request count, rather than only the two retained profiles (which carry 4).
+    assert sum(rollup.cadence.values()) == rollup.requests == 20
+
+
+def test_summary_cadence_includes_sub_minute_bursts(tmp_path: Path) -> None:
+    # A client whose whole span fits in one minute has no per-client histogram
+    # (request_buckets is empty -- see features._request_buckets), so the old
+    # per-profile aggregation dropped it from the summary glyph entirely. That is
+    # exactly the burst a browser makes on a single page load, so a burst-heavy kind
+    # would under-draw against its request count. The rollup cadence must place such a
+    # client's requests at its point in time regardless.
+    ua = (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/119.0 Safari/537.36"
+    )
+    lines = []
+    for i in range(1, 6):  # five clients, two requests 30s apart -- one wall-clock minute
+        for sec in (0, 30):
+            lines.append(
+                f"10.1.0.{i} - - [10/Oct/2023:12:00:{sec:02d} +0000] "
+                f'"GET / HTTP/1.1" 200 100 "-" "{ua}"'
+            )
+    log = tmp_path / "burst.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
+
+    kind = next(k for k, r in result.rollups.items() if r.clients == 5)
+    same_kind = [p for p in result.profiles if p.classification.primary == kind]
+    assert same_kind and all(not p.features.request_buckets for p in same_kind)  # all sub-minute
+    # ... yet the cadence still accounts for every one of their requests.
+    assert sum(result.rollups[kind].cadence.values()) == result.rollups[kind].requests == 10
+
+
 def test_multiple_logfiles_are_pooled() -> None:
     parser = resolve("apache", {"format": PRESETS["combined"]})
     strategy = identity.get_strategy("ip_ua")

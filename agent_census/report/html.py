@@ -793,7 +793,7 @@ def render_report_html(
     parts = [
         f"<h1>{_esc(heading)}</h1>",
         _meta_list(result, source, robots_note, elapsed),
-        _summary_table(result, _kind_sparklines(groups, window, KIND_ORDER), window),
+        _summary_table(result, _kind_sparklines(result.rollups, window, KIND_ORDER), window),
         _network_table(matrix),
         # Search box + active-filter pills + "Show all" pinned together: clicking a
         # table can isolate a kind / network and scroll far down, so these controls

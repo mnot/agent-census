@@ -1,4 +1,4 @@
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 __author__ = "Mark Nottingham <mnot@mnot.net>"
 
 # Sent on every outbound HTTP request (range feeds, robots.txt, the audit APIs).

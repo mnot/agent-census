@@ -409,7 +409,8 @@ def _network_table(matrix: NetworkMatrix | None) -> str:
             )
             tr = "<tr class='bandstart'>" if (offset == 0 and ci > 0) else "<tr>"
             rows.append(
-                f'{tr}{band}<td class="stick-l"><a href="#{kind.value}">{_kind_badge(kind)}</a></td>'
+                f'{tr}{band}<td class="stick-l">'
+                f'<a href="#{kind.value}">{_kind_badge(kind)}</a></td>'
                 f"{cells}<td class='num netdiv stick-r'{heat(matrix.row_totals[kind], peak_row)}>"
                 f"{matrix.row_totals[kind]:,}</td></tr>"
             )

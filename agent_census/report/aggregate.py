@@ -56,7 +56,6 @@ KIND_CLUSTERS: tuple[KindCluster, ...] = (
 # *is* the clusters, flattened. The assert makes a newly added Kind that nobody
 # placed in a cluster a hard failure at import, not a silent drop from every table.
 KIND_ORDER: tuple[Kind, ...] = tuple(k for c in KIND_CLUSTERS for k in c.kinds)
-KIND_TO_CLUSTER: dict[Kind, KindCluster] = {k: c for c in KIND_CLUSTERS for k in c.kinds}
 assert set(KIND_ORDER) == set(Kind) and len(KIND_ORDER) == len(
     Kind
 ), "every Kind must belong to exactly one cluster"

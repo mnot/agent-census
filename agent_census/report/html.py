@@ -89,6 +89,10 @@ _TAG_TOKENS: dict[str, str] = {
     "asn-attributed": "trust-soft",
     "user-triggered": "trust-soft",
     "unverified": "doubt",
+    # 'stale-browser-ua' is the mild-doubt middle rung of the UA-age ramp
+    # (current -> human, ancient/impossible -> danger); yellow keeps that
+    # authenticity axis escalating rather than dropping to neutral grey.
+    "stale-browser-ua": "doubt",
     # Behaviour / botness -- how machine-like the client behaves, up to hostile.
     "current-browser-ua": "human",
     "loads-assets": "human",

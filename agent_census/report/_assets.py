@@ -64,19 +64,23 @@ th.vh > span { display: inline-block; writing-mode: vertical-rl;
   transform: rotate(180deg); line-height: 1.1; }
 /* Cluster bands: a vertical side label per band (label on the band's first row),
    with a heavy ink rule (kin to .netdiv, but horizontal) marking where a band begins.
-   The label column auto-narrows to the rotated text; band cells drop their bottom
-   hairline so no rule cuts across the label.
-   Top-aligned, not middle: Safari honours `vertical-align: middle` in a
-   separate-border table (the cross-tab) but top-aligns it in a collapse-border table
-   (this summary), dropping the label onto the band rule. Pinning it to the top with
-   real padding makes the position deterministic in both. The cross-tab keeps its
-   centred label below. */
-.band { vertical-align: top; text-align: center; white-space: nowrap;
-  padding: .55rem .2rem .3rem; border-bottom: 0; border-right: 1px solid #8886;
-  font-weight: 600; color: color-mix(in srgb, CanvasText 58%, Canvas); }
+   Band cells drop their bottom hairline so no rule cuts across the label. */
+.band { text-align: center; white-space: nowrap; border-bottom: 0;
+  border-right: 1px solid #8886; font-weight: 600;
+  color: color-mix(in srgb, CanvasText 58%, Canvas); }
 .band > span { display: inline-block; writing-mode: vertical-rl;
   transform: rotate(180deg); letter-spacing: .01em; }
 tr.bandstart > * { border-top: 2px solid #8887; }
+/* Summary table only (border-collapse: collapse). Table-cell `vertical-align`
+   under collapsed borders is unreliable in WebKit -- Safari dropped the label onto
+   the band rule. Position it absolutely instead (spec-deterministic across engines):
+   a fixed-width column (the label is now out of flow, so the column can't size to
+   it) with the label pinned below the top rule, extending down over the band's empty
+   cells. The cross-tab (#nettab, separate borders) keeps its in-flow centred label. */
+:where(table:not(#nettab)) .band { position: relative;
+  width: 1.7rem; min-width: 1.7rem; max-width: 1.7rem; }
+:where(table:not(#nettab)) .band > span { position: absolute; top: .5rem;
+  left: 50%; transform: translateX(-50%) rotate(180deg); }
 /* Pin Kind (left) and the Other / off-network / Total columns (right) while the
    named-datacentre columns scroll between them. Every cell carries an opaque base
    so a pinned column stays solid over the columns scrolling behind it; heat is a

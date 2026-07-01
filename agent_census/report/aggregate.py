@@ -3,35 +3,79 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
 from ..model import ClientProfile, Kind
 from ..pipeline import OTHER_HOSTING, RESIDENTIAL_NETWORK, KindRollup
 
-# Order kinds appear in reports: a rough good -> bad gradient, with the
-# can't-say bucket (unknown) at the very end.
-KIND_ORDER: tuple[Kind, ...] = (
-    Kind.BROWSER,
-    Kind.APP,
-    Kind.FEED_READER,
-    Kind.SOCIAL_PREVIEW,
-    Kind.SEARCH_ENGINE,
-    Kind.ARCHIVER,
-    Kind.AI_CRAWLER,
-    Kind.SEO_MARKETING,
-    Kind.DATA_HARVESTER,
-    Kind.MONITOR,
-    Kind.CRAWLER,
-    Kind.SCRAPER,
-    Kind.SPAM_BOT,
-    Kind.VULN_SCANNER,
-    Kind.SPOOFED_BROWSER,
-    Kind.IMPERSONATOR,
-    Kind.AUTOMATION,
-    Kind.UNKNOWN,
+
+# Kinds are grouped into clusters that band the report by what the traffic *is or
+# does* -- never by a presumed beneficiary or intent (the kind wheel is
+# classification, not judgement). Reading top to bottom is a rough good -> can't-say
+# gradient, ending with the two unattributed buckets. Each label names the band's
+# common trait: People are human-driven (a feed reader is a person, just in other
+# software); Utility bots reference or observe content (index, snapshot, unfurl,
+# ping) rather than ingest it; Harvesters ingest content for a third party's reuse;
+# Suspicious is defined by conduct (probing, forging identity, injecting), not by
+# whether the actor is malicious; Unattributed is machine-or-maybe-machine with no
+# purpose pinned down.
+@dataclass(frozen=True)
+class KindCluster:
+    """An ordered band of kinds shown together, under one side label."""
+
+    label: str
+    kinds: tuple[Kind, ...]
+
+
+KIND_CLUSTERS: tuple[KindCluster, ...] = (
+    KindCluster("People", (Kind.BROWSER, Kind.APP, Kind.FEED_READER)),
+    KindCluster(
+        "Utility bots",
+        (Kind.SEARCH_ENGINE, Kind.ARCHIVER, Kind.SOCIAL_PREVIEW, Kind.MONITOR),
+    ),
+    KindCluster(
+        "Harvesters",
+        (
+            Kind.AI_CRAWLER,
+            Kind.SEO_MARKETING,
+            Kind.DATA_HARVESTER,
+            Kind.CRAWLER,
+            Kind.SCRAPER,
+        ),
+    ),
+    KindCluster(
+        "Suspicious",
+        (Kind.SPAM_BOT, Kind.VULN_SCANNER, Kind.SPOOFED_BROWSER, Kind.IMPERSONATOR),
+    ),
+    KindCluster("Unattributed", (Kind.AUTOMATION, Kind.UNKNOWN)),
 )
+
+# Derived so the flat order and the banding can never drift: the report's row order
+# *is* the clusters, flattened. The assert makes a newly added Kind that nobody
+# placed in a cluster a hard failure at import, not a silent drop from every table.
+KIND_ORDER: tuple[Kind, ...] = tuple(k for c in KIND_CLUSTERS for k in c.kinds)
+assert set(KIND_ORDER) == set(Kind) and len(KIND_ORDER) == len(
+    Kind
+), "every Kind must belong to exactly one cluster"
+
+
+def clusters_present(
+    is_present: Callable[[Kind], bool],
+) -> list[tuple[KindCluster, list[Kind]]]:
+    """Clusters in order, each paired with its kinds that pass ``is_present``.
+
+    A cluster with no present kinds is dropped entirely (no empty band, no orphan
+    label). Both renderers share this so their banding stays identical.
+    """
+    out: list[tuple[KindCluster, list[Kind]]] = []
+    for cluster in KIND_CLUSTERS:
+        members = [k for k in cluster.kinds if is_present(k)]
+        if members:
+            out.append((cluster, members))
+    return out
+
 
 KIND_BLURB: dict[Kind, str] = {
     Kind.BROWSER: "Interactive browsers loading pages and their sub-resources.",

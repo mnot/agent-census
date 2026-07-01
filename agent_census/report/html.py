@@ -30,6 +30,7 @@ from .aggregate import (
     ActorGroup,
     NetworkMatrix,
     by_kind,
+    clusters_present,
     group_actors,
     network_matrix,
     time_range,
@@ -237,30 +238,41 @@ def _summary_table(result: AnalysisResult, patterns: dict[Kind, str], window: _W
         "grey can't tell: fewer than 5 requests, or no applicable rule"
     )
     head = (
-        "<tr><th>Kind</th><th class='num'>Clients</th><th class='num'>Requests</th>"
+        "<tr><th class='band'></th><th>Kind</th>"
+        "<th class='num'>Clients</th><th class='num'>Requests</th>"
         f"<th>Req share</th><th class='reqpat'>Requests over {_axis_span(window)}</th>"
         "<th class='num'>Bandwidth</th><th>BW share</th>"
         f'<th title="{_esc(robots_help)}">robots.txt compliance ⓘ</th></tr>'
     )
     rows = []
-    for kind in KIND_ORDER:
-        rollup = rollups.get(kind)
-        if rollup is None or rollup.clients == 0:
-            continue
-        robots = _robots_bar(
-            rollup.respects_robots,
-            rollup.ignores_robots,
-            rollup.unknown_robots,
-        )
-        rows.append(
-            f'<tr><td><a href="#{kind.value}">{_kind_badge(kind)}</a></td>'
-            f"<td class='num'>{rollup.clients:,}</td><td class='num'>{rollup.requests:,}</td>"
-            f"<td>{_share_bar(rollup.requests / total)}</td>"
-            f"<td class='reqpat'>{patterns.get(kind, '')}</td>"
-            f"<td class='num'>{human_bytes(rollup.total_bytes)}</td>"
-            f"<td>{_share_bar(rollup.total_bytes / total_bytes)}</td>"
-            f"<td>{robots}</td></tr>"
-        )
+    for ci, (cluster, members) in enumerate(
+        clusters_present(lambda k: (r := rollups.get(k)) is not None and r.clients > 0)
+    ):
+        for offset, kind in enumerate(members):
+            rollup = rollups[kind]
+            robots = _robots_bar(
+                rollup.respects_robots,
+                rollup.ignores_robots,
+                rollup.unknown_robots,
+            )
+            # The side label spans the whole band; a thick rule separates bands (not
+            # the first from the header, which the header rule already does).
+            band = (
+                f"<th class='band' rowspan='{len(members)}' scope='rowgroup'>"
+                f"<span>{_esc(cluster.label)}</span></th>"
+                if offset == 0
+                else ""
+            )
+            tr = "<tr class='bandstart'>" if (offset == 0 and ci > 0) else "<tr>"
+            rows.append(
+                f'{tr}{band}<td><a href="#{kind.value}">{_kind_badge(kind)}</a></td>'
+                f"<td class='num'>{rollup.clients:,}</td><td class='num'>{rollup.requests:,}</td>"
+                f"<td>{_share_bar(rollup.requests / total)}</td>"
+                f"<td class='reqpat'>{patterns.get(kind, '')}</td>"
+                f"<td class='num'>{human_bytes(rollup.total_bytes)}</td>"
+                f"<td>{_share_bar(rollup.total_bytes / total_bytes)}</td>"
+                f"<td>{robots}</td></tr>"
+            )
     return (
         f"<h2>Summary by kind</h2>\n"
         f"<div class='tscroll'><table>{head}{''.join(rows)}</table></div>\n"
@@ -347,7 +359,7 @@ def _network_table(matrix: NetworkMatrix | None) -> str:
         )
 
     head = (
-        "<tr><th class='stick-l'>Kind</th>"
+        "<tr><th class='band'></th><th class='stick-l'>Kind</th>"
         + "".join(hd(i, n) for i, n in enumerate(nets))
         + "<th class='num netdiv stick-r'>Total</th></tr>"
     )
@@ -378,18 +390,30 @@ def _network_table(matrix: NetworkMatrix | None) -> str:
             return ""
         return f" data-kind='{kind.value}' data-agg='{matrix.cell(net, kind)}'"
 
+    # A band cell rides on *every* row (not a rowspan): the heat/pin script keys
+    # columns by cellIndex, so the leftmost column must be uniform across rows. The
+    # rotated label shows only on each band's first row; the rest are empty.
+    present = set(matrix.kinds)
     rows = []
-    for kind in matrix.kinds:
-        cells = "".join(
-            f"<td class='{cell_cls(i, n)}' data-v='{matrix.cell(n, kind)}' "
-            f"data-net='{i}'{cell_attrs(n, kind)}>{_num(matrix.cell(n, kind))}</td>"
-            for i, n in enumerate(nets)
-        )
-        rows.append(
-            f'<tr><td class="stick-l"><a href="#{kind.value}">{_kind_badge(kind)}</a></td>'
-            f"{cells}<td class='num netdiv stick-r'{heat(matrix.row_totals[kind], peak_row)}>"
-            f"{matrix.row_totals[kind]:,}</td></tr>"
-        )
+    for ci, (cluster, members) in enumerate(clusters_present(lambda k: k in present)):
+        for offset, kind in enumerate(members):
+            cells = "".join(
+                f"<td class='{cell_cls(i, n)}' data-v='{matrix.cell(n, kind)}' "
+                f"data-net='{i}'{cell_attrs(n, kind)}>{_num(matrix.cell(n, kind))}</td>"
+                for i, n in enumerate(nets)
+            )
+            band = (
+                f"<th class='band' scope='rowgroup'><span>{_esc(cluster.label)}</span></th>"
+                if offset == 0
+                else "<td class='band'></td>"
+            )
+            tr = "<tr class='bandstart'>" if (offset == 0 and ci > 0) else "<tr>"
+            rows.append(
+                f'{tr}{band}<td class="stick-l">'
+                f'<a href="#{kind.value}">{_kind_badge(kind)}</a></td>'
+                f"{cells}<td class='num netdiv stick-r'{heat(matrix.row_totals[kind], peak_row)}>"
+                f"{matrix.row_totals[kind]:,}</td></tr>"
+            )
 
     def total_cell(i: int, net: str) -> str:
         col = matrix.col_totals[net]
@@ -406,7 +430,8 @@ def _network_table(matrix: NetworkMatrix | None) -> str:
 
     totals = "".join(total_cell(i, n) for i, n in enumerate(nets))
     rows.append(
-        "<tr class='netall'><td class='stick-l'><strong>All kinds</strong></td>"
+        "<tr class='netall'><td class='band'></td>"
+        "<td class='stick-l'><strong>All kinds</strong></td>"
         f"{totals}<td class='num netdiv stick-r'"
         ' style="background-image:linear-gradient(rgba(220,38,38,0.8),rgba(220,38,38,0.8))">'
         f"{matrix.total:,}</td></tr>"

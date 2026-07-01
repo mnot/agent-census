@@ -159,7 +159,28 @@ tr:hover td { background: #8881; }
 .badge { display: inline-block; padding: .08rem .5rem; border-radius: 999px;
   color: #fff; font-size: .8rem; font-weight: 600; white-space: nowrap; }
 .tag { display: inline-block; padding: .05rem .45rem; margin: 0 .2rem .2rem 0;
-  border-radius: 6px; background: #8883; font-size: .78rem; white-space: nowrap; cursor: help; }
+  border: 1px solid transparent; border-radius: 6px; background: #8883;
+  font-size: .78rem; white-space: nowrap; cursor: help; }
+/* Tag colour tokens (see _TAG_TOKENS in html.py). Loud terminals are white-text
+   solids; the quiet middle bands are colour-mix tints over Canvas with
+   light-dark() text, so both fill and text track the reader's colour scheme. */
+.tag--trust { background: #047857; color: #fff; }
+.tag--trust-soft { background: color-mix(in srgb, #059669 15%, Canvas);
+  border-color: #05966988; color: light-dark(#065f46, #6ee7b7); }
+.tag--doubt { background: color-mix(in srgb, #eab308 18%, Canvas);
+  border-color: #eab30888; color: light-dark(#854d0e, #fde68a); }
+.tag--human { background: color-mix(in srgb, #64748b 14%, Canvas);
+  border-color: #64748b77; color: light-dark(#334155, #cbd5e1); }
+.tag--bot { background: color-mix(in srgb, #9a8866 20%, Canvas);
+  border-color: #9a886688; color: light-dark(#5a4d38, #e7dcc4); }
+.tag--notable { background: color-mix(in srgb, #ea580c 15%, Canvas);
+  border-color: #ea580c88; color: light-dark(#9a3412, #fed7aa); }
+.tag--danger { background: #dc2626; color: #fff; }
+.tag--danger-deep { background: #991b1b; color: #fff; }
+.tag--origin { background: color-mix(in srgb, #6366f1 14%, Canvas);
+  border-color: #6366f188; color: light-dark(#3730a3, #c7d2fe); }
+.tag--egress { background: color-mix(in srgb, #06b6d4 16%, Canvas);
+  border-color: #06b6d488; color: light-dark(#155e75, #a5f3fc); }
 .flag { cursor: help; font-style: normal; }
 .blurb { color: var(--muted); margin: .15rem 0 .6rem; }
 /* Lightweight affordance cue: italic + muted, so it reads as guidance, not data. */

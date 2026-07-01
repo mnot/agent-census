@@ -62,12 +62,17 @@ th.vh { vertical-align: bottom; text-align: center; white-space: nowrap;
   padding: .5rem .35rem .3rem; }
 th.vh > span { display: inline-block; writing-mode: vertical-rl;
   transform: rotate(180deg); line-height: 1.1; }
-/* Cluster bands in the Summary-by-kind table. A vertical side label spans each
-   band's rows; a heavy ink rule (kin to .netdiv, but horizontal) marks where a band
-   begins so the groups read as blocks. The label column auto-narrows to the rotated
-   text; the band cells drop their bottom hairline so no rule cuts across the label. */
-.band { vertical-align: middle; text-align: center; white-space: nowrap;
-  padding: .3rem .2rem; border-bottom: 0; border-right: 1px solid #8886;
+/* Cluster bands: a vertical side label per band (label on the band's first row),
+   with a heavy ink rule (kin to .netdiv, but horizontal) marking where a band begins.
+   The label column auto-narrows to the rotated text; band cells drop their bottom
+   hairline so no rule cuts across the label.
+   Top-aligned, not middle: Safari honours `vertical-align: middle` in a
+   separate-border table (the cross-tab) but top-aligns it in a collapse-border table
+   (this summary), dropping the label onto the band rule. Pinning it to the top with
+   real padding makes the position deterministic in both. The cross-tab keeps its
+   centred label below. */
+.band { vertical-align: top; text-align: center; white-space: nowrap;
+  padding: .55rem .2rem .3rem; border-bottom: 0; border-right: 1px solid #8886;
   font-weight: 600; color: color-mix(in srgb, CanvasText 58%, Canvas); }
 .band > span { display: inline-block; writing-mode: vertical-rl;
   transform: rotate(180deg); letter-spacing: .01em; }
@@ -84,8 +89,10 @@ tr.bandstart > * { border-top: 2px solid #8887; }
 #nettab .stick-l { left: 1.7rem; border-right: 2px solid CanvasText; }  /* group rule after Kind, past the band column */
 #nettab .stick-r { right: 0; }  /* _netscript overrides with each column's offset */
 /* The cluster-band column pins left of Kind; its fixed width is exactly Kind's
-   left offset above, so the two pinned columns sit flush. */
+   left offset above, so the two pinned columns sit flush. Its separate-border table
+   centres the label correctly (including in Safari), so keep it middle-aligned. */
 #nettab .band { position: sticky; left: 0; z-index: 2;
+  vertical-align: middle; padding: .3rem .2rem;
   width: 1.7rem; min-width: 1.7rem; max-width: 1.7rem; }
 #netotherhd { position: relative; }
 /* Running "+N hidden" cue at the top of the pinned Other header; empty -> gone. */

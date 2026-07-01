@@ -63,11 +63,16 @@ th.vh { vertical-align: bottom; text-align: center; white-space: nowrap;
 th.vh > span { display: inline-block; writing-mode: vertical-rl;
   transform: rotate(180deg); line-height: 1.1; }
 /* Cluster bands: an in-flow rotated side label on the band's first row, whose cell
-   grows to contain it (so it never overflows the table and trips a scrollbar), with
-   a heavy ink rule (kin to .netdiv, but horizontal) marking where a band begins.
-   Band cells drop their bottom hairline so no rule cuts across the label. */
+   grows vertically to contain it, with a heavy ink rule (kin to .netdiv, but
+   horizontal) marking where a band begins. Band cells drop their bottom hairline so
+   no rule cuts across the label. The column is a FIXED width: WebKit auto-sizes a
+   column holding a rotated (vertical writing-mode) inline-block to just its padding
+   -- ~8px -- so an auto column lets the 22px label overflow across the divider. A
+   fixed width reserves the space in both engines (the value matches #nettab's Kind
+   sticky offset below). */
 .band { text-align: center; white-space: nowrap; vertical-align: middle;
-  padding: .3rem .2rem; border-bottom: 0; border-right: 1px solid #8886;
+  padding: .3rem .2rem; width: 1.7rem; min-width: 1.7rem; max-width: 1.7rem;
+  border-bottom: 0; border-right: 1px solid #8886;
   font-weight: 600; color: color-mix(in srgb, CanvasText 58%, Canvas); }
 .band > span { display: inline-block; writing-mode: vertical-rl;
   transform: rotate(180deg); letter-spacing: .01em; }
@@ -88,11 +93,9 @@ tr.bandstart > * { border-top: 2px solid #8887; }
 #nettab .stick-l, #nettab .stick-r { position: sticky; z-index: 2; }
 #nettab .stick-l { left: 1.7rem; border-right: 2px solid CanvasText; }  /* group rule after Kind, past the band column */
 #nettab .stick-r { right: 0; }  /* _netscript overrides with each column's offset */
-/* The cluster-band column pins left of Kind; its fixed width is exactly Kind's
-   left offset above, so the two pinned columns sit flush (vertical-align/padding come
-   from the shared .band rule). */
-#nettab .band { position: sticky; left: 0; z-index: 2;
-  width: 1.7rem; min-width: 1.7rem; max-width: 1.7rem; }
+/* The cluster-band column pins left of Kind; its 1.7rem width (shared .band rule) is
+   exactly Kind's left offset above, so the two pinned columns sit flush. */
+#nettab .band { position: sticky; left: 0; z-index: 2; }
 #netotherhd { position: relative; }
 /* Running "+N hidden" cue at the top of the pinned Other header; empty -> gone. */
 .othercue { position: absolute; top: .2rem; left: 0; right: 0; text-align: center;

@@ -518,13 +518,14 @@ def test_summary_table_kind_sparklines_share_one_peak() -> None:
     assert heights["ai crawler"] >= heights["crawler"] // 2 - 1
 
 
-def test_summary_table_bands_no_rowspan() -> None:
-    # The summary table's cluster bands ride on per-row cells (label on the band's
-    # first row, empty below) -- never a rowspan. A spanned cell under border-collapse
-    # lets the row rules bleed across it in some browsers, which is the bug this
-    # guards against; the cross-tab already proved the per-row construction renders
-    # cleanly. browser + app populate a two-row People band (so a non-first, empty
-    # band cell must appear); vuln_scanner opens a second band with the thick rule.
+def test_summary_table_bands_rowspan_the_label() -> None:
+    # The summary table's cluster band is ONE rowspanned label cell covering the band,
+    # so the tall vertical label is distributed over the band's height (and centred)
+    # instead of stretching the first row. This is safe because #kindtab uses separate
+    # borders -- the row-rule bleed that a spanned cell caused under COLLAPSED borders
+    # doesn't happen; the cross-tab keeps its per-row band cell (its script needs a
+    # uniform column). browser + app make a two-row People band (rowspan 2, no separate
+    # cell on the app row); vuln_scanner opens a one-row Suspicious band with the rule.
     from types import SimpleNamespace
 
     from agent_census.pipeline import KindRollup
@@ -536,18 +537,18 @@ def test_summary_table_bands_no_rowspan() -> None:
     rollups = {Kind.BROWSER: rollup(9), Kind.APP: rollup(6), Kind.VULN_SCANNER: rollup(3)}
     html = _summary_table(SimpleNamespace(rollups=rollups), {}, None)
 
-    assert "rowspan" not in html  # the fragile span is gone
     # The band label carries the cluster's share of total requests (emphasised via
     # .bandpct): People is 15 of 18 (browser 9 + app 6), Suspicious the remaining 3.
+    # The People band spans both its rows; Suspicious spans its one.
     assert (
-        "<th class='band' scope='rowgroup'><span>People "
+        "<th class='band' rowspan='2' scope='rowgroup'><span>People "
         "<b class='bandpct'>83%</b></span></th>" in html
     )
     assert (
-        "<th class='band' scope='rowgroup'><span>Suspicious "
+        "<th class='band' rowspan='1' scope='rowgroup'><span>Suspicious "
         "<b class='bandpct'>17%</b></span></th>" in html
     )
-    assert "<td class='band'></td>" in html  # app is a non-first People row
+    assert "<td class='band'></td>" not in html  # no empty per-row band cell any more
     assert "bandstart" in html  # thick rule opens the second band
 
 

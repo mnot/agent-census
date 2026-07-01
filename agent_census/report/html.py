@@ -258,16 +258,19 @@ def _summary_table(result: AnalysisResult, patterns: dict[Kind, str], window: _W
                 rollup.ignores_robots,
                 rollup.unknown_robots,
             )
-            # The side label rides on every row (label on the band's first row, empty
-            # below) rather than a rowspan: a spanned cell under border-collapse lets
-            # the row rules bleed across it in some browsers. Same construction as the
-            # cross-tab. A thick rule separates bands (not the first from the header,
-            # which the header rule already does).
+            # One rowspanned label per band, so its tall vertical text is distributed
+            # over the band's whole height and vertical-centred -- not dumped on the
+            # first row, which the earlier per-row construction stretched to the full
+            # label height. Safe here because #kindtab uses SEPARATE borders (the
+            # collapsed-border row-rule bleed a spanned cell used to cause doesn't
+            # happen); the cross-tab keeps its per-row band cell because its heat/pin
+            # script needs a uniform leftmost column. A thick rule separates bands.
             band = (
-                f"<th class='band' scope='rowgroup'><span>{_esc(cluster.label)} "
+                f"<th class='band' rowspan='{len(members)}' scope='rowgroup'>"
+                f"<span>{_esc(cluster.label)} "
                 f"<b class='bandpct'>{cluster_share:.0%}</b></span></th>"
                 if offset == 0
-                else "<td class='band'></td>"
+                else ""
             )
             tr = "<tr class='bandstart'>" if (offset == 0 and ci > 0) else "<tr>"
             rows.append(

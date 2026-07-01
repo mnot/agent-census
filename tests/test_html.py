@@ -13,6 +13,7 @@ from agent_census.pipeline import RESIDENTIAL_NETWORK
 from agent_census.parsing.apache import PRESETS
 from agent_census.model import Classification, ClientFeatures, ClientId, ClientProfile, Kind
 from agent_census.report import render_inspect_html, render_report_html, select_profiles
+from agent_census.report.aggregate import KIND_CLUSTERS
 from agent_census.classify.relative import _METRIC_TAGS
 from agent_census.report.format import _TAG_HELP
 from agent_census.report.html import _client_row, _esc
@@ -260,6 +261,43 @@ def test_network_table_folds_datacenters_into_pinned_other(
     assert netall is not None and netall.group(0).count("data-v=") >= 6
 
 
+def test_network_table_cluster_bands(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The cross-tab bands its kind rows like the summary table: a pinned side label
+    # per cluster plus a thick rule between bands. The band cell rides on *every*
+    # row (not a rowspan) so the heat/pin script's per-column cellIndex stays uniform
+    # -- the invariant this test locks. A datacenter curl client and a residential
+    # browser land in two different clusters, so at least two bands render.
+    monkeypatch.setattr(pipeline, "datacenter_subnet", lambda ip: None)
+    monkeypatch.setattr(
+        pipeline, "datacenter_provider", lambda ip: "Amazon AWS" if ip.startswith("52.") else None
+    )
+    lines = [
+        '52.1.1.1 - - [10/Oct/2023:12:00:00 +0000] "GET /p HTTP/1.1" 200 100 "-" "curl/8.0"',
+        '9.9.9.9 - - [10/Oct/2023:12:01:00 +0000] "GET /p HTTP/1.1" 200 100 "-" '
+        '"Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 Safari/605.1.15"',
+    ]
+    log = tmp_path / "netbands.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
+    html = render_report_html(result, source="x")
+
+    table = re.search(r"<table id='nettab'>(.*?)</table>", html, re.S)
+    assert table is not None
+    rows = re.findall(r"<tr[^>]*>(.*?)</tr>", table.group(1), re.S)
+    # Every row -- header, each kind, and the All-kinds total -- carries the same cell
+    # count. A rowspan band cell would break this (and the script's column indexing).
+    cell_counts = {len(re.findall(r"<t[hd][\s>]", row)) for row in rows}
+    assert len(cell_counts) == 1, f"cross-tab rows are not cell-uniform: {cell_counts}"
+    # Two clusters present -> two side labels and a between-band thick rule.
+    labels = re.findall(r"<th class='band' scope='rowgroup'><span>([^<]+)</span>", table.group(1))
+    assert len(set(labels)) >= 2
+    assert set(labels) <= {c.label for c in KIND_CLUSTERS}
+    assert "bandstart" in table.group(1)  # the rule that separates bands
+
+
 def test_filter_haystack_includes_as_name() -> None:
     # A filterable (disclosure) row carries the shown AS name in data-filter so the
     # search box matches on it, alongside IP and User-Agent.
@@ -465,7 +503,7 @@ def test_summary_table_kind_sparklines_share_one_peak() -> None:
     html = _summary_table(SimpleNamespace(rollups=rollups), patterns, window)
 
     assert "<th class='reqpat'>Requests over " in html  # same header as the client table
-    rows = re.findall(r"<tr>.*?</tr>", html)
+    rows = re.findall(r"<tr\b[^>]*>.*?</tr>", html)  # band-start rows carry a class
     heights = {}
     for row in rows:
         label = re.search(r'class="badge"[^>]*>([^<]+)<', row)

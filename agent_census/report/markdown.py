@@ -9,6 +9,7 @@ from .aggregate import (
     KIND_ORDER,
     ActorGroup,
     by_kind,
+    clusters_present,
     group_actors,
     network_matrix,
     time_range,
@@ -96,19 +97,23 @@ def _summary_table(result: AnalysisResult) -> list[str]:
         "| --- | --: | --: | --: | --: | --: | --: | :-: |",
     ]
     any_robots = False
-    for kind in KIND_ORDER:
-        rollup = rollups.get(kind)
-        if rollup is None or rollup.clients == 0:
-            continue
-        avg = rollup.requests / rollup.clients
-        robots = _robots_summary(rollup)
-        any_robots = any_robots or robots != "–"
-        lines.append(
-            f"| {kind_label(kind)} | {rollup.clients:,} | {rollup.requests:,} | "
-            f"{rollup.requests / total_requests:.0%} | "
-            f"{avg:,.0f} | {human_bytes(rollup.total_bytes)} | "
-            f"{rollup.total_bytes / total_bytes:.0%} | {robots} |"
-        )
+    # Markdown tables can't span cells, so each band opens with a label row (the
+    # cluster name in the Kind column, the rest blank) that reads as a section head.
+    for cluster, members in clusters_present(
+        lambda k: (r := rollups.get(k)) is not None and r.clients > 0
+    ):
+        lines.append(f"| **{cluster.label}** | | | | | | | |")
+        for kind in members:
+            rollup = rollups[kind]
+            avg = rollup.requests / rollup.clients
+            robots = _robots_summary(rollup)
+            any_robots = any_robots or robots != "–"
+            lines.append(
+                f"| {kind_label(kind)} | {rollup.clients:,} | {rollup.requests:,} | "
+                f"{rollup.requests / total_requests:.0%} | "
+                f"{avg:,.0f} | {human_bytes(rollup.total_bytes)} | "
+                f"{rollup.total_bytes / total_bytes:.0%} | {robots} |"
+            )
     lines.append("")
     if any_robots:
         lines.append(

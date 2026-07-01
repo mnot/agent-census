@@ -277,11 +277,12 @@ out what it is from its request patterns -- URLs, status codes, and timing. It
 also checks robots.txt compliance and verifies declared crawlers by DNS / IP
 range (on by default; --no-verify-bots to skip the network lookups).
 
-Client kinds:
-  browser       app            feed_reader      social_preview  search_engine
-  archiver      ai_crawler     seo_marketing    data_harvester  monitor
-  crawler       scraper        spoofed_browser  spam_bot        vuln_scanner
-  impersonator  automation     unknown
+Client kinds, in the bands the report groups them into:
+  People        browser  app  feed_reader
+  Utility bots  search_engine  archiver  social_preview  monitor
+  Harvesters    ai_crawler  seo_marketing  data_harvester  crawler  scraper
+  Suspicious    spam_bot  vuln_scanner  spoofed_browser  impersonator
+  Unattributed  automation  unknown
 
 Output is a self-contained HTML page (default), or Markdown with --md.
 """

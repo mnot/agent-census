@@ -62,6 +62,16 @@ th.vh { vertical-align: bottom; text-align: center; white-space: nowrap;
   padding: .5rem .35rem .3rem; }
 th.vh > span { display: inline-block; writing-mode: vertical-rl;
   transform: rotate(180deg); line-height: 1.1; }
+/* Cluster bands in the Summary-by-kind table. A vertical side label spans each
+   band's rows; a heavy ink rule (kin to .netdiv, but horizontal) marks where a band
+   begins so the groups read as blocks. The label column auto-narrows to the rotated
+   text; the band cells drop their bottom hairline so no rule cuts across the label. */
+.band { vertical-align: middle; text-align: center; white-space: nowrap;
+  padding: .3rem .2rem; border-bottom: 0; border-right: 1px solid #8886;
+  font-weight: 600; color: color-mix(in srgb, CanvasText 58%, Canvas); }
+.band > span { display: inline-block; writing-mode: vertical-rl;
+  transform: rotate(180deg); letter-spacing: .01em; }
+tr.bandstart > * { border-top: 2px solid #8887; }
 /* Pin Kind (left) and the Other / off-network / Total columns (right) while the
    named-datacentre columns scroll between them. Every cell carries an opaque base
    so a pinned column stays solid over the columns scrolling behind it; heat is a
@@ -71,8 +81,12 @@ th.vh > span { display: inline-block; writing-mode: vertical-rl;
 #nettab { border-collapse: separate; border-spacing: 0; }
 #nettab th, #nettab td { background-color: Canvas; }
 #nettab .stick-l, #nettab .stick-r { position: sticky; z-index: 2; }
-#nettab .stick-l { left: 0; border-right: 2px solid CanvasText; }  /* group rule after Kind */
+#nettab .stick-l { left: 1.7rem; border-right: 2px solid CanvasText; }  /* group rule after Kind, past the band column */
 #nettab .stick-r { right: 0; }  /* _netscript overrides with each column's offset */
+/* The cluster-band column pins left of Kind; its fixed width is exactly Kind's
+   left offset above, so the two pinned columns sit flush. */
+#nettab .band { position: sticky; left: 0; z-index: 2;
+  width: 1.7rem; min-width: 1.7rem; max-width: 1.7rem; }
 #netotherhd { position: relative; }
 /* Running "+N hidden" cue at the top of the pinned Other header; empty -> gone. */
 .othercue { position: absolute; top: .2rem; left: 0; right: 0; text-align: center;
@@ -111,8 +125,11 @@ th.vh > span { display: inline-block; writing-mode: vertical-rl;
   /* Rotated headers don't pay off on a phone (the cross-tab folds to one network
      and the summary table scrolls in its track); read them flat instead. */
   th.vh > span { writing-mode: horizontal-tb; transform: none; }
-  /* The fold replaces the scroll, so unpin the columns and drop the running cue. */
+  /* The fold replaces the scroll, so unpin the columns and drop the running cue.
+     The band column doesn't earn its width in the one-network fold -- hide it; the
+     between-band rules still group the rows. */
   #nettab .stick-l, #nettab .stick-r { position: static; }
+  #nettab .band { display: none; }
   .othercue { display: none; }
   #nettab th[data-net], #nettab td[data-net] { display: none; }
   #nettab th[data-net].colshow, #nettab td[data-net].colshow { display: table-cell; }

@@ -62,25 +62,21 @@ th.vh { vertical-align: bottom; text-align: center; white-space: nowrap;
   padding: .5rem .35rem .3rem; }
 th.vh > span { display: inline-block; writing-mode: vertical-rl;
   transform: rotate(180deg); line-height: 1.1; }
-/* Cluster bands: a vertical side label per band (label on the band's first row),
-   with a heavy ink rule (kin to .netdiv, but horizontal) marking where a band begins.
+/* Cluster bands: an in-flow rotated side label on the band's first row, whose cell
+   grows to contain it (so it never overflows the table and trips a scrollbar), with
+   a heavy ink rule (kin to .netdiv, but horizontal) marking where a band begins.
    Band cells drop their bottom hairline so no rule cuts across the label. */
-.band { text-align: center; white-space: nowrap; border-bottom: 0;
-  border-right: 1px solid #8886; font-weight: 600;
-  color: color-mix(in srgb, CanvasText 58%, Canvas); }
+.band { text-align: center; white-space: nowrap; vertical-align: middle;
+  padding: .3rem .2rem; border-bottom: 0; border-right: 1px solid #8886;
+  font-weight: 600; color: color-mix(in srgb, CanvasText 58%, Canvas); }
 .band > span { display: inline-block; writing-mode: vertical-rl;
   transform: rotate(180deg); letter-spacing: .01em; }
 tr.bandstart > * { border-top: 2px solid #8887; }
-/* Summary table only (border-collapse: collapse). Table-cell `vertical-align`
-   under collapsed borders is unreliable in WebKit -- Safari dropped the label onto
-   the band rule. Position it absolutely instead (spec-deterministic across engines):
-   a fixed-width column (the label is now out of flow, so the column can't size to
-   it) with the label pinned below the top rule, extending down over the band's empty
-   cells. The cross-tab (#nettab, separate borders) keeps its in-flow centred label. */
-:where(table:not(#nettab)) .band { position: relative;
-  width: 1.5rem; min-width: 0; max-width: 1.5rem; }
-:where(table:not(#nettab)) .band > span { position: absolute; top: .5rem;
-  left: 50%; transform: translateX(-50%) rotate(180deg); }
+/* Both kind tables use SEPARATE borders. WebKit places a table cell's vertical-align
+   unreliably under COLLAPSED borders -- Safari dropped the summary label onto the
+   band rule -- but correctly under separate ones (which is why the cross-tab was
+   always fine). border-spacing: 0 keeps the row rules looking identical. */
+#kindtab { border-collapse: separate; border-spacing: 0; }
 /* Pin Kind (left) and the Other / off-network / Total columns (right) while the
    named-datacentre columns scroll between them. Every cell carries an opaque base
    so a pinned column stays solid over the columns scrolling behind it; heat is a
@@ -93,10 +89,9 @@ tr.bandstart > * { border-top: 2px solid #8887; }
 #nettab .stick-l { left: 1.7rem; border-right: 2px solid CanvasText; }  /* group rule after Kind, past the band column */
 #nettab .stick-r { right: 0; }  /* _netscript overrides with each column's offset */
 /* The cluster-band column pins left of Kind; its fixed width is exactly Kind's
-   left offset above, so the two pinned columns sit flush. Its separate-border table
-   centres the label correctly (including in Safari), so keep it middle-aligned. */
+   left offset above, so the two pinned columns sit flush (vertical-align/padding come
+   from the shared .band rule). */
 #nettab .band { position: sticky; left: 0; z-index: 2;
-  vertical-align: middle; padding: .3rem .2rem;
   width: 1.7rem; min-width: 1.7rem; max-width: 1.7rem; }
 #netotherhd { position: relative; }
 /* Running "+N hidden" cue at the top of the pinned Other header; empty -> gone. */

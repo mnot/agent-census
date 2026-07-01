@@ -277,7 +277,7 @@ def _summary_table(result: AnalysisResult, patterns: dict[Kind, str], window: _W
             )
     return (
         f"<h2>Summary by kind</h2>\n"
-        f"<div class='tscroll'><table>{head}{''.join(rows)}</table></div>\n"
+        f"<div class='tscroll'><table id='kindtab'>{head}{''.join(rows)}</table></div>\n"
         '<p class="hint">Click a kind to show only it; click a client below '
         "to copy its id for <code>inspect --client</code>.</p>"
     )

@@ -264,8 +264,8 @@ def _summary_table(result: AnalysisResult, patterns: dict[Kind, str], window: _W
             # cross-tab. A thick rule separates bands (not the first from the header,
             # which the header rule already does).
             band = (
-                f"<th class='band' scope='rowgroup'>"
-                f"<span>{_esc(cluster.label)} — {cluster_share:.0%}</span></th>"
+                f"<th class='band' scope='rowgroup'><span>{_esc(cluster.label)} "
+                f"<b class='bandpct'>{cluster_share:.0%}</b></span></th>"
                 if offset == 0
                 else "<td class='band'></td>"
             )

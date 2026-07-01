@@ -76,6 +76,9 @@ th.vh > span { display: inline-block; writing-mode: vertical-rl;
   font-weight: 600; color: color-mix(in srgb, CanvasText 58%, Canvas); }
 .band > span { display: inline-block; writing-mode: vertical-rl;
   transform: rotate(180deg); letter-spacing: .01em; }
+/* The band's request-share reads at full ink and heavier weight, so the number
+   stands out from the muted (58% CanvasText) category name beside it. */
+.band .bandpct { color: CanvasText; font-weight: 700; }
 tr.bandstart > * { border-top: 2px solid #8887; }
 /* Both kind tables use SEPARATE borders. WebKit places a table cell's vertical-align
    unreliably under COLLAPSED borders -- Safari dropped the summary label onto the

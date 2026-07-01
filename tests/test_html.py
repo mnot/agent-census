@@ -518,6 +518,31 @@ def test_summary_table_kind_sparklines_share_one_peak() -> None:
     assert heights["ai crawler"] >= heights["crawler"] // 2 - 1
 
 
+def test_summary_table_bands_no_rowspan() -> None:
+    # The summary table's cluster bands ride on per-row cells (label on the band's
+    # first row, empty below) -- never a rowspan. A spanned cell under border-collapse
+    # lets the row rules bleed across it in some browsers, which is the bug this
+    # guards against; the cross-tab already proved the per-row construction renders
+    # cleanly. browser + app populate a two-row People band (so a non-first, empty
+    # band cell must appear); vuln_scanner opens a second band with the thick rule.
+    from types import SimpleNamespace
+
+    from agent_census.pipeline import KindRollup
+    from agent_census.report.html import _summary_table
+
+    def rollup(n: int) -> KindRollup:
+        return KindRollup(clients=1, requests=n, total_bytes=n * 100, respects_robots=1)
+
+    rollups = {Kind.BROWSER: rollup(9), Kind.APP: rollup(6), Kind.VULN_SCANNER: rollup(3)}
+    html = _summary_table(SimpleNamespace(rollups=rollups), {}, None)
+
+    assert "rowspan" not in html  # the fragile span is gone
+    assert "<th class='band' scope='rowgroup'><span>People</span></th>" in html
+    assert "<th class='band' scope='rowgroup'><span>Suspicious</span></th>" in html
+    assert "<td class='band'></td>" in html  # app is a non-first People row
+    assert "bandstart" in html  # thick rule opens the second band
+
+
 def test_client_table_sparklines_share_one_peak() -> None:
     # The per-client rows share a single peak across the whole client table, so a
     # busier client's glyph is taller than a quieter one's -- height conveys volume,

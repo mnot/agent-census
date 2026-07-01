@@ -255,13 +255,15 @@ def _summary_table(result: AnalysisResult, patterns: dict[Kind, str], window: _W
                 rollup.ignores_robots,
                 rollup.unknown_robots,
             )
-            # The side label spans the whole band; a thick rule separates bands (not
-            # the first from the header, which the header rule already does).
+            # The side label rides on every row (label on the band's first row, empty
+            # below) rather than a rowspan: a spanned cell under border-collapse lets
+            # the row rules bleed across it in some browsers. Same construction as the
+            # cross-tab. A thick rule separates bands (not the first from the header,
+            # which the header rule already does).
             band = (
-                f"<th class='band' rowspan='{len(members)}' scope='rowgroup'>"
-                f"<span>{_esc(cluster.label)}</span></th>"
+                f"<th class='band' scope='rowgroup'><span>{_esc(cluster.label)}</span></th>"
                 if offset == 0
-                else ""
+                else "<td class='band'></td>"
             )
             tr = "<tr class='bandstart'>" if (offset == 0 and ci > 0) else "<tr>"
             rows.append(

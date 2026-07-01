@@ -281,8 +281,7 @@ def _summary_table(result: AnalysisResult, patterns: dict[Kind, str], window: _W
             )
     return (
         f"<h2>Summary by kind</h2>\n"
-        f"<div class='tscroll stickhead'><table id='kindtab'>"
-        f"<thead>{head}</thead><tbody>{''.join(rows)}</tbody></table></div>\n"
+        f"<div class='tscroll'><table id='kindtab'>{head}{''.join(rows)}</table></div>\n"
         '<p class="hint">Click a kind to show only it; click a client below '
         "to copy its id for <code>inspect --client</code>.</p>"
     )
@@ -499,8 +498,7 @@ def _network_table(matrix: NetworkMatrix | None) -> str:
         "<h2>Requests by kind and network</h2>\n"
         + hint
         + control
-        + "<div class='tscroll stickhead'><table id='nettab'>"
-        + f"<thead>{head}</thead><tbody>{''.join(rows)}</tbody></table></div>\n"
+        + f"<div class='tscroll'><table id='nettab'>{head}{''.join(rows)}</table></div>\n"
         + caption
         + NET_SCRIPT
     )

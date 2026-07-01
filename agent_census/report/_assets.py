@@ -97,18 +97,6 @@ tr.bandstart > * { border-top: 2px solid #8887; }
    exactly Kind's left offset above, so the two pinned columns sit flush. */
 #nettab .band { position: sticky; left: 0; z-index: 2; }
 #netotherhd { position: relative; }
-/* Sticky headers: each summary table scrolls inside its own track past a height cap
-   (only when it actually grows that tall -- a short table shows no inner scrollbar),
-   with its header row pinned to the track's top so a long table never loses its
-   column labels. Scoped to the two summary tables via .stickhead, so the per-kind
-   client tables keep their normal in-page flow. */
-.tscroll.stickhead { max-height: 80vh; overflow-y: auto; overscroll-behavior: contain; }
-#kindtab thead th, #nettab thead th { position: sticky; top: 0; z-index: 3;
-  background-color: Canvas; }
-/* The cross-tab's corner cells are pinned in both axes (left: band + Kind; right:
-   Other / off-network / Total), so they must outrank both the row-sticky header
-   (z-index 3) and the column-sticky body cells (z-index 2). */
-#nettab thead th.band, #nettab thead th.stick-l, #nettab thead th.stick-r { z-index: 4; }
 /* Running "+N hidden" cue at the top of the pinned Other header; empty -> gone. */
 .othercue { position: absolute; top: .2rem; left: 0; right: 0; text-align: center;
   font-size: .68rem; font-weight: 600; color: var(--muted); }

@@ -248,6 +248,9 @@ def _summary_table(result: AnalysisResult, patterns: dict[Kind, str], window: _W
     for ci, (cluster, members) in enumerate(
         clusters_present(lambda k: (r := rollups.get(k)) is not None and r.clients > 0)
     ):
+        # The band label carries the cluster's share of total requests, so a reader
+        # sees each category's weight without summing its rows (e.g. "People — 40%").
+        cluster_share = sum(rollups[k].requests for k in members) / total
         for offset, kind in enumerate(members):
             rollup = rollups[kind]
             robots = _robots_bar(
@@ -261,7 +264,8 @@ def _summary_table(result: AnalysisResult, patterns: dict[Kind, str], window: _W
             # cross-tab. A thick rule separates bands (not the first from the header,
             # which the header rule already does).
             band = (
-                f"<th class='band' scope='rowgroup'><span>{_esc(cluster.label)}</span></th>"
+                f"<th class='band' scope='rowgroup'>"
+                f"<span>{_esc(cluster.label)} — {cluster_share:.0%}</span></th>"
                 if offset == 0
                 else "<td class='band'></td>"
             )
@@ -277,7 +281,8 @@ def _summary_table(result: AnalysisResult, patterns: dict[Kind, str], window: _W
             )
     return (
         f"<h2>Summary by kind</h2>\n"
-        f"<div class='tscroll'><table id='kindtab'>{head}{''.join(rows)}</table></div>\n"
+        f"<div class='tscroll stickhead'><table id='kindtab'>"
+        f"<thead>{head}</thead><tbody>{''.join(rows)}</tbody></table></div>\n"
         '<p class="hint">Click a kind to show only it; click a client below '
         "to copy its id for <code>inspect --client</code>.</p>"
     )
@@ -494,7 +499,8 @@ def _network_table(matrix: NetworkMatrix | None) -> str:
         "<h2>Requests by kind and network</h2>\n"
         + hint
         + control
-        + f"<div class='tscroll'><table id='nettab'>{head}{''.join(rows)}</table></div>\n"
+        + "<div class='tscroll stickhead'><table id='nettab'>"
+        + f"<thead>{head}</thead><tbody>{''.join(rows)}</tbody></table></div>\n"
         + caption
         + NET_SCRIPT
     )

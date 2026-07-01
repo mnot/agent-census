@@ -537,8 +537,10 @@ def test_summary_table_bands_no_rowspan() -> None:
     html = _summary_table(SimpleNamespace(rollups=rollups), {}, None)
 
     assert "rowspan" not in html  # the fragile span is gone
-    assert "<th class='band' scope='rowgroup'><span>People</span></th>" in html
-    assert "<th class='band' scope='rowgroup'><span>Suspicious</span></th>" in html
+    # The band label carries the cluster's share of total requests: People is 15 of 18
+    # (browser 9 + app 6), Suspicious the remaining 3.
+    assert "<th class='band' scope='rowgroup'><span>People — 83%</span></th>" in html
+    assert "<th class='band' scope='rowgroup'><span>Suspicious — 17%</span></th>" in html
     assert "<td class='band'></td>" in html  # app is a non-first People row
     assert "bandstart" in html  # thick rule opens the second band
 

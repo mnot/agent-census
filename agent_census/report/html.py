@@ -73,31 +73,68 @@ _KIND_COLORS: dict[Kind, str] = {
     Kind.UNKNOWN: "#6b7280",
 }
 
-# Tags that deserve a non-neutral colour.
-# Signal-tag fills. White text again, so each colour is held at >=4.5:1 against
-# white; hues match their kind-badge counterparts (e.g. 'verified' shares the
-# search-engine green, 'vpn' the monitor teal) so the wheel stays coherent.
-_TAG_COLORS: dict[str, str] = {
-    "verified": "#00862e",  # confirmed identity -> strong green
-    "asn-associated": "#008459",  # origin AS corroborates the declared crawler -> green
-    "unverified": "#b45309",  # declared crawler we had info for but couldn't confirm -> amber
-    "impersonator": "#dc2626",
-    "ignores-robots": "#b85900",
-    "probe-paths": "#dc2626",  # requested known-vulnerable paths -> red
-    "traversal": "#dc2626",  # path-traversal / injection markers -> red
-    "encoding-evasion": "#b91c1c",  # deliberate encoding evasion -> deep red
-    "404-storm": "#b85900",
-    "ancient-browser-ua": "#dc2626",  # years-stale browser version -> almost certainly spoofed
-    "impossible-browser-ua": "#dc2626",  # version newer than exists -> forged UA
-    "datacenter": "#9333ea",  # origin is hosting, not an eyeball network -> purple
-    "ua-rotating": "#b85900",  # many UAs from a hosting/non-browser source -> amber
-    "forged-referer": "#dc2626",  # Referer faked to mimic navigation -> red
-    "icloud-private-relay": "#0079bc",  # privacy relay; a positive browser signal -> blue
-    "tor-exit": "#6d28d9",  # Tor exit node; anonymised egress -> violet
-    "vpn": "#008277",  # consumer VPN egress -> teal
-    "corporate-proxy": "#7c3aed",  # SASE / corporate egress -> violet
-    # 'shared-ip' is left neutral (grey): many UAs but a benign shared egress.
+# Tag colour tokens. Each tag maps to a style token, realised as a CSS class
+# (.tag--<token>) in the report stylesheet; an unmapped tag falls through to the
+# neutral grey .tag default. The tokens encode three overlaid systems:
+#   * identity trust     -- green (confirmed) -> yellow (doubt) -> red (forged)
+#   * behaviour/botness  -- cool human -> warm bot -> orange notable -> red hostile
+#   * origin / egress    -- cool context band
+# Red is the shared terminal for either a forged identity or hostile conduct.
+# Loud terminals are white-text solids; the quiet middle bands are colour-mix
+# tints (see _assets.py) that adapt to the reader's light/dark scheme.
+_TAG_TOKENS: dict[str, str] = {
+    # Identity -- who is it, and is the declared identity genuine?
+    "verified": "trust",
+    "asn-associated": "trust-soft",
+    "asn-attributed": "trust-soft",
+    "user-triggered": "trust-soft",
+    "unverified": "doubt",
+    # Behaviour / botness -- how machine-like the client behaves, up to hostile.
+    "current-browser-ua": "human",
+    "loads-assets": "human",
+    "follows-links": "human",
+    "has-cache": "human",
+    "bursty": "human",
+    "no-assets": "bot",
+    "cold": "bot",
+    "lacks-cache": "bot",
+    "metronomic": "bot",
+    "generic-ua": "bot",
+    "bot-ua": "bot",
+    "headless-browser": "bot",
+    "uses-HEAD": "bot",
+    "404-storm": "notable",
+    "ignores-robots": "notable",
+    "post-heavy": "notable",
+    "exotic-method": "notable",
+    "ua-rotating": "notable",
+    "high-rate": "notable",
+    "high-bytes": "notable",
+    "wide-breadth": "notable",
+    "long-session": "notable",
+    "no-user-agent": "notable",
+    "probe-paths": "danger",
+    "ancient-browser-ua": "danger",  # forged identity -> shared red terminal
+    "forged-referer": "danger",
+    "traversal": "danger-deep",
+    "encoding-evasion": "danger-deep",
+    "impossible-browser-ua": "danger-deep",  # forged identity, deepest red
+    # Origin / egress -- where from. Egress tag strings are defined in the data
+    # file (data/networks/egress_networks.toml); a genuinely new egress tag stays
+    # grey until listed here, as with the previous colour map.
+    "datacenter": "origin",
+    "icloud-private-relay": "egress",
+    "tor-exit": "egress",
+    "vpn": "egress",
+    "corporate-proxy": "egress",
+    "shared-ip": "egress",
 }
+
+
+def tag_class(tag: str) -> str:
+    """CSS class for a tag chip: the neutral ``tag`` plus its colour token, if any."""
+    token = _TAG_TOKENS.get(tag)
+    return f"tag tag--{token}" if token else "tag"
 
 # Hover descriptions for the cross-tab column headers. The egress buckets group
 # several networks, so spell out their members; the catch-all columns get a note.
@@ -150,11 +187,9 @@ def _tags_html(tags: frozenset[str]) -> str:
         return '<span class="muted">–</span>'
     spans = []
     for tag in ordered_tags(tags):
-        color = _TAG_COLORS.get(tag)
-        style = f' style="background:{color};color:#fff"' if color else ""
         description = tag_title(tag)
         title = f' title="{_esc(description)}"' if description else ""
-        spans.append(f'<span class="tag"{style}{title}>{_esc(tag)}</span>')
+        spans.append(f'<span class="{tag_class(tag)}"{title}>{_esc(tag)}</span>')
     return "".join(spans)
 
 

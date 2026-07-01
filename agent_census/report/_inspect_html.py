@@ -20,7 +20,7 @@ from .format import (
     tag_title,
     truncate,
 )
-from .html import _esc, _kind_badge, _page, _tags_html
+from .html import _esc, _kind_badge, _page, _tags_html, tag_class
 from .inspect import ROLLUP_MIN_CLIENTS
 
 
@@ -56,7 +56,7 @@ def _tags_evidence_html(cls: Classification) -> str:
     items = []
     for tag in ordered_tags(cls.tags):
         why = evidence.get(tag)
-        chip = f'<span class="tag" title="{_esc(tag_title(tag))}">{_esc(tag)}</span>'
+        chip = f'<span class="{tag_class(tag)}" title="{_esc(tag_title(tag))}">{_esc(tag)}</span>'
         detail = f" <span class='muted'>{_esc(why)}</span>" if why else ""
         items.append(f"<li>{chip}{detail}</li>")
     return f'<h3>Tags</h3><ul class="evlist">{"".join(items)}</ul>'

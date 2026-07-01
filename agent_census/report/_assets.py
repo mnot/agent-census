@@ -78,7 +78,7 @@ tr.bandstart > * { border-top: 2px solid #8887; }
    it) with the label pinned below the top rule, extending down over the band's empty
    cells. The cross-tab (#nettab, separate borders) keeps its in-flow centred label. */
 :where(table:not(#nettab)) .band { position: relative;
-  width: 1.7rem; min-width: 1.7rem; max-width: 1.7rem; }
+  width: 1.5rem; min-width: 0; max-width: 1.5rem; }
 :where(table:not(#nettab)) .band > span { position: absolute; top: .5rem;
   left: 50%; transform: translateX(-50%) rotate(180deg); }
 /* Pin Kind (left) and the Other / off-network / Total columns (right) while the

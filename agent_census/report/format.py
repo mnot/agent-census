@@ -56,13 +56,16 @@ def top_evidence(profile: ClientProfile) -> str:
     verified as X") or per-IP ("A ↔ B confirmed for X"), it only restates the
     identity already headlining the row and the dns-verified / ip-verified
     tag already carrying that channel's own description. Classification
-    evidence is preferred, but when a classifier set ``agent_name`` (only
-    :mod:`classify.known_bot`, for both its UA and ASN matches) its own
-    leading evidence line is that same declaration by construction, so it's
-    skipped in favour of whatever supporting fact follows it, if any.
+    evidence is preferred, but when its lead entry is boilerplate --
+    ``agent_name`` set (only :mod:`classify.known_bot`, for both its UA and
+    ASN matches) or ``boilerplate_lead`` flagged (see :class:`~..model.Signal`)
+    -- it's a restatement of the kind, not a fact about this client, so it's
+    skipped in favour of whatever more specific evidence follows, if any --
+    and shown as nothing at all rather than boilerplate when none does.
     """
-    evidence = profile.classification.evidence
-    if profile.classification.agent_name and evidence:
+    cls = profile.classification
+    evidence = cls.evidence
+    if (cls.agent_name or cls.boilerplate_lead) and evidence:
         evidence = evidence[1:]
     return evidence[0] if evidence else "–"
 

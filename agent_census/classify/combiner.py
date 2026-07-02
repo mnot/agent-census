@@ -76,11 +76,14 @@ def _pick(by_label: dict[Kind, float]) -> Kind:
     return max(by_label, key=lambda k: (by_label[k], -_RANK.get(k, len(_PRIORITY))))
 
 
-def _top_evidence(signals: tuple[Signal, ...]) -> tuple[str, ...]:
+def _top_evidence(signals: tuple[Signal, ...]) -> tuple[tuple[str, ...], bool]:
+    """The strongest (even if losing) signal's evidence, paired with whether its
+    lead entry is boilerplate -- carried through so a below-threshold known-agent
+    or app match still gets its identity declaration skipped as a caption."""
     if not signals:
-        return ("no classifier produced a signal",)
+        return (("no classifier produced a signal",), False)
     strongest = max(signals, key=lambda s: s.confidence)
-    return strongest.evidence or ("no specific evidence recorded",)
+    return strongest.evidence or ("no specific evidence recorded",), strongest.boilerplate_lead
 
 
 def combine(
@@ -164,6 +167,7 @@ def combine(
     primary_signals = [s for s in signals if s.kind is primary]
     evidence = tuple(e for s in primary_signals for e in s.evidence)
     agent_name = next((s.agent_name for s in primary_signals if s.agent_name), None)
+    boilerplate_lead = primary_signals[0].boilerplate_lead if primary_signals else False
     return Classification(
         primary=primary,
         confidence=by_label[primary],
@@ -172,6 +176,7 @@ def combine(
         all_signals=stored,
         tag_evidence=tag_evidence,
         agent_name=agent_name,
+        boilerplate_lead=boilerplate_lead,
     )
 
 
@@ -187,6 +192,9 @@ def _below_threshold(
     """Pick a fallback when no classifier cleared the bar, narrowing UNKNOWN where we can."""
 
     def verdict(primary: Kind, confidence: float, evidence: str) -> Classification:
+        # Every call below passes the one fixed sentence that *is* the fallback
+        # rule -- restating why it's this kind, not a fact specific to the client
+        # -- so it's boilerplate by construction (see Signal.boilerplate_lead).
         return Classification(
             primary=primary,
             confidence=confidence,
@@ -194,6 +202,7 @@ def _below_threshold(
             evidence=(evidence,),
             all_signals=stored,
             tag_evidence=tag_evidence,
+            boilerplate_lead=True,
         )
 
     # A browser UA from a hosting IP with no browser behaviour is automation in disguise.
@@ -228,13 +237,15 @@ def _below_threshold(
             "from datacenter infrastructure, with no human signal",
         )
     confidence = max(by_label.values()) if by_label else 0.0
+    evidence, boilerplate_lead = _top_evidence(signals)
     return Classification(
         primary=Kind.UNKNOWN,
         confidence=confidence,
         tags=frozenset(tags),
-        evidence=_top_evidence(signals),
+        evidence=evidence,
         all_signals=stored,
         tag_evidence=tag_evidence,
+        boilerplate_lead=boilerplate_lead,
     )
 
 

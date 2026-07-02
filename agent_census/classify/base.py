@@ -33,6 +33,7 @@ class Classifier(ABC):
         evidence: list[str],
         *,
         agent_name: str | None = None,
+        boilerplate_lead: bool = False,
     ) -> Signal:
         """Helper to build a signal for this classifier's label."""
         return Signal(
@@ -41,4 +42,5 @@ class Classifier(ABC):
             evidence=tuple(evidence),
             classifier=self.name,
             agent_name=agent_name,
+            boilerplate_lead=boilerplate_lead,
         )

@@ -235,6 +235,13 @@ class Signal:
     # ASN-primary agent, its label). Lets the report show the agent's own
     # identity rather than a bare IP/network, without re-deriving it from the UA.
     agent_name: str | None = None
+    # True when evidence[0] only justifies *why this classifier fired at all* --
+    # a declared identity, a networking-stack token -- restating the kind itself
+    # rather than telling us something specific about this client. A report
+    # caption (format.top_evidence) skips it in favour of whatever more specific
+    # evidence follows, and shows nothing rather than a boilerplate restatement
+    # of the kind when nothing does.
+    boilerplate_lead: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -254,6 +261,10 @@ class Classification:
     # The winning signal's known-agent identity, carried through from Signal (see
     # its docstring) -- None unless a known-agent classifier won.
     agent_name: str | None = None
+    # Whether evidence[0] is a boilerplate restatement of the kind rather than a
+    # client-specific fact -- carried through from Signal.boilerplate_lead (see
+    # its docstring), unconditional on keep_signals like evidence and agent_name.
+    boilerplate_lead: bool = False
 
 
 class RobotsVerdict(str, Enum):

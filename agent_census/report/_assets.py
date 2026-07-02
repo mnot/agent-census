@@ -282,15 +282,29 @@ section.kind { margin-top: 2.25rem; }
 .kindhead h2 { margin-top: 0;
   scroll-margin-top: calc(var(--filterbar-h, 0px) + 0.75rem); }
 .kindhead .blurb { margin-bottom: 0; }
-input.filter { display: block; width: 100%; max-width: 30rem; margin: 0;
+/* Search box + tag key sit in the sticky filter bar, so the key stays reachable
+   while scrolling instead of scrolling away with the rest of the page.
+   space-between pushes the key to the far right, away from the search box, so it
+   doesn't read as another filter control; wrap drops it under the search box on a
+   narrow viewport instead of squeezing either one unreadably thin. */
+.filterrow { display: flex; align-items: flex-start; justify-content: space-between;
+  flex-wrap: wrap; gap: .5rem; }
+input.filter { display: block; flex: 1 1 14rem; max-width: 30rem; margin: 0;
   padding: .4rem .55rem; border: 1px solid #8886; border-radius: 6px;
   background: Canvas; color: CanvasText; font: inherit; }
-/* Legend for the tag chips' colour tokens, right under the filterbar so it's easy
-   to find while reading tags -- but not itself sticky, since it's a reference the
-   reader checks occasionally rather than a control needed while scrolling. */
-.tagkey { margin: 0 0 .8rem; }
-.tagkey summary { padding: .15rem 0; }
-.tagkey-groups { display: flex; flex-wrap: wrap; gap: .3rem 2rem; margin-top: .4rem; }
+/* Legend for the tag chips' colour tokens, at the far right of the sticky filter
+   bar. A plain muted link rather than a bordered button -- it's a reference, not
+   a filter control, and a border made it look like one. It opens as a popover
+   (absolutely positioned) rather than pushing the row taller, so expanding it
+   doesn't shift the filter bar's height -- and, in turn, everything pinned below
+   it (.kindhead's --filterbar-h offset). */
+.tagkey { position: relative; flex-shrink: 0; align-self: center; }
+.tagkey summary { padding: .2rem 0; color: var(--muted); font-size: .85rem;
+  white-space: nowrap; }
+.tagkey-groups { position: absolute; right: 0; top: calc(100% + .3rem); z-index: 3;
+  display: flex; flex-wrap: wrap; gap: .3rem 2rem; width: max-content;
+  max-width: min(90vw, 40rem); background: Canvas; border: 1px solid #8886;
+  border-radius: 8px; padding: .6rem .9rem; box-shadow: 0 6px 20px #0004; }
 .tagkey-group h3 { margin: 0 0 .3rem; font-size: .8rem; font-weight: 600; color: var(--muted); }
 footer { margin-top: 3rem; color: var(--muted); font-size: .85rem; }
 """.strip()

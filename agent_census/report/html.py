@@ -942,14 +942,18 @@ def render_report_html(
         _meta_list(result, source, robots_note, elapsed),
         _summary_table(result, _kind_sparklines(result.rollups, window, KIND_ORDER), window),
         _network_table(matrix),
-        # Search box + active-filter pills + "Show all" pinned together: clicking a
-        # table can isolate a kind / network and scroll far down, so these controls
-        # must stay in view for the reader to see and clear the active filters.
+        # Search box + tag key + active-filter pills + "Show all" pinned together:
+        # clicking a table can isolate a kind / network and scroll far down, so
+        # these controls must stay in view for the reader to see and clear the
+        # active filters, and to look up a tag's colour without scrolling back up.
         # The pills and button are filled / shown by the page script.
         '<div class="filterbar">'
+        '<div class="filterrow">'
         '<input id="clientfilter" class="filter" type="search" '
         'placeholder="filter all clients by IP, User-Agent, AS name, or tag…" '
         'aria-label="filter clients">'
+        f"{_tag_key()}"
+        "</div>"
         '<span class="activefilters">'
         '<span id="kindfilter" class="fchip" role="button" tabindex="0" '
         'title="Clear kind filter" hidden></span>'
@@ -959,7 +963,6 @@ def render_report_html(
         "Show all</button>"
         "</span>"
         "</div>",
-        _tag_key(),
         # Filled and shown by the filter script when a query hides every client.
         '<p id="nomatch" class="muted" role="status" hidden></p>',
     ]

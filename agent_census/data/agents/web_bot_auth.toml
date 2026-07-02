@@ -33,3 +33,10 @@ agent_urls = ["https://you.com"]
 keyids = [
     "5hbjTA0RjjhxRRquk32fSeRWfTgAdSHCZMK1afI1qvI",
 ]
+
+[[operator]]
+name = "OpenAI"
+agent_urls = ["https://chatgpt.com"]
+keyids = [
+    "otMqcjr17mGyruktGvJU8oojQTSMHlVm7uO-lrcqbdg",
+]

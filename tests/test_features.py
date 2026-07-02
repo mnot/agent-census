@@ -302,3 +302,12 @@ def test_request_buckets_empty_for_single_minute_burst() -> None:
 
 def test_request_buckets_empty_without_requests() -> None:
     assert extract_features([]).request_buckets == ()
+
+
+def test_iat_bucket_handles_non_finite_deltas() -> None:
+    # int(math.log10(inf)) / int(nan) would raise; the guard must fail safe.
+    from agent_census.features import _iat_bucket
+
+    assert _iat_bucket(float("inf")) == 0
+    assert _iat_bucket(float("nan")) == 0
+    assert _iat_bucket(-1.0) == 0

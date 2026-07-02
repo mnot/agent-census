@@ -177,7 +177,11 @@ _REQUEST_BUCKETS = 40
 
 def _iat_bucket(delta: float) -> int:
     """Histogram bucket for an inter-arrival delta in seconds."""
-    if delta <= 0:
+    # Guard non-finite deltas: int(math.log10(inf)) raises OverflowError and
+    # int(nan) raises ValueError. Not reachable via the shipped parsers (a
+    # datetime can't yield an inf/nan timestamp), but this is a low-level
+    # primitive, so fail safe into the underflow bucket rather than crash.
+    if not math.isfinite(delta) or delta <= 0:
         return 0
     idx = int((math.log10(delta) - _IAT_MIN_EXP) * _IAT_PER_DECADE) + 1
     return max(1, min(idx, _IAT_BUCKETS - 1))

@@ -52,15 +52,39 @@ _S = load_shared_tuning()
 CADENCE_TAGS = frozenset({"metronomic", "bursty", "steady"})
 
 # Tags that record an incidental fact about *this batch's own requests* -- did they
-# happen to hit /robots.txt, earn a 304, arrive as a single request, use HEAD/POST
-# heavily -- rather than the client's identity or conduct. Two IPs of the same
-# verified crawler can differ on these purely because of which slice of its traffic
-# each accumulator happened to observe, so the report-time actor grouping in
+# happen to hit /robots.txt, earn a 304, co-load a page's assets, follow on-site
+# links, arrive as a single request, use HEAD/POST heavily, run long, or transfer/
+# request at a high rate -- rather than the client's identity or conduct. Two IPs of
+# the same verified crawler can differ on these purely because of which slice of its
+# traffic each accumulator happened to observe, so the report-time actor grouping in
 # ``report/aggregate.py`` excludes them from its folding key -- they'd otherwise
 # split an already-identical actor into separate rows.
-OBSERVATIONAL_TAGS = frozenset(
-    {"checked-robots", "has-cache", "lacks-cache", "singleton", "uses-HEAD", "post-heavy"}
-) | CADENCE_TAGS
+#
+# ``long-session``/``high-rate``/``high-bytes``/``wide-breadth`` are defined in
+# ``classify/relative.py`` (its ``_METRIC_TAGS``), not here -- same per-member
+# magnitude shape as the rest, just literals rather than an import, since
+# ``relative.py`` already imports from this module and the reverse would cycle.
+OBSERVATIONAL_TAGS = (
+    frozenset(
+        {
+            "checked-robots",
+            "has-cache",
+            "lacks-cache",
+            "loads-assets",
+            "no-assets",
+            "follows-links",
+            "cold",
+            "singleton",
+            "uses-HEAD",
+            "post-heavy",
+            "long-session",
+            "high-rate",
+            "high-bytes",
+            "wide-breadth",
+        }
+    )
+    | CADENCE_TAGS
+)
 
 # Observational tags worth showing on a folded row -- all of them except
 # ``singleton``, unioned across members: has-cache/lacks-cache and the cadence trio

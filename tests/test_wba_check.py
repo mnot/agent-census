@@ -69,6 +69,34 @@ def test_origin_rejects_unparseable_input() -> None:
     assert checks[0].level == "error"
 
 
+def test_origin_refuses_non_http_schemes() -> None:
+    # Not just flagged -- refused outright, so nothing is ever fetched over
+    # file:// (or ftp/data/gopher/...).
+    origin, checks = wba_check._origin("file://localhost/etc/hosts")
+    assert origin is None
+    assert checks == [wba_check.Check("error", "scheme 'file' isn't http or https -- refusing to fetch it")]
+
+
+def test_origin_strips_credentials_and_warns() -> None:
+    origin, checks = wba_check._origin("https://user:pass@example.com")
+    assert origin == "https://example.com"  # never echoed forward
+    assert any(c.level == "warn" and "credentials" in c.message for c in checks)
+
+
+def test_origin_keeps_an_explicit_port() -> None:
+    origin, checks = wba_check._origin("https://example.com:8443")
+    assert origin == "https://example.com:8443"
+    assert checks == []
+
+
+def test_origin_rejects_a_malformed_url_cleanly() -> None:
+    # urlsplit()/`.port` can raise ValueError (bad IPv6 literal, non-numeric
+    # port); this must surface as a Check, not an unhandled exception.
+    origin, checks = wba_check._origin("https://[::1")
+    assert origin is None
+    assert checks[0].level == "error"
+
+
 # --- _check_key ---------------------------------------------------------------
 
 
@@ -93,10 +121,37 @@ def test_check_key_accepts_absent_kid() -> None:
     assert [c.level for c in checks] == ["ok"]
 
 
+def test_check_key_flags_empty_kid_as_a_mismatch() -> None:
+    # An empty string is falsy but still a *declared* value that isn't the
+    # thumbprint -- it must not be silently treated as "no kid declared".
+    empty_kid = {**AHREFS_JWK, "kid": ""}
+    checks, thumbprint = wba_check._check_key(0, empty_kid)
+    assert thumbprint == AHREFS_THUMBPRINT
+    assert any(c.level == "error" and "does not match" in c.message for c in checks)
+
+
 def test_check_key_warns_on_non_ed25519_key() -> None:
     checks, thumbprint = wba_check._check_key(0, {"kty": "RSA"})
     assert thumbprint is None
     assert checks[0].level == "warn"
+
+
+def test_check_key_rejects_x_that_is_not_a_valid_key() -> None:
+    # jwk_thumbprint() only checks 'x' is present, not that it's a real 32-byte
+    # Ed25519 point -- a non-string 'x' would otherwise compute a thumbprint
+    # over garbage and report it as a usable key.
+    checks, thumbprint = wba_check._check_key(0, {"kty": "OKP", "crv": "Ed25519", "x": 12345})
+    assert thumbprint is None
+    assert checks[0].level == "error"
+    assert "not a valid" in checks[0].message
+
+
+def test_check_key_rejects_wrong_length_x() -> None:
+    # A string 'x' that isn't 32 bytes once base64url-decoded -- syntactically
+    # plausible, but not a usable Ed25519 public key.
+    checks, thumbprint = wba_check._check_key(0, {"kty": "OKP", "crv": "Ed25519", "x": "AAAA"})
+    assert thumbprint is None
+    assert checks[0].level == "error"
 
 
 def test_check_key_errors_on_malformed_key() -> None:

@@ -28,10 +28,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from . import USER_AGENT
-from .wba import WELL_KNOWN_DIRECTORY, jwk_thumbprint
+from .wba import WELL_KNOWN_DIRECTORY, jwk_thumbprint, public_key_from_jwk
 
 _TIMEOUT = 10
 _EXPECTED_CONTENT_TYPE = "application/http-message-signatures-directory+json"
+# Only these two are ever fetched. urlsplit accepts any scheme (file, ftp, data,
+# ...) without complaint, and urlopen will happily follow one -- so this is a
+# hard allowlist, checked before any request is made, not just a warning.
+_ALLOWED_SCHEMES = frozenset({"http", "https"})
 
 Level = str  # "ok" | "warn" | "error"
 _MARK = {"ok": "[ok]   ", "warn": "[warn] ", "error": "[error]"}
@@ -45,17 +49,33 @@ class Check:
 
 def _origin(raw: str) -> tuple[str | None, list[Check]]:
     """Normalise ``raw`` (a bare host or a URL) to a scheme://host origin, or
-    ``None`` with an explanatory check if it doesn't parse as either."""
+    ``None`` with an explanatory check if it doesn't parse, carries a scheme this
+    tool refuses to fetch, or doesn't resolve to a host at all."""
     text = raw.strip()
     if "://" not in text:
         text = f"https://{text}"
-    parts = urllib.parse.urlsplit(text)
+    try:
+        parts = urllib.parse.urlsplit(text)
+        host, port = parts.hostname, parts.port
+    except ValueError as exc:  # e.g. a malformed IPv6 literal or a non-numeric port
+        return None, [Check("error", f"{raw!r} doesn't look like a host or URL: {exc}")]
     # urlsplit doesn't validate netloc content -- "https://not a host!!" splits
     # cleanly with that whole string as the netloc -- so reject whitespace/control
     # characters here rather than let them surface later as a raw socket error.
-    if not parts.netloc or any(not ch.isprintable() or ch.isspace() for ch in parts.netloc):
+    if not host or any(not ch.isprintable() or ch.isspace() for ch in host):
         return None, [Check("error", f"{raw!r} doesn't look like a host or URL")]
+    if parts.scheme not in _ALLOWED_SCHEMES:
+        return None, [
+            Check("error", f"scheme {parts.scheme!r} isn't http or https -- refusing to fetch it")
+        ]
     checks: list[Check] = []
+    if parts.username is not None or parts.password is not None:
+        checks.append(
+            Check(
+                "warn",
+                "credentials in the URL are ignored -- the directory is fetched without them",
+            )
+        )
     if parts.scheme != "https":
         checks.append(
             Check(
@@ -64,12 +84,19 @@ def _origin(raw: str) -> tuple[str | None, list[Check]]:
                 "directory must be served over https",
             )
         )
-    return f"{parts.scheme}://{parts.netloc}", checks
+    netloc = host if port is None else f"{host}:{port}"
+    return f"{parts.scheme}://{netloc}", checks
 
 
 def _fetch(url: str) -> tuple[int | None, str | None, bytes | None, str | None]:
     """GET ``url`` -> ``(status, content_type, body, error)``; body is set only on a
-    200 read cleanly, so exactly one of body/error carries the outcome."""
+    200 read cleanly, so exactly one of body/error carries the outcome.
+
+    Deliberately not ``wba.py``'s ``_http_get`` or ``robots/source.py``'s
+    ``from_network`` -- both discard the status code and headers, collapsing a
+    404 and a timeout into the same ``None``. A diagnostic needs to tell those
+    apart (and surface the Content-Type), so this keeps its own thin GET.
+    """
     request = urllib.request.Request(
         url,
         headers={
@@ -114,12 +141,20 @@ def _check_key(index: int, jwk: object) -> tuple[list[Check], str | None]:
             )
         ], None
     thumbprint = jwk_thumbprint(jwk)
-    if thumbprint is None:
+    # jwk_thumbprint only checks that 'x' is present, not that it decodes to a
+    # real 32-byte Ed25519 point -- public_key_from_jwk is what verify_claim()
+    # actually calls, so a key that fails there is unusable even though a
+    # (meaningless) thumbprint could still be computed over it.
+    if thumbprint is None or public_key_from_jwk(jwk) is None:
         return [
-            Check("error", f"key[{index}]: malformed -- no usable 'x' (public key) member")
+            Check(
+                "error",
+                f"key[{index}]: malformed -- 'x' is not a valid base64url-encoded "
+                "Ed25519 public key",
+            )
         ], None
     kid = jwk.get("kid")
-    if isinstance(kid, str) and kid and kid != thumbprint:
+    if kid is not None and kid != thumbprint:
         return [
             Check(
                 "error",

@@ -267,9 +267,13 @@ def product_token(ua: str | None) -> str | None:
 # Safari's real version is the "Version/<n>" token (the trailing "Safari/605.x" is
 # a frozen WebKit build); Chrome desktop UAs carry no "Version/" token, so the
 # Chrome check wins first.
-_FIREFOX_VER_RE = re.compile(r"(?:firefox|fxios)/(\d+)", re.I)
-_CHROME_VER_RE = re.compile(r"(?:chrome|crios)/(\d+)", re.I)
-_SAFARI_VER_RE = re.compile(r"version/(\d+)[\d._]*\s+(?:mobile/\S+\s+)?safari", re.I)
+# Bound the major-version capture to at most 9 digits. Real browser majors are
+# two or three digits; without the bound a crafted UA carrying a multi-thousand
+# digit run (e.g. "Chrome/999...") would reach int(), which raises ValueError on
+# Python 3.11+ (the 4300-digit integer-string-conversion limit) and abort the run.
+_FIREFOX_VER_RE = re.compile(r"(?:firefox|fxios)/(\d{1,9})", re.I)
+_CHROME_VER_RE = re.compile(r"(?:chrome|crios)/(\d{1,9})", re.I)
+_SAFARI_VER_RE = re.compile(r"version/(\d{1,9})[\d._]*\s+(?:mobile/\S+\s+)?safari", re.I)
 
 
 def browser_version(ua: str | None) -> tuple[str, int] | None:

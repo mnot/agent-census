@@ -644,6 +644,12 @@ def test_browser_version_parsing_and_age() -> None:
     # Non-browsers report nothing.
     assert uas.browser_version("curl/8.0") is None
 
+    # A crafted UA with a multi-thousand-digit version must not crash (int() would
+    # raise on Python 3.11+ past the 4300-digit limit); the capture is length-bounded.
+    huge = "Mozilla/5.0 Chrome/" + "9" * 100_000 + " Safari/537.36"
+    parsed = uas.browser_version(huge)
+    assert parsed is not None and parsed[0] == "chrome"
+
     at = datetime(2026, 6, 1, tzinfo=timezone.utc)
     old = uas.version_age_months("Chrome/106.0.0.0", at)
     assert old is not None and old > 36  # ~3.7 years

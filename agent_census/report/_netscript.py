@@ -21,7 +21,10 @@ NET_SCRIPT = """
   var cells=[].slice.call(tab.querySelectorAll('td.mxcell'));
   var byRow={}, byCol={};
   cells.forEach(function(c){
-    var r=c.parentNode.rowIndex, col=c.cellIndex; c._v=+c.getAttribute('data-v');
+    // Key columns by data-net, not cellIndex: a band's rowspanned label cell is absent
+    // from the band's non-first rows, so cellIndex shifts by one there -- data-net is the
+    // stable column identity.
+    var r=c.parentNode.rowIndex, col=c.getAttribute('data-net'); c._v=+c.getAttribute('data-v');
     c._other=c.classList.contains('othercol');  // live aggregate: keep it out of the scale
     (byRow[r]=byRow[r]||[]).push(c);
     (byCol[col]=byCol[col]||[]).push(c);
@@ -59,10 +62,13 @@ NET_SCRIPT = """
   function isPhone(){ return window.matchMedia && window.matchMedia('(max-width: 640px)').matches; }
   function layout(){
     if(isPhone()){ rightW=0; return; }
-    var acc=0;
-    for(var i=stickR.length-1;i>=0;i--){
-      var ci=stickR[i].cellIndex, off=Math.ceil(acc);  // ceil so pinned columns overlap, not gap
-      for(var r=0;r<tab.rows.length;r++){var cell=tab.rows[r].cells[ci]; if(cell) cell.style.right=off+'px';}
+    var acc=0, n=stickR.length;
+    for(var i=n-1;i>=0;i--){
+      var off=Math.ceil(acc);  // ceil so pinned columns overlap, not gap
+      // The right-pinned columns (Other | off-network | Total) are the trailing cells of
+      // every row, in header order; index them from the END so a band's missing leading
+      // (rowspanned-away) band cell on its non-first rows doesn't shift them.
+      for(var r=0;r<tab.rows.length;r++){var row=tab.rows[r], cell=row.cells[row.cells.length-n+i]; if(cell) cell.style.right=off+'px';}
       acc+=stickR[i].getBoundingClientRect().width;
     }
     rightW=Math.ceil(acc);
@@ -74,7 +80,9 @@ NET_SCRIPT = """
   var cue=tab.querySelector('.othercue');
   var dcsHd=[].slice.call(tab.querySelectorAll('th.dcs'));
   function rowSum(row, base, hidden){
-    var s=base; for(var k in hidden){var c=row.cells[k]; if(c) s+=(+c.getAttribute('data-v')||0);} return s;
+    // hidden keys are data-net column ids (not cellIndex): a band's rowspanned label cell
+    // is absent on its non-first rows, so cellIndex would point at the wrong column there.
+    var s=base; for(var k in hidden){var c=row.querySelector('[data-net="'+k+'"]'); if(c) s+=(+c.getAttribute('data-v')||0);} return s;
   }
   function recomputeOther(){
     if(!otherCells.length) return;
@@ -92,7 +100,7 @@ NET_SCRIPT = """
     var hidden={}, n=0;
     dcsHd.forEach(function(th){
       var r=th.getBoundingClientRect();
-      if(r.width && r.left>=bandR-0.5){ hidden[th.cellIndex]=1; n++; }
+      if(r.width && r.left>=bandR-0.5){ hidden[th.getAttribute('data-net')]=1; n++; }
     });
     otherCells.forEach(function(oc){ oc._v=rowSum(oc.parentNode, +oc.getAttribute('data-agg'), hidden); });
     if(otherTot){

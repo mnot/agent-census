@@ -524,7 +524,7 @@ def test_summary_table_bands_rowspan_the_label() -> None:
     # instead of stretching the first row. This is safe because #kindtab uses separate
     # borders -- the row-rule bleed that a spanned cell caused under COLLAPSED borders
     # doesn't happen; the cross-tab keeps its per-row band cell (its script needs a
-    # uniform column). browser + app make a two-row People-like band (rowspan 2, no
+    # uniform column). browser + app make a two-row Human-like band (rowspan 2, no
     # separate cell on the app row); vuln_scanner opens a one-row Suspicious band with
     # the rule.
     from types import SimpleNamespace
@@ -539,10 +539,10 @@ def test_summary_table_bands_rowspan_the_label() -> None:
     html = _summary_table(SimpleNamespace(rollups=rollups), {}, None)
 
     # The band label carries the cluster's share of total requests (emphasised via
-    # .bandpct): People-like is 15 of 18 (browser 9 + app 6), Suspicious the
-    # remaining 3. The People-like band spans both its rows; Suspicious spans its one.
+    # .bandpct): Human-like is 15 of 18 (browser 9 + app 6), Suspicious the
+    # remaining 3. The Human-like band spans both its rows; Suspicious spans its one.
     assert (
-        "<th class='band' rowspan='2' scope='rowgroup'><span>People-like "
+        "<th class='band' rowspan='2' scope='rowgroup'><span>Human-like "
         "<b class='bandpct'>83%</b></span></th>" in html
     )
     assert (

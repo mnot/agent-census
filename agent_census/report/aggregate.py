@@ -16,7 +16,7 @@ from ..pipeline import OTHER_HOSTING, RESIDENTIAL_NETWORK, KindRollup
 # does* -- never by a presumed beneficiary or intent (the kind wheel is
 # classification, not judgement). Reading top to bottom is a rough good -> can't-say
 # gradient, ending with the two unattributed buckets. Each label names the band's
-# common trait: People-like traffic behaves the way a person would (a feed reader is
+# common trait: Human-like traffic behaves the way a person would (a feed reader is
 # a person, just in other software) -- "-like" because a browser-shaped behaviour
 # profile and a self-declared app UA are both inferred, never confirmed; individual
 # kind blurbs below spell out what each one's evidence actually is. Utility bots
@@ -33,7 +33,7 @@ class KindCluster:
 
 
 KIND_CLUSTERS: tuple[KindCluster, ...] = (
-    KindCluster("People-like", (Kind.BROWSER, Kind.APP, Kind.FEED_READER)),
+    KindCluster("Human-like", (Kind.BROWSER, Kind.APP, Kind.FEED_READER)),
     KindCluster(
         "Utility bots",
         (Kind.SEARCH_ENGINE, Kind.ARCHIVER, Kind.SOCIAL_PREVIEW, Kind.MONITOR),

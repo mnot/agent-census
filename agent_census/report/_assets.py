@@ -63,11 +63,13 @@ th.vh { vertical-align: bottom; text-align: center; white-space: nowrap;
 th.vh > span { display: inline-block; writing-mode: vertical-rl;
   transform: rotate(180deg); line-height: 1.1; }
 /* Cluster bands: a rotated side label vertical-centred in the band, with a heavy ink
-   rule (kin to .netdiv, but horizontal) marking where a band begins. #kindtab spans
-   the label over the whole band (one rowspanned cell) so a long label doesn't stretch
-   the first row; #nettab keeps a per-row band cell (its script needs a uniform column)
-   and so its first band row still grows to the label. Band cells drop their bottom
-   hairline so no rule cuts across the label. The column is a FIXED width: WebKit
+   rule (kin to .netdiv, but horizontal) marking where a band begins. Both tables span
+   the label over the whole band (one rowspanned cell) so a long label is distributed
+   over the band's height rather than stretching the first row to its full length. The
+   cross-tab's heat/pin script is written to key columns by data-net and trailing-cell
+   position, not cellIndex, so the missing band cells on a band's non-first rows don't
+   throw its column alignment off. Band cells drop their bottom hairline so no rule
+   cuts across the label. The column is a FIXED width: WebKit
    auto-sizes a column holding a rotated (vertical writing-mode) inline-block to just
    its padding -- ~8px -- so an auto column lets the 22px label overflow across the
    divider. A fixed width reserves the space in both engines (the value matches

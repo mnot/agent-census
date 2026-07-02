@@ -261,41 +261,54 @@ def test_network_table_folds_datacenters_into_pinned_other(
     assert netall is not None and netall.group(0).count("data-v=") >= 6
 
 
-def test_network_table_cluster_bands(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # The cross-tab bands its kind rows like the summary table: a pinned side label
-    # per cluster plus a thick rule between bands. The band cell rides on *every*
-    # row (not a rowspan) so the heat/pin script's per-column cellIndex stays uniform
-    # -- the invariant this test locks. A datacenter curl client and a residential
-    # browser land in two different clusters, so at least two bands render.
-    monkeypatch.setattr(pipeline, "datacenter_subnet", lambda ip: None)
-    monkeypatch.setattr(
-        pipeline, "datacenter_provider", lambda ip: "Amazon AWS" if ip.startswith("52.") else None
+def test_network_table_cluster_bands() -> None:
+    # The cross-tab bands its kind rows like the summary table: one rowspanned side
+    # label per cluster distributes the tall vertical text over the band's height
+    # (instead of stretching the band's first row to the label's full length), plus a
+    # thick rule between bands. Unlike the earlier per-row construction, a band's
+    # non-first rows carry NO band cell -- so the heat/pin script keys columns by
+    # data-net and by trailing (right-pinned) position, never cellIndex. This test
+    # locks that structure.
+    from agent_census.report.aggregate import NetworkMatrix
+    from agent_census.report._networktab import network_table
+
+    # A two-row Human-like band (browser + feed reader) and a one-row Suspicious band.
+    nets = ("Amazon", RESIDENTIAL_NETWORK)
+    cells = {
+        ("Amazon", Kind.BROWSER): 5,
+        (RESIDENTIAL_NETWORK, Kind.BROWSER): 90,
+        ("Amazon", Kind.FEED_READER): 40,
+        (RESIDENTIAL_NETWORK, Kind.VULN_SCANNER): 12,
+    }
+    kinds = (Kind.BROWSER, Kind.FEED_READER, Kind.VULN_SCANNER)
+    row_totals = {Kind.BROWSER: 95, Kind.FEED_READER: 40, Kind.VULN_SCANNER: 12}
+    col_totals = {"Amazon": 45, RESIDENTIAL_NETWORK: 102}
+    matrix = NetworkMatrix(
+        networks=nets,
+        kinds=kinds,
+        requests=cells,
+        col_totals=col_totals,
+        row_totals=row_totals,
+        total=147,
+        categories={"Amazon": "datacenter", RESIDENTIAL_NETWORK: "residential"},
     )
-    lines = [
-        '52.1.1.1 - - [10/Oct/2023:12:00:00 +0000] "GET /p HTTP/1.1" 200 100 "-" "curl/8.0"',
-        '9.9.9.9 - - [10/Oct/2023:12:01:00 +0000] "GET /p HTTP/1.1" 200 100 "-" '
-        '"Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 Safari/605.1.15"',
-    ]
-    log = tmp_path / "netbands.log"
-    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    parser = resolve("apache", {"format": PRESETS["combined"]})
-    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
-    html = render_report_html(result, source="x")
+    html = network_table(matrix)
 
     table = re.search(r"<table id='nettab'>(.*?)</table>", html, re.S)
     assert table is not None
-    rows = re.findall(r"<tr[^>]*>(.*?)</tr>", table.group(1), re.S)
-    # Every row -- header, each kind, and the All-kinds total -- carries the same cell
-    # count. A rowspan band cell would break this (and the script's column indexing).
-    cell_counts = {len(re.findall(r"<t[hd][\s>]", row)) for row in rows}
-    assert len(cell_counts) == 1, f"cross-tab rows are not cell-uniform: {cell_counts}"
-    # Two clusters present -> two side labels and a between-band thick rule.
-    labels = re.findall(r"<th class='band' scope='rowgroup'><span>([^<]+)</span>", table.group(1))
-    assert len(set(labels)) >= 2
-    assert set(labels) <= {c.label for c in KIND_CLUSTERS}
-    assert "bandstart" in table.group(1)  # the rule that separates bands
+    body = table.group(1)
+    # One rowspanned label per band: Human-like spans its two rows, Suspicious its one.
+    assert "<th class='band' rowspan='2' scope='rowgroup'><span>Human-like</span></th>" in body
+    assert "<th class='band' rowspan='1' scope='rowgroup'><span>Suspicious</span></th>" in body
+    # The band's non-first row (feed reader) has NO band cell -- the rowspan covers it,
+    # which is exactly why the script can't rely on a uniform leftmost cellIndex.
+    feed_row = re.search(r"<tr>(?:(?!</tr>).)*?feed_reader.*?</tr>", body, re.S)
+    assert feed_row is not None and "class='band'" not in feed_row.group(0)
+    # Every data cell carries data-net, the stable column key the repaint/fold uses in
+    # place of cellIndex.
+    mxcells = re.findall(r"<td class='[^']*\bmxcell\b[^']*'[^>]*>", body)
+    assert mxcells and all("data-net=" in c for c in mxcells)
+    assert "bandstart" in body  # the rule that separates bands
 
 
 def test_filter_haystack_includes_as_name() -> None:

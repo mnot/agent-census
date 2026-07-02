@@ -145,9 +145,13 @@ def network_table(matrix: NetworkMatrix | None) -> str:
             return ""
         return f" data-kind='{kind.value}' data-agg='{matrix.cell(net, kind)}'"
 
-    # A band cell rides on *every* row (not a rowspan): the heat/pin script keys
-    # columns by cellIndex, so the leftmost column must be uniform across rows. The
-    # rotated label shows only on each band's first row; the rest are empty.
+    # One rowspanned band label per band, so its tall vertical text is distributed over
+    # the band's whole height and vertical-centred -- not dumped on the first row, which
+    # the earlier per-row construction stretched to the label's full length. The heat/pin
+    # script (see _netscript) keys columns by data-net and by trailing right-pinned
+    # position, not cellIndex, so the band cell being absent on a band's non-first rows
+    # doesn't shift its column alignment. Safe under #nettab's SEPARATE borders (a spanned
+    # cell only bleeds the row rules under collapsed borders).
     present = set(matrix.kinds)
     rows = []
     for ci, (cluster, members) in enumerate(clusters_present(lambda k: k in present)):
@@ -158,9 +162,10 @@ def network_table(matrix: NetworkMatrix | None) -> str:
                 for i, n in enumerate(nets)
             )
             band = (
-                f"<th class='band' scope='rowgroup'><span>{_esc(cluster.label)}</span></th>"
+                f"<th class='band' rowspan='{len(members)}' scope='rowgroup'>"
+                f"<span>{_esc(cluster.label)}</span></th>"
                 if offset == 0
-                else "<td class='band'></td>"
+                else ""
             )
             tr = "<tr class='bandstart'>" if (offset == 0 and ci > 0) else "<tr>"
             rows.append(

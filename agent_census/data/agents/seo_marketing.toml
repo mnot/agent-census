@@ -7,12 +7,14 @@
 ua_substring = "AhrefsBot"
 domains = ["ahrefs.com", "ahrefs.net"]
 ranges_url = "https://api.ahrefs.com/v3/public/crawler-ip-ranges"
+wba_operator = "Ahrefs"  # agents/web_bot_auth.toml
 
 [[agent]]
 # https://ahrefs.com/robot
 ua_substring = "AhrefsSiteAudit"
 domains = ["ahrefs.com", "ahrefs.net"]
 ranges_url = "https://api.ahrefs.com/v3/public/crawler-ip-ranges"
+wba_operator = "Ahrefs"  # agents/web_bot_auth.toml
 
 [[agent]]
 # https://www.semrush.com/bot/

@@ -203,6 +203,22 @@ def names_user_triggered_agent(ua: str | None) -> bool:
     return False
 
 
+@lru_cache(maxsize=16384)
+def declared_wba_operator(ua: str | None) -> str | None:
+    """The Web Bot Auth operator a UA claims to be, by its declared agent entry.
+
+    Reads the matched ``[[agent]]``'s own ``wba_operator`` field -- the same
+    matcher :func:`match_category` uses everywhere else -- rather than a second,
+    independent UA scan. ``None`` when the UA names no known agent, or a known
+    agent with no ``wba_operator`` declared.
+    """
+    for category in KNOWN_CRAWLER_CATEGORIES:
+        match = match_category(ua, category)
+        if match is not None and match[1].wba_operator:
+            return match[1].wba_operator
+    return None
+
+
 @lru_cache(maxsize=None)
 def _asn_index(category: str) -> dict[int, str]:
     return dict(load_asn_agents(category))

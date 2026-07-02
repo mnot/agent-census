@@ -78,6 +78,15 @@ tiers don't run at all, so only `asns` can confirm or impeach.
   agent is still an `ai_crawler` or `search_engine` -- it only adds the `user-triggered`
   tag. Optional; defaults to false.
 
+## Identity, cryptographic -- linking to a Web Bot Auth operator
+
+- **`wba_operator`** (string) -- names the `[[operator]]` entry (by its `name`) in
+  `agents/web_bot_auth.toml` this agent is expected to sign as, if it uses Web Bot
+  Auth. Orthogonal to the checks above: it feeds the *stricter* impersonation
+  check -- a UA matching this agent but validly signed by a *different* registered
+  operator is flagged, even though a lone valid signature would otherwise clear
+  any network-channel impersonator verdict. Optional; most agents have none.
+
 ## Field summary
 
 | Field | Type | Purpose |
@@ -92,6 +101,7 @@ tiers don't run at all, so only `asns` can confirm or impeach.
 | `rdns_fallback` | bool | ranges primary, domains only when ranges unobtainable |
 | `asns` | int[] | verify by logged AS (lowest precedence), or the identity if `asn_primary` |
 | `user_triggered` | bool | operator's stated user-driven purpose (on trust); adds `user-triggered` tag, kind unchanged |
+| `wba_operator` | string | names the expected `agents/web_bot_auth.toml` operator, for the stricter mismatch check |
 
 Every agent needs at least an identity: a `ua_substring`, or `asn_primary` with
 `asns`. Verification fields are all optional -- without any, an agent is recognised

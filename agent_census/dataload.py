@@ -186,6 +186,7 @@ _AGENT_SCHEMA = {
     "asn_primary": "bool",
     "rdns_fallback": "bool",
     "user_triggered": "bool",
+    "wba_operator": "str",
 }
 _SOURCE_SCHEMA = {
     "name": "str",
@@ -238,6 +239,10 @@ class CrawlerSpec:
     # like ChatGPT-User or Amzn-User), rather than crawling autonomously. Orthogonal
     # to the kind -- it surfaces as the ``user-triggered`` tag, not a kind of its own.
     user_triggered: bool = False
+    # Names the :class:`WbaOperator` (by ``name``) this UA is expected to sign as,
+    # if it uses Web Bot Auth. Lets the impersonation check catch a UA claiming
+    # this agent while validly signed by a different registered operator.
+    wba_operator: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -246,15 +251,15 @@ class WbaOperator:
 
     Matched offline against a request's parsed ``Signature-Agent`` URL and/or the
     ``keyid`` (JWK thumbprint) its signature names -- the "who", orthogonal to
-    whether the signature verifies. ``ua_substrings`` link the operator to the
-    crawler User-Agent it should present, so a *valid* signature whose operator
-    differs from the declared crawler can be flagged (phase 2's stricter check).
+    whether the signature verifies. The crawler UA(s) it should present are linked
+    the other way round -- a declared ``[[agent]]`` entry's own ``wba_operator``
+    names this operator -- so a *valid* signature whose operator differs from the
+    declared crawler can be flagged (phase 2's stricter check).
     """
 
     name: str
     agent_urls: tuple[str, ...] = ()
     keyids: tuple[str, ...] = ()
-    ua_substrings: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -422,7 +427,6 @@ _WBA_OPERATOR_SCHEMA = {
     "name": "str",
     "agent_urls": "str[]",
     "keyids": "str[]",
-    "ua_substrings": "str[]",
 }
 
 
@@ -440,8 +444,10 @@ def load_wba_operators() -> tuple[WbaOperator, ...]:
     """Return the Web Bot Auth operator list from ``agents/web_bot_auth.toml``.
 
     Maps a signing identity (directory URL and/or published JWK thumbprints) to a
-    human operator name, plus the crawler UA tokens it presents. Offline data, like
-    the declared-crawler files; the cryptographic check is layered on separately.
+    human operator name. Offline data, like the declared-crawler files; the
+    cryptographic check is layered on separately. The crawler UA(s) an operator
+    should present live on the matching ``[[agent]]`` entry's ``wba_operator``
+    field, not here -- see :func:`load_tokens`.
     """
     data = _load("web_bot_auth", "agents")
     label = "agents/web_bot_auth.toml"
@@ -454,7 +460,6 @@ def load_wba_operators() -> tuple[WbaOperator, ...]:
             name=entry["name"],
             agent_urls=tuple(entry.get("agent_urls", ())),
             keyids=tuple(entry.get("keyids", ())),
-            ua_substrings=tuple(entry.get("ua_substrings", ())),
         )
         for entry in entries
     )
@@ -480,6 +485,7 @@ def load_tokens(category: str) -> tuple[tuple[str, CrawlerSpec], ...]:
             asns=tuple(entry.get("asns", [])),
             rdns_fallback=bool(entry.get("rdns_fallback", False)),
             user_triggered=bool(entry.get("user_triggered", False)),
+            wba_operator=entry.get("wba_operator"),
         )
         pairs.append((ua, spec))
     return tuple(pairs)

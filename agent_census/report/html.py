@@ -872,7 +872,7 @@ def _kind_section(
         # reader scrolls this kind's clients (see .kindhead in the stylesheet).
         '<div class="kindhead">'
         f'<h2 id="{kind.value}">{title}</h2>'
-        f'<p class="blurb">{_esc(KIND_BLURB.get(kind, ""))}</p>'
+        f'<p class="blurb">{_esc(KIND_BLURB[kind])}</p>'
         "</div>",
     ]
     shown = "".join(

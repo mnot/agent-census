@@ -1,7 +1,9 @@
-"""Comment / form spam and credential-stuffing bots.
+"""Comment / form spam and other submission-endpoint abuse.
 
 The tell is a POST-heavy request mix aimed at a small set of submission endpoints
 (comment forms, login, xmlrpc), usually without any browser sub-resource loading.
+Nothing here distinguishes a specific attack (e.g. credential stuffing) from
+ordinary comment spam -- the evidence is volume and target, not intent.
 """
 
 from __future__ import annotations

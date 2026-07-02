@@ -42,8 +42,8 @@ classifier when a token matches:
 - **`monitor_uas.toml`** -- UA tokens naming an uptime / monitoring service;
   corroborates the `monitor` classifier.
 - **`submit_paths.toml`** -- submission-endpoint URL substrings (comment forms,
-  login, xmlrpc) that spam and credential-stuffing bots aim at; corroborates
-  `spam_bot`.
+  login, xmlrpc) that comment/form spam and other submission-endpoint abuse aims
+  at; corroborates `spam_bot`.
 - **`app_clients.toml`** -- UA substrings for native-app HTTP clients (platform
   networking stacks, app frameworks): not a browser and not a crawler.
 - **`feed_readers.toml`** -- feed-reader product-name UA substrings; corroborates

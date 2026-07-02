@@ -110,6 +110,9 @@ KIND_BLURB: dict[Kind, str] = {
     Kind.UNKNOWN: "Clients no classifier could characterize -- and with no machine tell to "
     "mark them even as automation.",
 }
+# Same enforcement as KIND_ORDER above: a newly added Kind with no blurb should fail
+# at import, not render as a silent blank paragraph in every report.
+assert set(KIND_BLURB) == set(Kind), "every Kind must have a blurb"
 
 
 def by_kind(profiles: tuple[ClientProfile, ...]) -> dict[Kind, list[ClientProfile]]:

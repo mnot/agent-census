@@ -159,3 +159,4 @@ ua_substring = "colossio"
 # https://duckduckgo.com/duckduckgo-help-pages/results/duckassistbot
 ua_substring = "DuckAssistBot"
 ranges_url = "https://duckduckgo.com/duckassistbot.json"
+wba_operator = "DuckDuckGo"

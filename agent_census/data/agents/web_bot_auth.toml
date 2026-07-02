@@ -40,3 +40,10 @@ agent_urls = ["https://chatgpt.com"]
 keyids = [
     "otMqcjr17mGyruktGvJU8oojQTSMHlVm7uO-lrcqbdg",
 ]
+
+[[operator]]
+name = "DuckDuckGo"
+agent_urls = ["https://bot.duckduckgo.com"]
+keyids = [
+    "5HvpfNA946z6lcCXEIOOpzlN5l0mdZE42jdqimEwPf8",
+]

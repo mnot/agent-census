@@ -33,7 +33,6 @@ class Classifier(ABC):
         evidence: list[str],
         *,
         agent_name: str | None = None,
-        matched_token: str | None = None,
     ) -> Signal:
         """Helper to build a signal for this classifier's label."""
         return Signal(
@@ -42,5 +41,4 @@ class Classifier(ABC):
             evidence=tuple(evidence),
             classifier=self.name,
             agent_name=agent_name,
-            matched_token=matched_token,
         )

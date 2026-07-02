@@ -1314,14 +1314,12 @@ def test_known_bot_asn_match_carries_agent_name_to_classification() -> None:
     from agent_census.classify.ai_crawler import AiCrawlerClassifier
 
     # agents/ai_crawler.toml's Sberbank entry is asn_primary: recognised by AS
-    # number alone (rotating spoofed-browser UAs), so there is no UA token to
-    # carry -- only the operator label.
+    # number alone (rotating spoofed-browser UAs) -- only the operator label.
     signals = AiCrawlerClassifier().evaluate(
         ClientFeatures(request_count=3, user_agent="Mozilla/5.0", as_number="AS35237")
     )
     assert len(signals) == 1
     assert signals[0].agent_name == "Sberbank"
-    assert signals[0].matched_token is None
 
 
 def test_classify_client_runs_all() -> None:

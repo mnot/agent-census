@@ -231,12 +231,10 @@ class Signal:
     confidence: float
     evidence: tuple[str, ...]
     classifier: str
-    # Set only by a known-agent match: the operator's declared name and the raw
-    # UA token that matched it (or, for an ASN-primary agent, its label and
-    # ``None`` for the token). Lets the report show the agent's own identity
-    # rather than a bare IP/network, without re-deriving the match from the UA.
+    # Set only by a known-agent match: the operator's declared name (or, for an
+    # ASN-primary agent, its label). Lets the report show the agent's own
+    # identity rather than a bare IP/network, without re-deriving it from the UA.
     agent_name: str | None = None
-    matched_token: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

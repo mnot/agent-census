@@ -480,8 +480,15 @@ def verify_claim(claim: WbaClaim, public_key: Ed25519PublicKey) -> tuple[WbaStat
     except InvalidSignature:
         return WbaStatus.FORGED, "Ed25519 signature does not verify against the operator's key"
     expires = claim.params.expires
-    if expires is not None and claim.timestamp is not None and claim.timestamp > expires:
-        return WbaStatus.EXPIRED, "valid signature, but the request post-dates its `expires`"
+    if expires is not None:
+        if claim.timestamp is None:
+            # The signature carries an `expires`, but the request has no timestamp
+            # to check it against, so freshness can't be confirmed. Don't grant the
+            # fresh VERIFIED tier on an unverifiable freshness claim -- treat it as
+            # not-fresh (still a valid signature, so EXPIRED, not FORGED).
+            return WbaStatus.EXPIRED, "valid signature, but the request has no timestamp to check `expires`"
+        if claim.timestamp > expires:
+            return WbaStatus.EXPIRED, "valid signature, but the request post-dates its `expires`"
     return WbaStatus.VERIFIED, "valid Ed25519 signature, within its freshness window"
 
 

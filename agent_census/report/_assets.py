@@ -606,7 +606,10 @@ markScrollables();
   restoringFromHash = true;
   window.setKindNet(state.kind, state.net);  // normalizes '' to null, same as any other setter
   restoringFromHash = false;
-  if (state.kind) window.scrollToKind(state.kind);
+  // Any fragment-encoded filter means the reader came for filtered results, not
+  // the summary tables -- scroll past them (to the kind section, or to the
+  // filterbar immediately below them when the filter is query/network-only).
+  window.scrollToKind(state.kind);
 })();
 
 (function () {

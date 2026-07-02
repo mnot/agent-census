@@ -8,6 +8,10 @@ never retained here -- ``inspect`` collects them for the selected clients in a
 cheap second pass via :func:`collect_entries`.
 """
 
+# This module is the streaming orchestrator and runs just over the line limit; the
+# routing/emit logic reads better in one place than split for its own sake.
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 
 import heapq
@@ -443,7 +447,7 @@ def _merge_verified(
     return member_ips
 
 
-def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arguments
+def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arguments,too-many-branches
     logs: Path | Sequence[Path],
     parser: LogParser,
     strategy: ClientKeyStrategy,

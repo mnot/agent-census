@@ -72,6 +72,39 @@ def test_group_actors_merges_across_observational_tags() -> None:
     assert group.observational_tags == frozenset({"checked-robots"})
 
 
+def test_group_actors_merges_across_relative_and_fingerprint_observational_tags() -> None:
+    # Same UA, WBA/IP-verified, declares-known-bot -- but the members differ in
+    # traffic-mix facts that shouldn't split an already-identified crawler: cadence
+    # (bursty), asset co-load (no-assets), and a magnitude tag defined outside
+    # tags.py (long-session, from classify/relative.py). All fold into one row.
+    profiles = [
+        _profile(
+            "1.1.1.1",
+            "bot/1",
+            tags=frozenset({"wba-verified", "ip-verified", "declares-known-bot"}),
+        ),
+        _profile(
+            "2.2.2.2",
+            "bot/1",
+            tags=frozenset(
+                {"wba-verified", "ip-verified", "declares-known-bot", "bursty", "no-assets"}
+            ),
+        ),
+        _profile(
+            "3.3.3.3",
+            "bot/1",
+            tags=frozenset(
+                {"wba-verified", "ip-verified", "declares-known-bot", "long-session"}
+            ),
+        ),
+    ]
+    groups = group_actors(profiles)
+    assert len(groups) == 1
+    group = groups[0]
+    assert group.collapsed and len(group.members) == 3
+    assert group.observational_tags == frozenset({"bursty", "no-assets", "long-session"})
+
+
 def test_group_actors_merges_and_shows_both_poles_when_members_disagree() -> None:
     # has-cache and lacks-cache are opposite poles of one fact, enforced mutually
     # exclusive per profile -- still merges (both are excluded from the fold key),

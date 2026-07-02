@@ -223,16 +223,24 @@ def _require_family(entry: dict[str, Any]) -> str:
 
 @dataclass(frozen=True, slots=True)
 class CrawlerSpec:
-    """How to verify a declared crawler: reverse-DNS domains and/or IP ranges."""
+    """How to verify a declared crawler: reverse-DNS domains, IP ranges, and/or
+    the origin AS numbers the operator crawls from."""
 
     domains: tuple[str, ...] = ()
     ranges: tuple[str, ...] = ()
     ranges_url: str | None = None
     fmt: str = "prefixes"  # how to parse ranges_url (see iprange.extract_cidrs)
-    # AS numbers the operator is expected to crawl from. The lowest-precedence
-    # verification tier: used only when ranges/rDNS are absent or inconclusive. A
-    # UA match from one of these AS numbers corroborates the identity; a UA match
-    # from a different (logged) AS is impersonation.
+    # AS numbers the operator is expected to crawl from -- a second identity channel
+    # that combines with the network channel (IP ranges and/or rDNS domains) as an
+    # OR (see pipeline ``_resolve_asn_verification``). A network ``VERIFIED`` is the
+    # strongest proof and stands; otherwise a UA match from one of these AS numbers
+    # confirms the identity even when the network channel said otherwise -- an IP
+    # outside the ranges *or* a failing rDNS check (``ASN_ASSOCIATED``, coarser than
+    # a range/DNS hit); a UA match from a different logged AS while the network
+    # channel also failed is impersonation. A missing AS number is never read as
+    # impersonation. Declare alongside ranges/domains for an operator whose traffic
+    # also comes from an AS it owns (e.g. Censys's ASNs beyond its published
+    # subnets, or facebookexternalhit from AS32934 when its rDNS can't be confirmed).
     asns: tuple[int, ...] = ()
     # When an agent declares both ranges and domains, both must verify by default
     # (either failing is impersonation). Set this for operators whose reverse DNS
@@ -397,6 +405,14 @@ def load_vuln_paths() -> tuple[tuple[str, ...], tuple[str, ...]]:
 
 
 # Crawler/bot categories: one TOML file each, an [[agent]] table per agent.
+#
+# This is the *identity-verification* list (netverify, ASN feeds), NOT the
+# "recognised good crawler" list (uas.KNOWN_CRAWLER_CATEGORIES, which routes a UA
+# to a crawler classifier and makes the generic crawler/scraper classifiers
+# defer). vuln_scanner / monitor belong here so a self-declaring scanner or
+# monitor can be authenticated against its published ranges, but must stay out of
+# that other list -- their behavioural classification is unchanged; we only
+# confirm (or refute) the network origin of the identity they claim.
 KNOWN_AGENT_CATEGORIES = (
     "search_engine",
     "social_preview",
@@ -404,6 +420,8 @@ KNOWN_AGENT_CATEGORIES = (
     "ai_crawler",
     "seo_marketing",
     "data_harvester",
+    "vuln_scanner",
+    "monitor",
 )
 
 

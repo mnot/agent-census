@@ -190,8 +190,10 @@ intact.
 - **Verified Green** (`#00862e`): identity confirmed, one tag per independent
   channel — `dns-verified` (rDNS), `ip-verified` (published IP range), and
   `wba-verified` (a valid Web Bot Auth signature); also the Search-Engine kind.
-- **ASN-Associated Green** (`#008459`): a corroboration — origin AS
-  matches the declared crawler (`asn-associated`).
+- **ASN-Associated Green** (`#008459`): origin AS matches the declared crawler —
+  confirming it even when the network channel (IP range or rDNS) said otherwise
+  (the network/AS channels combine as an OR); coarser than an IP/DNS hit
+  (`asn-associated`).
 - **Caution Amber** (`#b45309`): a declared crawler that *could* be checked but
   wasn't confirmed — `dns-unverified` / `ip-unverified`, each channel's mirror of
   Verified Green. A *definitive* disagreement (`dns-violation` / `ip-violation`)

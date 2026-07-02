@@ -31,7 +31,7 @@ from .classify.relative import (
     make_collector,
     tag_profile,
 )
-from .dataload import CrawlerSpec
+from .dataload import KNOWN_AGENT_CATEGORIES, CrawlerSpec
 from .features import DisallowedCheck, FeatureAccumulator
 from .hosting import (
     asn_for_ip,
@@ -160,13 +160,18 @@ def _asn_of(entry: LogEntry, ip: str) -> str | None:
     return str(recovered) if recovered is not None else None
 
 
-def _declared_spec(ua: str | None) -> tuple[str, CrawlerSpec] | None:
-    """First ``(token, spec)`` whose token the UA declares, across crawler kinds."""
-    for category in _CRAWLER_CATEGORIES:
+def _spec_for(ua: str | None, categories: tuple[str, ...]) -> tuple[str, CrawlerSpec] | None:
+    """First ``(token, spec)`` whose token the UA declares, within ``categories``."""
+    for category in categories:
         known = uas.match_category(ua, category)
         if known is not None:
             return known
     return None
+
+
+def _declared_spec(ua: str | None) -> tuple[str, CrawlerSpec] | None:
+    """Crawler-category match: drives folding/routing, where scanners stay excluded."""
+    return _spec_for(ua, _CRAWLER_CATEGORIES)
 
 
 def _verifiable(spec: CrawlerSpec) -> bool:
@@ -177,33 +182,29 @@ def _verifiable(spec: CrawlerSpec) -> bool:
 def _resolve_asn_verification(
     verification: BotVerification | None, features: ClientFeatures
 ) -> BotVerification | None:
-    """Apply the offline ASN verification tier, below ranges/rDNS in precedence.
-
-    A declared crawler whose logged origin AS is in its agent's ``asns`` is
-    corroborated (``ASN_ASSOCIATED``); one whose logged AS is *not* in the list is
-    an impersonator. Consulted only when the network tiers didn't decide (no
-    ranges/rDNS, or they were inconclusive) and the log carries an AS number --
-    absence of an AS number is never read as impersonation.
+    """The offline ASN tier: ``asns`` is a second identity channel that combines
+    with the network channel (IP range and/or rDNS) as an OR (full rationale on
+    ``CrawlerSpec.asns``). A network ``VERIFIED`` stands; else an in-list origin AS
+    confirms the identity even when the network channel said otherwise -- an
+    out-of-range IP *or* a failing rDNS check (``ASN_ASSOCIATED``); a known AS that
+    is wrong while the network channel also failed impersonates; a missing AS leaves
+    the network verdict untouched. Agents that declare no ``asns`` pass through.
     """
-    if verification is not None and verification.status in (
-        VerificationStatus.VERIFIED,
-        VerificationStatus.IMPERSONATOR,
-    ):
-        return verification  # a definitive ranges/rDNS verdict takes precedence
-    declared = _declared_spec(features.user_agent)
-    if declared is None:
-        return verification
-    token, spec = declared
-    if not spec.asns:
-        return verification
+    if verification is not None and verification.status is VerificationStatus.VERIFIED:
+        return verification  # strongest proof; the AS tier can't improve on it
+    declared = _spec_for(features.user_agent, KNOWN_AGENT_CATEGORIES)
     asn = uas.parse_asn(features.as_number)
-    if asn is None:
-        return verification  # nothing to check against; leave it unverified
+    if declared is None or not declared[1].asns or asn is None:
+        return verification  # no ASN channel, or no AS to check -> network verdict stands
+    token, spec = declared
     if asn in spec.asns:
         return BotVerification(
             VerificationStatus.ASN_ASSOCIATED,
             evidence=(f"origin AS{asn} is a network that {token} crawls from",),
         )
+    # Known AS, not in the list: impersonation unless ranges/rDNS already cleared it.
+    if verification is not None and verification.status is VerificationStatus.IMPERSONATOR:
+        return verification
     return BotVerification(
         VerificationStatus.IMPERSONATOR,
         evidence=(f"User-Agent claims {token}, but origin AS{asn} is not one it crawls from",),

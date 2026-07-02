@@ -35,6 +35,9 @@ class KnownBotClassifier(Classifier):
             return self._by_asn(features)
         token, spec = known
         confidence = _T["ua_base"]
+        # top_evidence() in report/format.py drops evidence[0] whenever agent_name is
+        # set, on the assumption that it's this same identity declaration -- keep it
+        # first if more evidence is ever prepended.
         evidence = [f"User-Agent declares {token!r}, a known {self.descriptor}"]
         if features.fetched_robots_txt:
             confidence += _T["robots_bonus"]
@@ -59,6 +62,7 @@ class KnownBotClassifier(Classifier):
         if label is None:
             return []
         asn = uas.parse_asn(features.as_number)
+        # Same identity-declaration-stays-evidence[0] contract as evaluate() above.
         return [
             self._signal(
                 _T["asn_base"],

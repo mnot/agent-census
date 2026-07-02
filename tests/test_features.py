@@ -158,6 +158,22 @@ def test_regular_timing_low_cv() -> None:
     assert feats.inter_arrival_median == 60.0
 
 
+def test_out_of_order_timestamp_keeps_baseline_monotonic() -> None:
+    # An earlier-than-previous timestamp (clock skew, interleaved workers) is
+    # skipped, and the baseline must not retreat to it -- otherwise the next
+    # in-order gap is measured from the wrong point and over-reported.
+    from agent_census.features import FeatureAccumulator
+
+    acc = FeatureAccumulator()
+    for off in (0, 120, 60, 180):  # 60 arrives late, after 120
+        acc.add(entry("/p", offset=off))
+    feats = acc.finalize()
+    # Deltas: 0->120 and 120->180; the late 60 is dropped, not used as a baseline
+    # (which would have measured 120->? as 180-60=120 and hidden the real 60 gap).
+    assert feats.inter_arrival_min == 60.0
+    assert feats.inter_arrival_mean == pytest.approx(90.0)
+
+
 def test_high_volume_timing_is_bounded_but_accurate() -> None:
     # Past the exact-delta buffer the accumulator switches to a fixed histogram,
     # so it holds no per-request timing array. Exact stats (mean/min/CV) survive;

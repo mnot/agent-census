@@ -464,10 +464,15 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
             self._minute_counts = {}
         minute = int(ts // 60)
         self._minute_counts[minute] = self._minute_counts.get(minute, 0) + 1
-        # Inter-arrival in stream order (≈ time order); skip out-of-order negatives.
-        if self._prev_ts is not None and ts >= self._prev_ts:
+        # Inter-arrival in stream order (≈ time order). An out-of-order (earlier)
+        # timestamp is skipped -- but the baseline must NOT retreat to it, or the
+        # next in-order delta is measured from the wrong point and inflated. Keep
+        # _prev_ts monotonic so it always tracks the latest timestamp seen.
+        if self._prev_ts is None:
+            self._prev_ts = ts
+        elif ts >= self._prev_ts:
             self._record_delta(ts - self._prev_ts)
-        self._prev_ts = ts
+            self._prev_ts = ts
 
     def _record_delta(self, delta: float) -> None:
         self._iat_count += 1

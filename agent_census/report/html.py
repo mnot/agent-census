@@ -569,10 +569,11 @@ def _actor_tbody(
         peak,
         window,
     )
-    # For a known agent, lead with its own identity -- a declared name, else an
-    # rDNS-confirmed host -- and demote the IP/ASN spread to a line below it
-    # (like the network's own AS org). Otherwise the spread is the only identity
-    # we have, so it stays the header line as before.
+    # For a known agent, lead with its own identity -- a declared name, a Web
+    # Bot Auth operator, or else an rDNS-confirmed host -- and demote the
+    # IP/ASN spread to a line below it (like the network's own AS org).
+    # Otherwise the spread is the only identity we have, so it stays the
+    # header line as before.
     identity = agent_identity(actor.lead)
     row_attrs = "class='asum'"
     if filterable:

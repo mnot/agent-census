@@ -7,7 +7,7 @@ from datetime import datetime
 from functools import lru_cache
 
 from ..dataload import load_egress_networks
-from ..model import ChannelVerdict, ClientFeatures, ClientProfile, Kind
+from ..model import ChannelVerdict, ClientFeatures, ClientProfile, Kind, WbaStatus
 
 _KHTML_MARKER = "(khtml, like gecko)"
 # Layout-engine tokens: their presence in a trimmed preamble means the UA wore a
@@ -329,20 +329,34 @@ def full_ua(profile: ClientProfile) -> str | None:
 
 def agent_identity(profile: ClientProfile) -> str | None:
     """A known agent's own identity for a header line: its declared name, else
-    an rDNS-confirmed hostname. ``None`` otherwise -- in particular, the raw UA
-    substring a classifier matched on is deliberately never used here even as a
-    last resort: it is only a claim the client's own User-Agent header makes,
-    not a confirmed identity, and heading a row with it would read as more
-    certain than it is.
+    its Web Bot Auth operator, else an rDNS-confirmed hostname. ``None``
+    otherwise -- in particular, the raw UA substring a classifier matched on is
+    deliberately never used here even as a last resort: it is only a claim the
+    client's own User-Agent header makes, not a confirmed identity, and heading
+    a row with it would read as more certain than it is.
+
+    WBA sits ahead of rDNS: a signature cryptographically confirmed against the
+    operator's key -- VERIFIED and EXPIRED alike, the same pair the impersonator
+    gate in the combiner already treats as outranking the network channel -- is
+    proof of the operator, stronger evidence than a resolved hostname. Gated on
+    ``wba.operator`` specifically, not :func:`wba.display_operator`'s
+    ``signer_domain`` fallback: a signature can verify against a key fetched
+    from the claimed Signature-Agent URL itself, with no curated-operator match
+    at all, and that self-published domain is only as trustworthy as the
+    client's own claim about itself -- exactly the "confusing identity" this
+    function already declines to show for an rDNS CIDR or a raw UA token.
 
     The rDNS check specifically -- not the merged verification status -- decides
-    the second tier: an agent verified by IP range alone (no declared domains)
+    the last tier: an agent verified by IP range alone (no declared domains)
     has its ``resolved_host`` set to the matched CIDR by :mod:`netverify`, which
     is a network, not a name, and would be a confusing "identity" to show.
     """
     cls = profile.classification
     if cls.agent_name:
         return cls.agent_name
+    wba = profile.wba
+    if wba is not None and wba.status in (WbaStatus.VERIFIED, WbaStatus.EXPIRED) and wba.operator:
+        return wba.operator
     verification = profile.verification
     if (
         verification is not None

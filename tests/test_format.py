@@ -11,6 +11,8 @@ from agent_census.model import (
     ClientProfile,
     Kind,
     VerificationStatus,
+    WbaResult,
+    WbaStatus,
 )
 import pytest
 
@@ -121,6 +123,7 @@ def _agent_profile(
     *,
     agent_name: str | None = None,
     verification: BotVerification | None = None,
+    wba: WbaResult | None = None,
 ) -> ClientProfile:
     return ClientProfile(
         client_id=ClientId(ip="203.0.113.1", user_agent="Googlebot/2.1"),
@@ -133,6 +136,7 @@ def _agent_profile(
             agent_name=agent_name,
         ),
         verification=verification,
+        wba=wba,
     )
 
 
@@ -153,6 +157,61 @@ def test_agent_identity_falls_back_to_rdns_host() -> None:
         )
     )
     assert agent_identity(profile) == "crawl.googlebot.com"
+
+
+def test_agent_identity_uses_wba_operator_when_dns_unverified() -> None:
+    # WBA-verified but no declared domain to confirm by rDNS (e.g. Ahrefs) --
+    # the curated operator name should still head the row, not fall through to
+    # IP/ASN.
+    profile = _agent_profile(
+        wba=WbaResult(status=WbaStatus.VERIFIED, operator="Ahrefs"),
+        verification=BotVerification(VerificationStatus.UNVERIFIED, dns=ChannelVerdict.UNVERIFIED),
+    )
+    assert agent_identity(profile) == "Ahrefs"
+
+
+def test_agent_identity_prefers_wba_over_rdns_host() -> None:
+    profile = _agent_profile(
+        wba=WbaResult(status=WbaStatus.VERIFIED, operator="Ahrefs"),
+        verification=BotVerification(
+            VerificationStatus.VERIFIED, resolved_host="crawl.ahrefs.com", dns=ChannelVerdict.VERIFIED
+        ),
+    )
+    assert agent_identity(profile) == "Ahrefs"
+
+
+def test_agent_identity_ignores_unverified_wba() -> None:
+    profile = _agent_profile(
+        wba=WbaResult(status=WbaStatus.UNVERIFIABLE, operator="Ahrefs"),
+        verification=BotVerification(
+            VerificationStatus.VERIFIED, resolved_host="crawl.ahrefs.com", dns=ChannelVerdict.VERIFIED
+        ),
+    )
+    assert agent_identity(profile) == "crawl.ahrefs.com"
+
+
+def test_agent_identity_ignores_wba_without_a_curated_operator() -> None:
+    # A signature can verify against a key fetched from the claimed
+    # Signature-Agent URL itself, with no match in the curated operator list --
+    # that self-published domain is only the client's own claim about itself,
+    # not confirmed identity, so it must not head the row.
+    profile = _agent_profile(
+        wba=WbaResult(status=WbaStatus.VERIFIED, operator=None, signer_domain="unknown-crawler.example"),
+        verification=BotVerification(
+            VerificationStatus.VERIFIED, resolved_host="crawl.ahrefs.com", dns=ChannelVerdict.VERIFIED
+        ),
+    )
+    assert agent_identity(profile) == "crawl.ahrefs.com"
+
+
+def test_agent_identity_uses_wba_operator_when_expired() -> None:
+    # EXPIRED is still cryptographic proof of the operator -- the impersonator
+    # gate already treats it the same as VERIFIED -- just not fresh.
+    profile = _agent_profile(
+        wba=WbaResult(status=WbaStatus.EXPIRED, operator="Ahrefs"),
+        verification=BotVerification(VerificationStatus.UNVERIFIED, dns=ChannelVerdict.UNVERIFIED),
+    )
+    assert agent_identity(profile) == "Ahrefs"
 
 
 def test_agent_identity_none_for_an_unrecognised_client() -> None:

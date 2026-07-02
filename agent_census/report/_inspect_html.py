@@ -1,13 +1,16 @@
 """HTML rendering for ``inspect`` mode -- the per-client detail cards.
 
 Split out of :mod:`.html` (which renders the report) so that module stays under
-the repo's per-file line limit; both share the small page/badge/tag helpers, which
-live in :mod:`.html`. The package re-exports :func:`render_inspect_html`.
+the repo's per-file line limit; both share the small page/tag helpers, which
+live in :mod:`.html`, and the escape/badge helpers in :mod:`._htmlutil`. The
+package re-exports :func:`render_inspect_html`.
 """
 
 from __future__ import annotations
 
 from ..model import Classification, ClientProfile, Kind
+from ._htmlutil import esc as _esc
+from ._htmlutil import kind_badge as _kind_badge
 from .format import (
     client_label,
     count,
@@ -20,7 +23,7 @@ from .format import (
     tag_title,
     truncate,
 )
-from .html import _esc, _kind_badge, _page, _tags_html, tag_class
+from .html import _page, _tags_html, tag_class
 from .inspect import ROLLUP_MIN_CLIENTS
 
 

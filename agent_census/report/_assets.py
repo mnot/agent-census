@@ -319,6 +319,24 @@ document.addEventListener('click', function (event) {
   if (tri) tri.setAttribute('aria-expanded', open ? 'true' : 'false');
 }, false);
 
+// Left arrow collapses every open "Show more" disclosure -- a quick way back to
+// the folded view without hunting down each one. Skipped while the reader is
+// typing (an input/textarea/select/contenteditable) or operating a focused
+// scrollable table track -- both already answer to ArrowLeft themselves (text
+// cursor / phone column picker / horizontal scroll), so hijacking it there
+// would fight the reader's own keystroke instead of adding a shortcut.
+document.addEventListener('keydown', function (event) {
+  if (event.key !== 'ArrowLeft') return;
+  if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+  var target = event.target;
+  var tag = target && target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' ||
+      (target && target.isContentEditable)) return;
+  if (target && target.closest && target.closest('.tscroll')) return;
+  var open = document.querySelectorAll('details[open]');
+  for (var i = 0; i < open.length; i++) open[i].open = false;
+}, false);
+
 document.addEventListener('click', function (event) {
   // Opening an exclusive accordion (shared name=) closes whichever one was open,
   // possibly above the click -- the page collapses and the reader loses their
@@ -428,6 +446,45 @@ function applyFilters() {
   if (clear) clear.hidden = !on;
   markScrollables();  // hiding rows can change a table's width and overflow
   syncFilterbarHeight();  // showing/hiding pills changes the bar's height
+  syncHash(input ? input.value.trim() : '');
+}
+
+// Set while the page-load restore below is applying a fragment it just read,
+// so syncHash doesn't immediately rewrite that fragment (e.g. a shared
+// old-style #kind-id link would otherwise flip to #kind=id before the reader
+// does anything).
+var restoringFromHash = false;
+
+// Mirror the active filters into the URL fragment so the report can be linked
+// with a filter already applied. replaceState (not location.hash=) so this
+// doesn't spam browser history or trigger a scroll-to-fragment jump on every
+// keystroke.
+function syncHash(query) {
+  if (restoringFromHash) return;
+  var params = new URLSearchParams();
+  if (query) params.set('q', query);
+  if (activeKind !== null) params.set('kind', activeKind);
+  if (activeNet !== null) params.set('net', activeNet);
+  var str = params.toString();
+  var url = location.pathname + location.search + (str ? '#' + str : '');
+  history.replaceState(null, '', url);
+}
+
+// Read the fragment back into filter state. A bare fragment with no "=" is
+// treated as a kind id, for back-compat with plain #kind-id anchors (e.g. a
+// link opened in a new tab, which bypasses the in-page anchor handler below)
+// -- but only when it actually names a kind section, so an unrelated page id
+// (a control's id, a table id, ...) reached via a hand-typed or stale URL
+// doesn't get misread as a kind filter.
+function parseHash() {
+  var h = location.hash.slice(1);
+  if (!h) return { q: '', kind: null, net: null };
+  if (h.indexOf('=') === -1) {
+    var known = document.querySelector('section.kind[data-kind="' + CSS.escape(h) + '"]');
+    return { q: '', kind: known ? h : null, net: null };
+  }
+  var params = new URLSearchParams(h);
+  return { q: params.get('q') || '', kind: params.get('kind') || null, net: params.get('net') || null };
 }
 
 // Set / clear the table-driven filters. Pass null for a dimension to leave it
@@ -538,6 +595,20 @@ function syncFilterbarHeight() {
 }
 syncFilterbarHeight();
 markScrollables();
+
+// Auto-apply whatever filter the URL fragment encodes, so a link with a filter
+// baked in reproduces that view on load instead of showing the whole report.
+(function () {
+  var state = parseHash();
+  if (!state.q && !state.kind && !state.net) return;
+  var input = document.querySelector('input.filter');
+  if (input && state.q) input.value = state.q;
+  restoringFromHash = true;
+  window.setKindNet(state.kind, state.net);  // normalizes '' to null, same as any other setter
+  restoringFromHash = false;
+  if (state.kind) window.scrollToKind(state.kind);
+})();
+
 (function () {
   var t;
   window.addEventListener('resize', function () {

@@ -425,7 +425,10 @@ def fmt_ts(stamp: datetime | None) -> str:
 
 def md_escape(text: str) -> str:
     """Escape the Markdown table-breaking characters in free text."""
-    return text.replace("|", "\\|").replace("\n", " ")
+    # A lone carriage return (a malformed request line, a non-LF line ending)
+    # renders as a line break in many Markdown viewers and terminals, corrupting
+    # the row, so neutralise CR as well as LF -- not just the pipe.
+    return text.replace("|", "\\|").replace("\r", " ").replace("\n", " ")
 
 
 def feature_rows(feats: ClientFeatures) -> list[tuple[str, str]]:

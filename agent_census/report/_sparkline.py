@@ -117,10 +117,17 @@ def _bucket_title(start: datetime, end: datetime, hits: int) -> str:
     """Hover text for one bar: its real slice of the axis and its real (un-sqrt'd)
     count. Minute resolution, not seconds -- the re-binning that placed ``hits``
     here already blurs placement by a fraction of a slice, so seconds would claim
-    precision the data doesn't have."""
+    precision the data doesn't have.
+
+    Shows the UTC offset once, like :func:`axis_span`'s ``fmt_ts`` does -- ``start``
+    and ``end`` always share it (``end`` is derived from ``start`` by addition, which
+    preserves tzinfo), but log lines carry their *own* recorded offset rather than a
+    normalized one, so a window spanning a DST change can have a different offset at
+    each end. Naming it here keeps a bucket near the far end of such a window from
+    reading as same-offset-as-the-log-line-there when it isn't."""
     fmt = "%Y-%m-%d %H:%M"
     end_str = end.strftime("%H:%M") if start.date() == end.date() else end.strftime(fmt)
-    return f"{start.strftime(fmt)}–{end_str}: {count(hits, 'request')}"
+    return f"{start.strftime(fmt)}–{end_str} {start.strftime('%z')}: {count(hits, 'request')}"
 
 
 def sparkline_svg(

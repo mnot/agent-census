@@ -23,7 +23,7 @@ from datetime import datetime
 from ..model import ClientProfile, Kind
 from ..pipeline import CADENCE_BIN_SECONDS, KindRollup
 from .aggregate import group_actors
-from .format import fmt_ts, human_duration, top_evidence, truncate
+from .format import count, fmt_ts, human_duration, top_evidence, truncate
 
 _BUCKETS = 40  # time slices across the report-wide window
 _W = 200  # px; the caption below wraps to this width
@@ -113,7 +113,19 @@ def client_spark_peak(
     return peak or None
 
 
-def sparkline_svg(buckets: list[int], peak: int | None = None, sqrt: bool = False) -> str:
+def _bucket_title(start: datetime, end: datetime, hits: int) -> str:
+    """Hover text for one bar: its real slice of the axis and its real (un-sqrt'd)
+    count. Minute resolution, not seconds -- the re-binning that placed ``hits``
+    here already blurs placement by a fraction of a slice, so seconds would claim
+    precision the data doesn't have."""
+    fmt = "%Y-%m-%d %H:%M"
+    end_str = end.strftime("%H:%M") if start.date() == end.date() else end.strftime(fmt)
+    return f"{start.strftime(fmt)}–{end_str}: {count(hits, 'request')}"
+
+
+def sparkline_svg(
+    buckets: list[int], peak: int | None = None, sqrt: bool = False, window: Window = None
+) -> str:
     """Inline SVG bar sparkline for an already-projected bucket list. Empty string
     when there is nothing to draw.
 
@@ -127,13 +139,20 @@ def sparkline_svg(buckets: list[int], peak: int | None = None, sqrt: bool = Fals
     a linear share. Whether ``peak`` is shared (the per-kind summary) or this row's
     own (the per-client glyphs), it keeps a quiet slice legible (its bars lift off
     the floor) while preserving the ordering -- a busier slice is still taller -- at
-    the cost of exaggerating small differences."""
+    the cost of exaggerating small differences.
+
+    ``window`` -- when given -- adds a native ``<title>`` to each bar naming its
+    real time slice and its real request count (unaffected by ``sqrt``), so hovering
+    a bar shows the number the bar's height only gestures at."""
     if peak is None:
         peak = max(buckets, default=0)
     if peak <= 0:
         return ""
     gap = 1.0
     bw = (_W - (_BUCKETS - 1) * gap) / _BUCKETS
+    w0, step = (
+        (window[0], (window[1] - window[0]) / _BUCKETS) if window is not None else (None, None)
+    )
     bars = []
     for i, hits in enumerate(buckets):
         frac = hits / peak
@@ -141,8 +160,14 @@ def sparkline_svg(buckets: list[int], peak: int | None = None, sqrt: bool = Fals
         if height <= 0:
             continue
         x_pos = i * (bw + gap)
+        title = ""
+        if w0 is not None and step is not None:
+            start = w0 + step * i
+            text = html.escape(_bucket_title(start, start + step, hits), quote=True)
+            title = f"<title>{text}</title>"
         bars.append(
-            f"<rect x='{x_pos:.1f}' y='{_H - height:.1f}' " f"width='{bw:.2f}' height='{height}'/>"
+            f"<rect x='{x_pos:.1f}' y='{_H - height:.1f}' "
+            f"width='{bw:.2f}' height='{height}'>{title}</rect>"
         )
     return (
         f"<svg class='spark' viewBox='0 0 {_W} {_H}' "
@@ -154,7 +179,11 @@ def sparkline_svg(buckets: list[int], peak: int | None = None, sqrt: bool = Fals
 
 
 def pattern_cell(
-    buckets: list[int], evidence: str, request_count: int, peak: int | None = None
+    buckets: list[int],
+    evidence: str,
+    request_count: int,
+    peak: int | None = None,
+    window: Window = None,
 ) -> str:
     """The 'Request pattern' cell: the cadence sparkline over a caption naming why
     the client landed in this kind. Below the volume floor, the caption alone.
@@ -163,7 +192,7 @@ def pattern_cell(
     comparable to every other row's (sqrt-scaled, to keep quiet rows legible)."""
     cap = f"<div class='spark-cap'>{html.escape(truncate(evidence), quote=True)}</div>"
     if request_count >= _MIN_REQUESTS and any(buckets):
-        return sparkline_svg(buckets, peak=peak, sqrt=True) + cap
+        return sparkline_svg(buckets, peak=peak, sqrt=True, window=window) + cap
     return cap
 
 
@@ -176,6 +205,7 @@ def pattern_cell_for(profile: ClientProfile, window: Window, peak: int | None = 
         top_evidence(profile),
         profile.features.request_count,
         peak,
+        window,
     )
 
 
@@ -184,7 +214,7 @@ def member_pattern(profile: ClientProfile, window: Window, peak: int | None = No
     when it has too few requests to show a shape. Shares the table-wide ``peak``."""
     if profile.features.request_count < _MIN_REQUESTS:
         return ""
-    return sparkline_svg(project_buckets(profile, window), peak=peak, sqrt=True)
+    return sparkline_svg(project_buckets(profile, window), peak=peak, sqrt=True, window=window)
 
 
 def axis_span(window: Window) -> str:
@@ -239,4 +269,6 @@ def kind_sparklines(
         for kind in kinds
     }
     peak = max((max(b, default=0) for b in buckets.values()), default=0)
-    return {kind: sparkline_svg(b, peak=peak, sqrt=True) for kind, b in buckets.items()}
+    return {
+        kind: sparkline_svg(b, peak=peak, sqrt=True, window=window) for kind, b in buckets.items()
+    }

@@ -12,8 +12,8 @@ combination of which a stanza may carry:
 - **`ranges`** (list of CIDRs) -- inline, always used, needs no network.
 - **`ranges_url`** (string) -- a provider's published list, fetched and cached for a
   week by default; `--no-fetch-ranges` skips the fetch and falls back to inline
-  `ranges`. **`format`** says how to parse it (`prefixes` | `json` | `text` | `csv`
-  | `aws` | `azure` | `oracle` | `subnets` | `ripestat` -- see
+  `ranges`. **`format`** says how to parse it (`amazon` | `aws` | `azure` | `csv`
+  | `oracle` | `prefixes` | `ripestat` | `subnets` | `text` -- see
   `iprange.extract_cidrs`; default `prefixes`).
 - **`asns`** (list of integers) -- matched against the client's *logged* AS number
   (e.g. Apache `%{MM_ASN}e` from mod_maxminddb), so a network with no clean range

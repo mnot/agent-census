@@ -138,7 +138,9 @@ agent-census analyze access.log --mm-db-dir /usr/share/GeoIP
 Some options are sticky, so you needn't retype them. `--log-format` /
 `--log-format-preset`, `--identity`, and `--robots-file` / `--robots-url` are
 saved to `~/.config/agent-census/config.json` and reused when a later run omits
-them. Passing one updates the saved value.
+them; the MaxMind database paths (`--mm-asn-db` / `--mm-country-db` / `--mm-db-dir`)
+are remembered the same way, as noted with their own options above. Passing one
+updates the saved value.
 
 
 

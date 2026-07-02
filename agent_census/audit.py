@@ -37,6 +37,7 @@ _PEERINGDB = "https://www.peeringdb.com/api"
 # holder reads "<RIR handle> - <org name>".
 _RIPESTAT = "https://stat.ripe.net/data/as-names/data.json?sourceapp=agent-census"
 _TIMEOUT = 20
+_MAX_RESPONSE_BYTES = 32 * 1024 * 1024  # cap a JSON reply so a bad server can't OOM us
 _MAX_ATTEMPTS = 3  # per request, on connection error or 429/5xx
 _RETRY_CAP = 30.0  # seconds; ceiling on any single backoff
 _PDB_CHUNK = 50  # ASNs per batched PeeringDB query
@@ -162,7 +163,7 @@ class _Client:
                 conn = self._conn(host)
                 conn.request("GET", path, headers=headers)
                 response = conn.getresponse()
-                payload, status = response.read(), response.status
+                payload, status = response.read(_MAX_RESPONSE_BYTES), response.status
             except (http.client.HTTPException, OSError):
                 self._drop(host)  # poisoned keep-alive socket; reopen next time
                 if attempt + 1 < _MAX_ATTEMPTS:

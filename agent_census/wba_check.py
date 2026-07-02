@@ -31,6 +31,7 @@ from . import USER_AGENT
 from .wba import WELL_KNOWN_DIRECTORY, jwk_thumbprint, public_key_from_jwk
 
 _TIMEOUT = 10
+_MAX_BYTES = 4 * 1024 * 1024  # cap the directory body so a hostile host can't OOM us
 _EXPECTED_CONTENT_TYPE = "application/http-message-signatures-directory+json"
 # Only these two are ever fetched. urlsplit accepts any scheme (file, ftp, data,
 # ...) without complaint, and urlopen will happily follow one -- so this is a
@@ -106,7 +107,12 @@ def _fetch(url: str) -> tuple[int | None, str | None, bytes | None, str | None]:
     )
     try:
         with urllib.request.urlopen(request, timeout=_TIMEOUT) as response:  # noqa: S310
-            return response.status, response.headers.get("Content-Type"), response.read(), None
+            return (
+                response.status,
+                response.headers.get("Content-Type"),
+                response.read(_MAX_BYTES),
+                None,
+            )
     except urllib.error.HTTPError as exc:
         content_type = exc.headers.get("Content-Type") if exc.headers else None
         return exc.code, content_type, None, f"HTTP {exc.code}"

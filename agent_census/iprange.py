@@ -25,8 +25,27 @@ from pathlib import Path
 from . import USER_AGENT
 
 Network = ipaddress.IPv4Network | ipaddress.IPv6Network
+Address = ipaddress.IPv4Address | ipaddress.IPv6Address
 Interval = tuple[int, int]  # (first address, last address) as ints, one IP version
 Intervals = tuple[list[Interval], list[Interval]]  # (v4, v6)
+
+
+def normalize_ip(ip: str) -> Address | None:
+    """Parse ``ip``, folding an IPv4-mapped IPv6 address to its IPv4 form.
+
+    A dual-stack server may log an IPv4 peer as ``::ffff:203.0.113.1``; left as an
+    IPv6 address it would never match an IPv4-only published range (crawler,
+    datacenter, egress), so the same host would verify differently by log shape.
+    Mapping it back to ``203.0.113.1`` keeps membership version-agnostic. Returns
+    ``None`` for an unparseable string.
+    """
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return None
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
+        return addr.ipv4_mapped
+    return addr
 
 
 class RangeIndex:
@@ -72,9 +91,8 @@ class RangeIndex:
         """True if ``ip`` falls in any indexed range. Unparseable IPs are False."""
         if not self._starts4 and not self._starts6:
             return False  # no ranges loaded -- skip parsing the address at all
-        try:
-            addr = ipaddress.ip_address(ip)
-        except ValueError:
+        addr = normalize_ip(ip)
+        if addr is None:
             return False
         if addr.version == 4:
             starts, maxend = self._starts4, self._maxend4
@@ -87,6 +105,9 @@ class RangeIndex:
 
 _RANGES_TTL = 7 * 24 * 60 * 60  # refresh fetched range files weekly
 _FETCH_TIMEOUT = 10
+# Cap a fetched range list so a hostile/misconfigured feed can't exhaust memory.
+# Real provider lists are well under this; 16 MiB is generous headroom.
+_MAX_FETCH_BYTES = 16 * 1024 * 1024
 _INTERVALS_CACHE_VERSION = 1  # bump to invalidate cached parses when a parser changes
 
 
@@ -131,9 +152,8 @@ def parse_networks(cidrs: tuple[str, ...]) -> tuple[Network, ...]:
 
 def ip_in(ip: str, networks: tuple[Network, ...]) -> Network | None:
     """The first network containing ``ip``, or None (also None for a bad IP)."""
-    try:
-        addr = ipaddress.ip_address(ip)
-    except ValueError:
+    addr = normalize_ip(ip)
+    if addr is None:
         return None
     return next((net for net in networks if addr.version == net.version and addr in net), None)
 
@@ -167,7 +187,7 @@ def _http_get(url: str) -> str | None:
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=_FETCH_TIMEOUT) as response:  # noqa: S310
-            return str(response.read().decode("utf-8", "replace"))
+            return str(response.read(_MAX_FETCH_BYTES).decode("utf-8", "replace"))
     except (OSError, ValueError):
         return None
 

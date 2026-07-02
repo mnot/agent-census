@@ -99,6 +99,66 @@ def _tokenize(fmt: str) -> list[Directive | str]:
     return tokens
 
 
+def _reaches_right_edge_greedy(pattern: str) -> bool:
+    """True if ``pattern`` ends in an unbounded greedy quantifier (``*``/``+``),
+    possibly inside trailing optional/closing syntax.
+
+    Such a field's match can grow to swallow whatever text follows it, so if the
+    next field is another capturing directive with no literal separator between
+    them, the two quantifiers overlap and a non-matching line drives catastrophic
+    backtracking (``\\S+\\S+`` and ``(?:[^"\\\\]|\\\\.)*`` twice are the ReDoS
+    shapes). A field ending in a literal (e.g. ``_BRACKET``'s ``]``) is self-
+    delimiting and safe.
+    """
+    return re.search(r"[*+][)?]*$", pattern) is not None
+
+
+def _required_first_char(pattern: str) -> str | None:
+    """The single literal a field must begin with -- ``[`` for a bracketed field,
+    ``?`` for a query -- which gives a preceding greedy field a unique place to
+    stop; else ``None``."""
+    match = re.match(r"\(\?:\\(.)|\\(.)", pattern)
+    if match:
+        char = match.group(1) or match.group(2)
+        if char in "[?":
+            return char
+    return None
+
+
+def _left_stops_at(pattern: str, char: str) -> bool:
+    """Whether a greedy ``pattern`` refuses to consume ``char`` at its start, so
+    its run terminates there (giving an adjacent field a clean boundary)."""
+    match = re.match(pattern, char)
+    return match is None or match.end() == 0
+
+
+def _reject_ambiguous_adjacency(tokens: list[Directive | str]) -> None:
+    """Raise if two capturing directives sit adjacent with no separating literal
+    and no unambiguous boundary between them.
+
+    Apache formats normally separate fields with a literal (a space, a quote, a
+    ``]``); ``%U%q`` -- path then query -- is the one common exception, and it is
+    safe because the path's class stops at ``?`` exactly where the query begins.
+    Any other unseparated pair is both ambiguous to parse and a ReDoS hazard on
+    hostile log content, so reject it at construction with actionable advice
+    rather than compiling a pattern that can hang the run.
+    """
+    prev: Directive | None = None
+    for token in tokens:
+        if isinstance(token, str):
+            prev = None
+            continue
+        if prev is not None and _reaches_right_edge_greedy(prev.pattern):
+            req = _required_first_char(token.pattern)
+            if req is None or not _left_stops_at(prev.pattern, req):
+                raise FormatSpecError(
+                    "two directives are adjacent with no separator between them; "
+                    "insert a literal delimiter (e.g. a space) so each field has a "
+                    "clear boundary"
+                )
+        prev = token
+
+
 def _compile_tokens(tokens: list[Directive | str]) -> tuple[str, list[tuple[str, Setter]]]:
     """Build the line regex and the ``(group, setter)`` list from tokens.
 
@@ -148,6 +208,7 @@ class ApacheParser(LogParser):
     def __init__(self, log_format: str) -> None:
         self.log_format = log_format
         tokens = _tokenize(log_format)
+        _reject_ambiguous_adjacency(tokens)
         pattern, setters = _compile_tokens(tokens)
         if not setters:
             raise FormatSpecError("log format contains no directives")

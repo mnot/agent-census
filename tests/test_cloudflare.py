@@ -69,6 +69,15 @@ def test_non_object_json_is_skipped() -> None:
     assert out.entry is None and out.skip_reason and "object" in out.skip_reason
 
 
+def test_deeply_nested_json_is_skipped_not_raised() -> None:
+    # A hostile line of deeply nested JSON raises RecursionError (a RuntimeError,
+    # not a ValueError) from json.loads; it must be skipped, not abort the run.
+    depth = 200_000
+    line = "[" * depth + "]" * depth
+    out = list(resolve("cloudflare", {}).parse_lines([line]))[0]
+    assert out.entry is None and out.skip_reason and "deeply" in out.skip_reason
+
+
 def test_missing_fields_default_safely() -> None:
     out = _parse({"EdgeStartTimestamp": "2026-06-21T01:50:50Z"})  # no IP, no request
     entry = out.entry

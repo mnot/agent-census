@@ -40,15 +40,29 @@ def load() -> dict[str, str]:
         data = json.loads(config_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
+    if not isinstance(data, dict):
+        # Valid JSON but not an object (a list, string, number, ...): json.loads
+        # succeeds, so the guard above doesn't catch it. Fall back to defaults
+        # rather than crash on .items() -- a hand-edited config shouldn't abort
+        # every run.
+        return {}
     return {k: v for k, v in data.items() if k in PERSISTED and isinstance(v, str)}
 
 
 def save(settings: dict[str, str]) -> None:
     """Write the settings back, ignoring write failures (a convenience, not state)."""
     path = config_path()
+    payload = json.dumps(settings, indent=2) + "\n"
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
-        path.chmod(0o600)  # the file may hold an API token -- keep it owner-only
+        # The file may hold an API token, so create it owner-only from the start:
+        # a plain write-then-chmod leaves a window where a new file sits at the
+        # umask default (typically world-readable) before the chmod lands. O_CREAT
+        # with mode 0o600 closes that window; the trailing chmod also tightens a
+        # pre-existing file that a prior version left at looser permissions.
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(payload)
+        os.chmod(path, 0o600)
     except OSError:
         pass

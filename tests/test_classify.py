@@ -49,6 +49,21 @@ def test_lone_probe_is_a_scanner_not_a_singleton() -> None:
     assert classify_client(feats).primary is Kind.VULN_SCANNER
 
 
+def test_signal_confidence_never_goes_negative() -> None:
+    # The browser classifier sums and subtracts weights and can net below 0 (a
+    # metronomic, non-browser-shaped client). Signal.confidence must stay in [0, 1].
+    from agent_census.classify.browser import BrowserClassifier
+
+    feats = ClientFeatures(
+        request_count=200,
+        rate_regularity=0.0,  # perfectly metronomic -> penalty
+        asset_coload_ratio=0.0,
+        ua_looks_like_browser=False,
+    )
+    for signal in BrowserClassifier().evaluate(feats):
+        assert 0.0 <= signal.confidence <= 1.0
+
+
 def test_one_probe_amid_normal_traffic_stays_incidental() -> None:
     # A single probe buried in otherwise normal traffic is not enough on its own.
     feats = ClientFeatures(
@@ -424,6 +439,19 @@ def test_safari_year_numbering_ages_on_continuous_scale() -> None:
     assert band("14.1") == "stale"  # but still only stale, never ancient
 
 
+def test_safari_age_band_has_a_neutral_middle() -> None:
+    # Safari's band is current (fresh) / stale (>=2yr) with a deliberate neutral
+    # None in between (~one year behind is normal for OS-bundled Safari).
+    from agent_census.uas import _safari_age_band
+
+    assert _safari_age_band(-20.0) is None  # implausibly ahead: no credit
+    assert _safari_age_band(0.0) == "current"
+    assert _safari_age_band(13.0) == "current"  # upper edge of current
+    assert _safari_age_band(18.0) is None  # neutral middle -- neither current nor stale
+    assert _safari_age_band(24.0) == "stale"  # two annual versions behind
+    assert _safari_age_band(60.0) == "stale"  # never escalates past stale
+
+
 def test_impossible_version_browser_is_capped() -> None:
     from datetime import datetime, timezone
 
@@ -651,6 +679,12 @@ def test_browser_version_parsing_and_age() -> None:
     # Non-browsers report nothing.
     assert uas.browser_version("curl/8.0") is None
 
+    # A crafted UA with a multi-thousand-digit version must not crash (int() would
+    # raise on Python 3.11+ past the 4300-digit limit); the capture is length-bounded.
+    huge = "Mozilla/5.0 Chrome/" + "9" * 100_000 + " Safari/537.36"
+    parsed = uas.browser_version(huge)
+    assert parsed is not None and parsed[0] == "chrome"
+
     at = datetime(2026, 6, 1, tzinfo=timezone.utc)
     old = uas.version_age_months("Chrome/106.0.0.0", at)
     assert old is not None and old > 36  # ~3.7 years
@@ -678,6 +712,18 @@ def test_contact_marker_in_ua_reads_as_a_bot_not_a_browser() -> None:
         "(KHTML, like Gecko) Version/17 Safari/605.1.15"
     )
     assert uas.looks_like_browser(real) and not uas.declares_bot(real)
+
+
+def test_rss_declares_bot_only_as_a_whole_word() -> None:
+    from agent_census import uas
+
+    # 'rss' is a short token, so it must match as a whole word only -- otherwise
+    # it fires inside ordinary product names / surnames like 'Larsson'.
+    assert not uas.declares_bot("Mozilla/5.0 (X11) Larsson/1.0")
+    assert not uas.declares_bot("Carsson/2.0")
+    # A genuine RSS-tool token is still recognised.
+    assert uas.declares_bot("Some RSS Reader/1.0")
+    assert uas.declares_bot("rss-parser/3.1")
 
 
 def test_combiner_fake_browser_without_datacenter_stays_unknown() -> None:

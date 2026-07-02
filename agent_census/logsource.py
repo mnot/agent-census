@@ -21,6 +21,16 @@ from typing import TextIO
 from .parsing.base import LogParser
 
 
+# A single logical line is read in pieces no larger than this. Real access-log
+# lines are at most a few kilobytes; the cap only ever bites on pathological
+# input -- notably a gzip decompression bomb, a small .gz that expands to one
+# enormous newline-free run. readline(limit) stops at a newline or after `limit`
+# characters, whichever comes first, so such a run is chopped into bounded pieces
+# (each an unparseable line the parser skips) instead of being buffered whole
+# into a multi-gigabyte string. Normal lines shorter than the cap are unaffected.
+_MAX_LINE_CHARS = 1 << 20  # 1 MiB
+
+
 def _open_log(path: Path) -> TextIO:
     """Open a plain or gzip-compressed log for text reading."""
     if path.suffix == ".gz":
@@ -28,10 +38,23 @@ def _open_log(path: Path) -> TextIO:
     return path.open("rt", encoding="utf-8", errors="replace")
 
 
+def _bounded_lines(handle: TextIO) -> Iterator[str]:
+    """Yield lines from ``handle``, each capped at ``_MAX_LINE_CHARS``.
+
+    Decompression happens incrementally as ``readline`` refills, so peak memory
+    stays bounded even for a ``.gz`` whose decompressed form has no newlines.
+    """
+    while True:
+        line = handle.readline(_MAX_LINE_CHARS)
+        if not line:
+            break
+        yield line
+
+
 def read_lines(path: Path) -> Iterator[str]:
-    """Yield lines from a plain or gzip-compressed log file."""
+    """Yield lines from a plain or gzip-compressed log file (each bounded in size)."""
     with _open_log(path) as handle:
-        yield from handle
+        yield from _bounded_lines(handle)
 
 
 def read_many(paths: Sequence[Path]) -> Iterator[str]:
@@ -48,7 +71,7 @@ def _first_timestamp(path: Path, parser: LogParser, *, scan: int = 256) -> float
     large gzip. ``None`` when nothing in that window carried a timestamp.
     """
     with _open_log(path) as handle:
-        for outcome in parser.parse_lines(itertools.islice(handle, scan)):
+        for outcome in parser.parse_lines(itertools.islice(_bounded_lines(handle), scan)):
             entry = outcome.entry
             if entry is not None and entry.timestamp is not None:
                 return entry.timestamp.timestamp()

@@ -24,6 +24,7 @@ from agent_census.report.format import (
     elide_ua,
     feature_rows,
     human_duration,
+    md_escape,
     top_evidence,
     truncate,
 )
@@ -329,3 +330,10 @@ def test_count_pluralises_to_match() -> None:
 )
 def test_human_duration(seconds: int, text: str) -> None:
     assert human_duration(seconds) == text
+
+
+def test_md_escape_neutralises_pipe_and_line_breaks() -> None:
+    # A pipe or any CR/LF in a cell would break the Markdown table structure.
+    assert md_escape("a|b") == "a\\|b"
+    assert md_escape("a\r\nb") == "a  b"  # CRLF -> two spaces, no row break
+    assert md_escape("a\rb") == "a b"  # bare CR is neutralised too

@@ -35,6 +35,12 @@ _MONTHS = {
 _UNESCAPE = re.compile(r"\\(.)")
 _UNESCAPE_MAP = {'"': '"', "\\": "\\", "t": "\t", "n": "\n", "r": "\r"}
 
+# A real X-Forwarded-For chain is a handful of proxies; the header is fully
+# client-controlled, so cap the entries kept to stop a hostile value (thousands of
+# commas) retaining a huge tuple on every log entry. The leftmost (client) address
+# -- all `--identity forwarded` needs -- is always within the kept prefix.
+_XFF_MAX_ENTRIES = 32
+
 
 @dataclass(slots=True)
 class _Builder:
@@ -226,7 +232,11 @@ def _route_request_header(name: str) -> Setter:
             builder.host_header = _istr(clean) if clean is not None else None
         elif lname == "x-forwarded-for":
             if clean:
-                builder.forwarded_for = tuple(p.strip() for p in clean.split(",") if p.strip())
+                # Bound the split so a giant comma-run doesn't retain a huge tuple;
+                # split(maxsplit) leaves the overflow as one trailing element, which
+                # the slice then drops.
+                parts = clean.split(",", _XFF_MAX_ENTRIES)[:_XFF_MAX_ENTRIES]
+                builder.forwarded_for = tuple(p.strip() for p in parts if p.strip())
         elif clean is not None:
             builder.extra[name] = clean
 

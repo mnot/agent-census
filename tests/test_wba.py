@@ -245,6 +245,16 @@ def test_verify_real_ahrefs_signature_expired() -> None:
     assert status is WbaStatus.EXPIRED
 
 
+def test_verify_valid_signature_without_a_request_timestamp_is_not_fresh() -> None:
+    # The signature carries an `expires`, but the log entry had no parseable
+    # timestamp: freshness can't be confirmed, so it must not read as the fresh
+    # VERIFIED tier. It's a valid signature, so EXPIRED (not FORGED, not VERIFIED).
+    key = wba.public_key_from_jwk(AHREFS_JWK)
+    assert key is not None
+    status, _ = wba.verify_claim(_ahrefs_claim(None), key)
+    assert status is WbaStatus.EXPIRED
+
+
 def test_verify_tampered_request_is_forged() -> None:
     key = wba.public_key_from_jwk(AHREFS_JWK)
     assert key is not None
@@ -360,6 +370,22 @@ def test_verifier_fetches_thumbprint_checks_and_persists(
     monkeypatch.setattr(wba, "_http_get", boom)
     offline = wba.WbaVerifier(allow_fetch=False)
     assert offline.verify(_ahrefs_claim(1782543551.0)).status is WbaStatus.VERIFIED
+
+
+def test_http_get_refuses_non_http_schemes(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A crafted Signature-Agent could name a file:// / ftp:// / etc. URL; the fetch
+    # boundary must reject it before urlopen, or it becomes an SSRF/local-read.
+    def boom(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("urlopen must not be called for a non-http(s) scheme")
+
+    monkeypatch.setattr(wba.urllib.request, "urlopen", boom)
+    for url in (
+        "file:///etc/passwd",
+        "ftp://internal/secret",
+        "data:text/plain,keys",
+        "gopher://169.254.169.254/",
+    ):
+        assert wba._http_get(url) is None
 
 
 def test_verifier_offline_without_key_is_unverifiable(

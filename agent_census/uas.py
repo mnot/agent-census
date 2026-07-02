@@ -19,6 +19,7 @@ from .dataload import (
     CrawlerSpec,
     load_asn_agents,
     load_browser_releases,
+    load_list,
     load_tokens,
     load_ua_signatures,
 )
@@ -103,6 +104,20 @@ def is_library(ua: str | None) -> bool:
     if is_empty(ua) or ua is None:
         return False
     return bool(_LIBRARY_RE.search(ua))
+
+
+# Native-app networking-stack tokens (Apple's CFNetwork, Flutter's dart:io, …),
+# from data/signatures/app_clients.toml.
+_APP_CLIENT_RE = re.compile("|".join(re.escape(t) for t in load_list("app_clients")), re.I)
+
+
+@lru_cache(maxsize=16384)
+def app_stack_token(ua: str | None) -> str | None:
+    """The native-app networking token in the UA, or None."""
+    if is_empty(ua) or ua is None:
+        return None
+    match = _APP_CLIENT_RE.search(ua)
+    return match.group(0) if match else None
 
 
 def match_known(ua: str | None, pairs: tuple[tuple[str, _P], ...]) -> tuple[str, _P] | None:

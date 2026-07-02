@@ -461,6 +461,13 @@ def _fact_tags(
         )
     if _declares_known_crawler(features):
         tags["declares-known-bot"] = "User-Agent names a known crawler"
+    if ua_is_feed_reader(features.user_agent):
+        tags["fetches-feeds"] = "User-Agent names a feed reader or generic feed tool"
+    app_token = uas.app_stack_token(features.user_agent)
+    if app_token is not None:
+        tags["declares-app-client"] = (
+            f"User-Agent names a native-app networking stack ({app_token})"
+        )
     if uas.names_user_triggered_agent(features.user_agent):
         tags["user-triggered"] = (
             "User-Agent names a fetcher the operator designates as acting on behalf "

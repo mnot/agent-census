@@ -319,7 +319,9 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
     def add(self, entry: LogEntry) -> None:
         path = entry.path
         self.count += 1
-        self.total_bytes += entry.bytes_sent or 0
+        # Clamp to 0: a malformed/adversarial bytes field could be negative, which
+        # would silently corrupt total_bytes (and the mean/bandwidth built on it).
+        self.total_bytes += max(entry.bytes_sent or 0, 0)
         if self.user_agent is None and entry.user_agent:
             self.user_agent = entry.user_agent
         if (self.as_org is None or self.as_number is None) and entry.extra:

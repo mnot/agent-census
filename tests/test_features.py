@@ -66,6 +66,14 @@ def test_volume_and_bandwidth() -> None:
     assert feats.mean_bytes == 200
 
 
+def test_negative_bytes_are_clamped() -> None:
+    # A malformed/adversarial bytes field must not push total_bytes negative.
+    feats = extract_features(
+        [entry("/a", bytes_sent=100), entry("/b", bytes_sent=-500, offset=1)]
+    )
+    assert feats.total_bytes == 100
+
+
 def test_status_ratios_and_404_paths() -> None:
     entries = [
         entry("/x", status=404, offset=0),

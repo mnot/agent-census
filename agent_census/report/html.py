@@ -305,7 +305,8 @@ def _summary_table(result: AnalysisResult, patterns: dict[Kind, str], window: _W
         clusters_present(lambda k: (r := rollups.get(k)) is not None and r.clients > 0)
     ):
         # The band label carries the cluster's share of total requests, so a reader
-        # sees each category's weight without summing its rows (e.g. "People — 40%").
+        # sees each category's weight without summing its rows (e.g. "Human-like —
+        # 40%").
         cluster_share = sum(rollups[k].requests for k in members) / total
         for offset, kind in enumerate(members):
             rollup = rollups[kind]
@@ -629,7 +630,7 @@ def _kind_section(
         # reader scrolls this kind's clients (see .kindhead in the stylesheet).
         '<div class="kindhead">'
         f'<h2 id="{kind.value}">{title}</h2>'
-        f'<p class="blurb">{_esc(KIND_BLURB.get(kind, ""))}</p>'
+        f'<p class="blurb">{_esc(KIND_BLURB[kind])}</p>'
         "</div>",
     ]
     shown = "".join(

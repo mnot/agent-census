@@ -1,4 +1,4 @@
-# Comment / form spam and credential-stuffing tuning (see classify/spam_bot.py).
+# Comment / form spam and submission-endpoint abuse tuning (see classify/spam_bot.py).
 # The tell is a POST-heavy request mix aimed at a few submission endpoints, usually
 # with no browser sub-resource loading. Each block adds its `weight`.
 

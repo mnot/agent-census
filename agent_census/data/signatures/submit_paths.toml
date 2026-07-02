@@ -1,5 +1,5 @@
-# URL substrings for the submission endpoints that comment / form spam and
-# credential-stuffing bots aim at -- comment forms, login, xmlrpc. Matched case-
+# URL substrings for the submission endpoints that comment / form spam and other
+# submission-endpoint abuse aims at -- comment forms, login, xmlrpc. Matched case-
 # insensitively as a substring; a hit corroborates the spam-bot classifier.
 
 submit_paths = [

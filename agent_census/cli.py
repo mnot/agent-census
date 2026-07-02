@@ -40,6 +40,7 @@ from .report import (
     render_report_html,
     select_profiles,
 )
+from .report.aggregate import KIND_CLUSTERS
 from .robots import from_file, from_network
 from .robots.parser import RobotsRules
 from .robots.source import RobotsDoc, url_for_host
@@ -285,7 +286,19 @@ def _add_shared(parser: argparse.ArgumentParser) -> None:
     )
 
 
-_TOP_DESCRIPTION = """\
+def _kind_bands_help() -> str:
+    """The ``--help`` band listing, derived from ``KIND_CLUSTERS`` so it can't drift
+    out of sync with the report's own grouping (same one-source-of-truth reasoning
+    as ``KIND_ORDER``'s assert in ``report.aggregate``).
+    """
+    width = max(len(cluster.label) for cluster in KIND_CLUSTERS)
+    return "\n".join(
+        f"  {cluster.label:<{width}}  " + "  ".join(kind.value for kind in cluster.kinds)
+        for cluster in KIND_CLUSTERS
+    )
+
+
+_TOP_DESCRIPTION = f"""\
 agent-census: characterize the clients hitting a web site.
 
 Reads one or more Apache access logs, identifies each distinct client, and works
@@ -294,11 +307,7 @@ also checks robots.txt compliance and verifies declared crawlers by DNS / IP
 range (on by default; --no-verify-bots to skip the network lookups).
 
 Client kinds, in the bands the report groups them into:
-  People        browser  app  feed_reader
-  Utility bots  search_engine  archiver  social_preview  monitor
-  Harvesters    ai_crawler  seo_marketing  data_harvester  crawler  scraper
-  Suspicious    spam_bot  vuln_scanner  spoofed_browser  impersonator
-  Unattributed  automation  unknown
+{_kind_bands_help()}
 
 Output is a self-contained HTML page (default), or Markdown with --md.
 """

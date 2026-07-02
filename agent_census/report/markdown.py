@@ -204,7 +204,7 @@ def _kind_section(
         f"## {kind_label(kind)} "
         f"({count(rollup.clients, 'client')}, {count(rollup.requests, 'request')})",
         "",
-        KIND_BLURB.get(kind, ""),
+        KIND_BLURB[kind],
         "",
         "| Client | Requests | Bandwidth | Conf. | Tags | Evidence |",
         "| --- | --: | --: | --: | --- | --- |",

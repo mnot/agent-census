@@ -32,6 +32,9 @@ ua_substring = "Discordbot"
 ua_substring = "WhatsApp"
 
 [[agent]]
+ua_substring = "Lemmy"
+
+[[agent]]
 ua_substring = "TelegramBot"
 domains = ["telegram.org"]
 

@@ -256,7 +256,6 @@ class Classification:
     # The winning signal's known-agent identity, carried through from Signal (see
     # its docstring) -- None unless a known-agent classifier won.
     agent_name: str | None = None
-    matched_token: str | None = None
 
 
 class RobotsVerdict(str, Enum):

@@ -329,10 +329,10 @@ def full_ua(profile: ClientProfile) -> str | None:
 def agent_identity(profile: ClientProfile) -> str | None:
     """A known agent's own identity for a header line: its declared name, else
     an rDNS-confirmed hostname. ``None`` otherwise -- in particular, the raw UA
-    substring a classifier matched on (``Classification.matched_token``) is
-    deliberately never used here even as a last resort: it is only a claim the
-    client's own User-Agent header makes, not a confirmed identity, and heading
-    a row with it would read as more certain than it is.
+    substring a classifier matched on is deliberately never used here even as a
+    last resort: it is only a claim the client's own User-Agent header makes,
+    not a confirmed identity, and heading a row with it would read as more
+    certain than it is.
 
     The rDNS check specifically -- not the merged verification status -- decides
     the second tier: an agent verified by IP range alone (no declared domains)

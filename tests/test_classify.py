@@ -1291,14 +1291,13 @@ def test_search_engine_and_social_preview_are_distinct() -> None:
     assert facebook.primary is Kind.SOCIAL_PREVIEW
 
 
-def test_known_bot_match_carries_matched_token_to_classification() -> None:
-    # Googlebot's agents/search_engine.toml entry declares no `name`, so the report
-    # falls back to the matched UA token as the agent's identity.
+def test_known_bot_match_without_declared_name_carries_no_agent_name() -> None:
+    # Googlebot's agents/search_engine.toml entry declares no `name`, so the
+    # classification carries no agent identity beyond the UA-based classification.
     result = classify_client(
         ClientFeatures(request_count=4, user_agent="Mozilla/5.0 (compatible; Googlebot/2.1)")
     )
     assert result.agent_name is None
-    assert result.matched_token == "Googlebot"
 
 
 def test_known_bot_match_carries_declared_name_to_classification() -> None:
@@ -1309,7 +1308,6 @@ def test_known_bot_match_carries_declared_name_to_classification() -> None:
     )
     assert result.primary is Kind.AI_CRAWLER
     assert result.agent_name == "Colossio"
-    assert result.matched_token == "colossio"
 
 
 def test_known_bot_asn_match_carries_agent_name_to_classification() -> None:

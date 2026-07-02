@@ -49,6 +49,21 @@ def test_lone_probe_is_a_scanner_not_a_singleton() -> None:
     assert classify_client(feats).primary is Kind.VULN_SCANNER
 
 
+def test_signal_confidence_never_goes_negative() -> None:
+    # The browser classifier sums and subtracts weights and can net below 0 (a
+    # metronomic, non-browser-shaped client). Signal.confidence must stay in [0, 1].
+    from agent_census.classify.browser import BrowserClassifier
+
+    feats = ClientFeatures(
+        request_count=200,
+        rate_regularity=0.0,  # perfectly metronomic -> penalty
+        asset_coload_ratio=0.0,
+        ua_looks_like_browser=False,
+    )
+    for signal in BrowserClassifier().evaluate(feats):
+        assert 0.0 <= signal.confidence <= 1.0
+
+
 def test_one_probe_amid_normal_traffic_stays_incidental() -> None:
     # A single probe buried in otherwise normal traffic is not enough on its own.
     feats = ClientFeatures(

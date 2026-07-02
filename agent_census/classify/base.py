@@ -37,7 +37,11 @@ class Classifier(ABC):
         """Helper to build a signal for this classifier's label."""
         return Signal(
             kind=self.label,
-            confidence=min(confidence, 1.0),
+            # Clamp to the documented [0, 1] range. A classifier that sums and
+            # subtracts weights (e.g. the browser one's metronomic penalty) can land
+            # below 0; the combiner already floors negatives via max(), so pinning
+            # it here is behaviour-neutral and keeps Signal.confidence honest.
+            confidence=max(0.0, min(confidence, 1.0)),
             evidence=tuple(evidence),
             classifier=self.name,
             agent_name=agent_name,

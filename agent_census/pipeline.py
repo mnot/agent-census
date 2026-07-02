@@ -71,6 +71,16 @@ DEFAULT_MAX_PER_KIND = 1000
 # later return from one of those would re-fragment -- the memory ceiling's cost).
 DEFAULT_RETIRED_CAP = 50_000
 
+# A UA declaring a per-IP-verifiable crawler (Googlebot-class) is kept resident
+# and DNS-verified per IP -- but the UA and source IP are both attacker-supplied,
+# so a spoofed declared-crawler UA from countless distinct IPs would otherwise
+# grow resident memory and the DNS-verification queue without bound. Cap the
+# distinct declared-crawler IPs handled that way; beyond it, further such IPs fold
+# by subnet into the unverifiable-crawler bucket (bounded, no per-IP lookup). The
+# ceiling is far above any real crawler's IP count, so genuine verification is
+# unaffected -- only a flood degrades to subnet-folded, unverified entries.
+DEFAULT_DECLARED_RESIDENT_CAP = 50_000
+
 # Wall-clock resolution of the per-kind cadence histogram a rollup accumulates for
 # the summary sparkline. Each emitted client's activity is binned onto this absolute
 # grid as it is seen, so the summary glyph is eviction- and cap-safe (unlike re-
@@ -445,6 +455,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
     keep_signals: bool = True,
     quiescent_seconds: float | None = None,
     retired_cap: int = DEFAULT_RETIRED_CAP,
+    declared_resident_cap: int = DEFAULT_DECLARED_RESIDENT_CAP,
     max_per_kind: int = DEFAULT_MAX_PER_KIND,
     min_requests: int = 1,
     vhosts: Sequence[str] | None = None,
@@ -535,7 +546,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
     collector = make_collector()
     seq = itertools.count()
     total = parsed = skipped = excluded = out_of_window = 0
-    client_count = singleton_count = multi_ua_ips = 0
+    client_count = singleton_count = multi_ua_ips = declared_resident_count = 0
     host_counts: Counter[str] = Counter()  # served host -> line count, for the site label
     latest_ts: float | None = None
     reasons: dict[str, int] = defaultdict(int)
@@ -834,8 +845,21 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         elif crawler is None and (subnet := datacenter_subnet(ip)) is not None:
             # An adjacent datacenter fleet (same /24 or /48 + UA) is one actor.
             fold(dc_acc, dc_token, dc_members, (subnet, ua), entry)
+        elif crawler is not None:
+            # A per-IP-verifiable declared crawler: kept resident and DNS-verified
+            # per IP. Cap the distinct IPs handled this way so a spoofed
+            # declared-crawler UA from countless IPs can't grow resident memory /
+            # the DNS queue without bound; overflow folds by subnet like an
+            # unverifiable declared crawler (bounded, no per-IP lookup).
+            declared_key = strategy.key(entry)
+            if declared_key not in resident and declared_resident_count >= declared_resident_cap:
+                fold(cr_acc, cr_token, cr_members, (subnet_of(ip) or ip, crawler[0]), entry)
+            else:
+                if declared_key not in resident:
+                    declared_resident_count += 1
+                route_regular(entry, True)
         else:
-            route_regular(entry, crawler is not None)
+            route_regular(entry, False)
 
         if quiescent_seconds is not None and entry.timestamp is not None:
             ts = entry.timestamp.timestamp()

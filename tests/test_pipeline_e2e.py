@@ -104,6 +104,48 @@ def test_vhost_filter_falls_back_to_host_header(tmp_path: Path) -> None:
     assert {p.client_id.ip for p in result.profiles} == {"1.1.1.1"}
 
 
+def test_declared_crawler_flood_is_bounded(tmp_path: Path) -> None:
+    # A UA declaring a verifiable crawler (Googlebot) is kept resident and
+    # DNS-verified per IP. A spoofed declared-crawler UA from countless IPs must
+    # not grow that resident/verify set without bound: past the cap, further IPs
+    # fold by subnet instead of each becoming an individual verified client.
+    from agent_census.model import BotVerification, ClientId, VerificationStatus
+
+    ua = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+
+    class _Stub:  # spoofed Googlebot from documentation IPs -> impersonator
+        def needs(self, ua: str | None) -> bool:
+            return ua is not None and "Googlebot" in ua
+
+        def verify_all(self, items: object) -> "dict[ClientId, BotVerification]":
+            return {
+                cid: BotVerification(VerificationStatus.IMPERSONATOR, evidence=("x",))
+                for cid, _ua in items  # type: ignore[attr-defined]
+            }
+
+    # Twelve distinct IPs, all in one /24, each spoofing Googlebot.
+    lines = [
+        f'198.51.100.{i} - - [10/Oct/2023:12:00:00 +0000] "GET /p HTTP/1.1" 200 100 "-" "{ua}"'
+        for i in range(1, 13)
+    ]
+    log = tmp_path / "flood.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+
+    def individual_ips(result: object) -> list[str]:
+        return [p.client_id.ip for p in result.profiles if "/" not in p.client_id.ip]  # type: ignore[attr-defined]
+
+    uncapped = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"), verifier=_Stub())
+    assert len(individual_ips(uncapped)) == 12  # every IP its own resident client
+
+    capped = pipeline.analyze(
+        log, parser, identity.get_strategy("ip_ua"), verifier=_Stub(), declared_resident_cap=5
+    )
+    assert len(individual_ips(capped)) == 5  # bounded at the cap
+    # the overflow shows up folded under the /24, not as 7 more resident clients
+    assert any("/" in p.client_id.ip for p in capped.profiles)
+
+
 def test_min_requests_excludes_low_volume_clients_everywhere(tmp_path: Path) -> None:
     # --min-requests must drop sub-threshold clients from EVERYTHING at once:
     # the per-kind rollups, the detail profiles, and the header client/singleton

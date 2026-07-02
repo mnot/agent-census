@@ -210,7 +210,7 @@ def _tags_html(tags: frozenset[str]) -> str:
         description = tag_title(tag)
         title = f' title="{_esc(description)}"' if description else ""
         spans.append(f'<span class="{tag_class(tag)}"{title}>{_esc(tag)}</span>')
-    return "".join(spans)
+    return " ".join(spans)
 
 
 def _meta_list(

@@ -487,8 +487,10 @@ def verify_claim(claim: WbaClaim, public_key: Ed25519PublicKey) -> tuple[WbaStat
 
 # --- key directory + the verifier the pipeline drives ---------------------------
 
-# The operator's JWK directory, relative to the Signature-Agent origin.
-_WELL_KNOWN_DIRECTORY = "/.well-known/http-message-signatures-directory"
+# The operator's JWK directory, relative to the Signature-Agent origin. Public so
+# `wba_check` (which probes a host's directory directly, not via a logged
+# Signature-Agent) can build the same URL without duplicating the path.
+WELL_KNOWN_DIRECTORY = "/.well-known/http-message-signatures-directory"
 _FETCH_TIMEOUT = 10
 
 
@@ -499,7 +501,7 @@ def _key_store_path() -> Path:
 def _directory_url(agent_url: str) -> str:
     """The JWK directory URL for a Signature-Agent value (append the well-known path)."""
     url = agent_url.rstrip("/")
-    return url if url.endswith(_WELL_KNOWN_DIRECTORY) else url + _WELL_KNOWN_DIRECTORY
+    return url if url.endswith(WELL_KNOWN_DIRECTORY) else url + WELL_KNOWN_DIRECTORY
 
 
 def _http_get(url: str) -> str | None:

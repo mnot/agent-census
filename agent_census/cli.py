@@ -44,6 +44,7 @@ from .robots import from_file, from_network
 from .robots.parser import RobotsRules
 from .robots.source import RobotsDoc, url_for_host
 from .wba import WbaVerifier
+from .wba_check import run as run_wba_check
 
 _ANALYZE_EXAMPLES = """\
 examples:
@@ -93,6 +94,19 @@ examples:
 
   # one client by IP (or any substring of its display label), full trace
   agent-census inspect access.log --client 203.0.113.66 --full
+"""
+
+_WBA_CHECK_EXAMPLES = """\
+examples:
+  # check the directory a bot operator has just stood up
+  agent-census wba-check example.com
+
+  # a URL works too; only the scheme + host are used
+  agent-census wba-check https://example.com/
+
+Not a conformance test for the directory draft -- just enough to catch the
+mistakes that would keep a signed request from this host from verifying, and to
+hand back agent_urls / keyids for a new [[operator]] entry.
 """
 
 
@@ -296,9 +310,10 @@ quick start:
   agent-census analyze access.log --robots-file ./robots.txt
   agent-census inspect access.log --kind vuln_scanner
   agent-census calibrate access.log -o calibration.md
+  agent-census wba-check example.com
 
-Run 'agent-census analyze -h', 'inspect -h', or 'calibrate -h' for every option,
-the supported log-format directives, and more examples.
+Run 'agent-census analyze -h', 'inspect -h', 'calibrate -h', or 'wba-check -h' for
+every option, the supported log-format directives, and more examples.
 """
 
 
@@ -404,12 +419,26 @@ def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argumen
         help="also list every entry with its details, not just the concerns",
     )
 
+    wba_check = sub.add_parser(
+        "wba-check",
+        help="validate a host's Web Bot Auth key directory, flagging setup mistakes",
+        description="Fetch HOST's Web Bot Auth key directory "
+        "(/.well-known/http-message-signatures-directory) and check it's reachable, "
+        "well-formed, and that each key's declared kid (if any) matches the RFC 7638 "
+        "thumbprint agent-census actually verifies against. Prints a ready-to-paste "
+        "[[operator]] entry for data/agents/web_bot_auth.toml when usable keys are found.",
+        epilog=_WBA_CHECK_EXAMPLES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    wba_check.add_argument("host", metavar="HOST", help="a hostname or URL, e.g. example.com")
+
     sub_parsers = {
         "analyze": analyze,
         "analyse": analyze,  # British / Australian spelling alias
         "calibrate": calibrate,
         "inspect": inspect,
         "audit": audit,
+        "wba-check": wba_check,
     }
     inspect_sel = inspect.add_argument_group("selection")
     inspect_sel.add_argument(
@@ -722,7 +751,7 @@ def _emit(text: str, output: Path | None) -> None:
         output.write_text(text, encoding="utf-8")
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:  # pylint: disable=too-many-return-statements
     raw = list(sys.argv[1:] if argv is None else argv)
     top, subcommands = _build_parser()
     if not raw or raw[0] not in subcommands:
@@ -747,6 +776,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 refresh=args.refresh,
                 verbose=args.verbose,
             )
+        if args.command == "wba-check":
+            return run_wba_check(args.host)
         _apply_persisted_settings(args)
         if args.command == "calibrate":
             args.max_per_kind = 0  # the digest needs every client, not the top-N tail

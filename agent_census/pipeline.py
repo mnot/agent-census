@@ -176,7 +176,7 @@ def _declared_spec(ua: str | None) -> tuple[str, CrawlerSpec] | None:
 
 def _verifiable(spec: CrawlerSpec) -> bool:
     """True if a declared crawler can be DNS/range-verified (so keep it per-IP)."""
-    return bool(spec.domains or spec.ranges or spec.ranges_url)
+    return bool(spec.domains or spec.ranges or spec.ranges_urls)
 
 
 def _resolve_asn_verification(

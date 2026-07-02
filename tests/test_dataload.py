@@ -30,12 +30,22 @@ from agent_census.errors import ConfigError
 def test_crawler_spec_fields() -> None:
     spec = dict(load_tokens("ai_crawler"))["GPTBot"]
     assert spec.domains == ("openai.com",)
-    assert spec.ranges_url == "https://openai.com/gptbot.json"
+    assert spec.ranges_urls == ("https://openai.com/gptbot.json",)
 
 
 def test_ranges_url_loaded() -> None:
     spec = dict(load_tokens("ai_crawler"))["OAI-SearchBot"]
-    assert spec.ranges_url == "https://openai.com/searchbot.json"
+    assert spec.ranges_urls == ("https://openai.com/searchbot.json",)
+
+
+def test_ranges_url_list_loaded() -> None:
+    # A monitor that splits its published ranges across feeds declares a list; it
+    # normalises to a tuple of every feed. Pingdom publishes one list per IP family.
+    spec = dict(load_tokens("monitor"))["Pingdom"]
+    assert spec.ranges_urls == (
+        "https://my.pingdom.com/probes/ipv4",
+        "https://my.pingdom.com/probes/ipv6",
+    )
 
 
 def test_user_triggered_flag_loaded() -> None:

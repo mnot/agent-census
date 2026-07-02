@@ -109,3 +109,24 @@ Pass one or more ASNs with `--asn` to get the same assessment for arbitrary
 candidates (handy for triaging the unrecognised networks that
 `agent-census calibrate` turns up).
 
+
+## Validating a Web Bot Auth Setup
+
+`agent-census wba-check HOST` is a diagnostic for the *other* side of Web Bot
+Auth -- not verifying a client's signed requests (`wba.py`, driven by
+`--verify-bots`), but checking that an operator's own key directory is set up
+correctly before adding them to `data/agents/web_bot_auth.toml`.
+
+It fetches `HOST/.well-known/http-message-signatures-directory` and checks
+it's reachable over HTTPS, is valid JSON with a `keys` array, and that each
+Ed25519 key's declared `kid` (if present) actually matches its RFC 7638
+thumbprint -- the value agent-census's verifier keys its key store on, not
+whatever `kid` the directory happens to label the key with. A mismatch there
+means a signature naming the operator's own declared `kid` wouldn't be found;
+only one naming the recomputed thumbprint would.
+
+On success it prints a ready-to-paste `[[operator]]` entry (`agent_urls` +
+`keyids`) for `data/agents/web_bot_auth.toml`. It's not a conformance test for
+the directory draft -- just enough to catch the mistakes that would keep a
+signed request from that host from verifying.
+

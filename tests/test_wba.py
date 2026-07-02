@@ -443,6 +443,25 @@ def test_forged_signature_is_impersonation() -> None:
     assert faking and why == ("signature failed",)
 
 
+def test_forged_signature_gets_a_violation_tag() -> None:
+    # A forged signature is the impersonator kind, but also gets its own tag --
+    # naming *which* channel caught it, since dns/ip/wba can disagree independently.
+    from agent_census.classify.tags import derive_tags
+
+    forged = WbaResult(WbaStatus.FORGED, evidence=("signature failed",))
+    tags = derive_tags(_feat("AhrefsBot"), None, None, forged)
+    assert "wba-violation" in tags
+
+
+def test_unverifiable_signature_gets_wba_unverified_tag() -> None:
+    from agent_census.classify.tags import derive_tags
+
+    unverifiable = WbaResult(WbaStatus.UNVERIFIABLE, reason="key unobtainable")
+    tags = derive_tags(_feat("AhrefsBot"), None, None, unverifiable)
+    assert "wba-unverified" in tags
+    assert "wba-unverifiable" not in tags
+
+
 def test_valid_signature_clears_a_network_impersonator() -> None:
     # rDNS/range said impersonator, but a valid signature is cryptographic proof.
     net = BotVerification(VerificationStatus.IMPERSONATOR, evidence=("rDNS disagrees",))

@@ -113,9 +113,13 @@ _TAG_ORDER = {
             "wba-mixed",
             "wba-replay",
             "wba-nonce-reuse",
-            "verified",
+            "dns-verified",
+            "ip-verified",
             "asn-associated",
-            "unverified",
+            "dns-violation",
+            "ip-violation",
+            "dns-unverified",
+            "ip-unverified",
             "declares-known-bot",
             "user-triggered",
             "no-user-agent",
@@ -181,8 +185,9 @@ _TAG_HELP: dict[str, str] = {
     "shared-ip": "Many distinct User-Agents from one IP but behaving normally — a shared "
     "egress such as NAT, VPN, proxy, or carrier gateway.",
     "ignores-robots": "Requested paths disallowed by the applicable robots.txt group.",
-    "verified": "Reverse/forward DNS or a published IP range confirmed the declared "
-    "crawler identity.",
+    "dns-verified": "Reverse DNS resolved the client's IP to a host under the declared "
+    "crawler's domain, and forward DNS confirmed it back to the same IP.",
+    "ip-verified": "The client's IP falls within a published IP range for the declared crawler.",
     "asn-associated": "User-Agent names a known crawler and its origin AS is one that "
     "crawler is configured to use -- corroboration, a lighter check than DNS / IP-range "
     "verification (which take precedence when available).",
@@ -192,9 +197,14 @@ _TAG_HELP: dict[str, str] = {
     "rather than crawling autonomously. The user-driven part is taken on trust -- not "
     "observable here, and identity verification confirms who the agent is, not that a user "
     "drove the request.",
-    "unverified": "Declared a crawler we could check by reverse DNS or IP range, but the check "
-    "didn't confirm it — it failed, or was inconclusive (a DNS timeout, unfetchable ranges). "
-    "The mirror of 'verified'; the kind and verdict are unchanged.",
+    "dns-violation": "Reverse/forward DNS definitively disagreed with the declared crawler "
+    "(a wrong or absent PTR) — drives the 'impersonator' kind.",
+    "ip-violation": "The client's IP definitively falls outside every published range for "
+    "the declared crawler — drives the 'impersonator' kind.",
+    "dns-unverified": "Declared a crawler with a domain to check by reverse DNS, but the "
+    "check was inconclusive (a timeout) rather than a pass or a definitive fail.",
+    "ip-unverified": "Declared a crawler with IP ranges to check, but they could not be "
+    "obtained (e.g. the published range feed was unreachable).",
     "wba": "Presented a Web Bot Auth signature (a cryptographically signed request), "
     "not yet checked against the operator's key — run with --verify-bots to verify it.",
     "wba-verified": "A valid, fresh Web Bot Auth signature, checked against the operator's "

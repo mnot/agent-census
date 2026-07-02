@@ -146,7 +146,7 @@ def _declared_unverified(result: AnalysisResult, top: int) -> list[str]:
     unknown: dict[str, _Cluster] = defaultdict(_Cluster)
     for profile in result.profiles:
         tags = profile.classification.tags
-        verified = "verified" in tags or "asn-associated" in tags
+        verified = bool(tags & {"dns-verified", "ip-verified", "wba-verified", "asn-associated"})
         if "declares-known-bot" in tags and not verified:
             known[_ua(profile)].add(profile)
         elif "bot-ua" in tags:

@@ -16,6 +16,7 @@ from agent_census.classify.spam_bot import SpamBotClassifier
 from agent_census.classify.vuln_scanner import VulnScannerClassifier
 from agent_census.model import (
     BotVerification,
+    ChannelVerdict,
     ClientFeatures,
     ComplianceReport,
     Kind,
@@ -785,10 +786,14 @@ def test_internet_archive_classified_as_archiver() -> None:
 
 def test_verified_tag_from_verification() -> None:
     feats = ClientFeatures(request_count=5, user_agent="Googlebot/2.1")
-    verification = BotVerification(VerificationStatus.VERIFIED, resolved_host="x.googlebot.com")
+    verification = BotVerification(
+        VerificationStatus.VERIFIED,
+        resolved_host="x.googlebot.com",
+        dns=ChannelVerdict.VERIFIED,
+    )
     signals = [Signal(Kind.SEARCH_ENGINE, 0.8, ("declares Googlebot",), "search_engine")]
     result = combine(signals, feats, verification=verification)
-    assert "verified" in result.tags
+    assert "dns-verified" in result.tags
     assert result.primary is Kind.SEARCH_ENGINE
 
 
@@ -796,11 +801,13 @@ def test_unverified_tag_when_network_check_inconclusive() -> None:
     # Had rdns/range info to check, but it came back inconclusive: surfaced as a tag,
     # the kind/verdict otherwise unchanged.
     feats = ClientFeatures(request_count=5, user_agent="Googlebot/2.1")
-    verification = BotVerification(VerificationStatus.UNVERIFIED, network_checked=True)
+    verification = BotVerification(
+        VerificationStatus.UNVERIFIED, network_checked=True, dns=ChannelVerdict.UNVERIFIED
+    )
     signals = [Signal(Kind.SEARCH_ENGINE, 0.8, ("declares Googlebot",), "search_engine")]
     result = combine(signals, feats, verification=verification)
-    assert "unverified" in result.tags
-    assert "verified" not in result.tags
+    assert "dns-unverified" in result.tags
+    assert "dns-verified" not in result.tags
     assert result.primary is Kind.SEARCH_ENGINE
 
 
@@ -809,12 +816,15 @@ def test_unverified_tag_on_impersonator_with_network_check() -> None:
     # so the verification failure is visible alongside it.
     feats = ClientFeatures(request_count=5, user_agent="Mozilla/5.0 (compatible; Googlebot/2.1)")
     verification = BotVerification(
-        VerificationStatus.IMPERSONATOR, resolved_host="x.evil.example", network_checked=True
+        VerificationStatus.IMPERSONATOR,
+        resolved_host="x.evil.example",
+        network_checked=True,
+        dns=ChannelVerdict.VIOLATION,
     )
     signals = [Signal(Kind.SEARCH_ENGINE, 0.8, ("declares Googlebot",), "search_engine")]
     result = combine(signals, feats, verification=verification)
     assert result.primary is Kind.IMPERSONATOR  # outcome unchanged
-    assert "unverified" in result.tags
+    assert "dns-violation" in result.tags
 
 
 def test_no_unverified_tag_when_no_network_info() -> None:
@@ -824,7 +834,8 @@ def test_no_unverified_tag_when_no_network_info() -> None:
     verification = BotVerification(VerificationStatus.UNVERIFIED, network_checked=False)
     signals = [Signal(Kind.SEARCH_ENGINE, 0.8, ("declares Googlebot",), "search_engine")]
     result = combine(signals, feats, verification=verification)
-    assert "unverified" not in result.tags
+    assert "dns-unverified" not in result.tags
+    assert "ip-unverified" not in result.tags
 
 
 def test_has_cache_tag_on_304() -> None:

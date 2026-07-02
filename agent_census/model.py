@@ -281,6 +281,22 @@ class VerificationStatus(str, Enum):
     NOT_APPLICABLE = "not_applicable"  # UA does not declare a verifiable crawler
 
 
+class ChannelVerdict(str, Enum):
+    """Outcome of one identity-verification channel (reverse DNS, or IP range),
+    independent of the other and of the merged :class:`VerificationStatus`.
+
+    Each channel is its own tri-state-plus-absent: a genuine confirmation, an
+    inconclusive check (a timeout, unfetchable ranges), a definitive failure
+    (surfaced as ``<channel>-violation``, the evidence for an ``impersonator``
+    verdict), or nothing declared/attempted for this channel at all.
+    """
+
+    VERIFIED = "verified"
+    UNVERIFIED = "unverified"  # checked, inconclusive
+    VIOLATION = "violation"  # checked, definitively failed
+    NOT_CHECKED = "not_checked"  # nothing declared for this channel, or skipped
+
+
 @dataclass(frozen=True, slots=True)
 class BotVerification:
     """Outcome of an opt-in DNS check on a client's declared-crawler claim."""
@@ -294,6 +310,15 @@ class BotVerification:
     # declared crawler that *could* be network-verified but wasn't -- failed or
     # inconclusive -- distinct from one with nothing to check against.
     network_checked: bool = False
+    # The two identity channels, independent of each other and of `status` above
+    # (which remains the merged verdict driving the impersonation decision and
+    # the pipeline's identity fold/display). Surfaced as their own `dns-*` /
+    # `ip-*` tags so a reader can see which channel, specifically, confirmed or
+    # violated -- rather than one merged "verified"/"unverified" for both.
+    dns: ChannelVerdict = ChannelVerdict.NOT_CHECKED
+    dns_evidence: str | None = None
+    ip: ChannelVerdict = ChannelVerdict.NOT_CHECKED
+    ip_evidence: str | None = None
 
 
 class WbaStatus(str, Enum):

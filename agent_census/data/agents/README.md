@@ -48,20 +48,24 @@ that presents its token. Three independent checks, in precedence order:
 How they combine for a `ua_substring` agent that presents its token:
 
 - An agent declaring both `domains` and `ranges` must pass **both** by default
-  (either definitive failure is impersonation). **`rdns_fallback`** (bool) makes
-  the ranges primary and the domains a fallback used only when the ranges can't be
-  obtained.
+  (either definitive failure is impersonation). Both checks always run -- neither
+  short-circuits the other -- so the two channels' tags stay accurate even when
+  one alone already decided the verdict. **`rdns_fallback`** (bool) makes the
+  ranges primary and the domains a fallback used only when the ranges can't be
+  obtained (so DNS never runs if ranges already answered).
 - `asns` is consulted only when the DNS/range tiers are **absent or inconclusive**
   (no `domains`/`ranges`, or the range feed couldn't be fetched, or a DNS lookup
   timed out). A logged AS in the list yields `asn-associated`; a logged AS *not* in
   the list yields `impersonator`. A client with no logged AS number is simply left
   unverified -- absence is never read as impersonation.
 
-The resulting tags: `verified` (DNS/range confirmed), `asn-associated` (AS
-corroborated), or `unverified` -- its mirror -- whenever a DNS/range check was
-available but didn't confirm (it failed, or was inconclusive); a definitive
-mismatch is also the `impersonator` kind. With `--no-verify-bots` the DNS/range
-tiers don't run, so only `asns` can confirm or impeach.
+**`dns` and `ip` are independent tags**, one pair per channel, since an agent can
+verify on one and disagree on the other: `dns-verified` / `ip-verified` (that
+channel confirmed), `dns-unverified` / `ip-unverified` (checked, but inconclusive
+-- a timeout or unfetchable ranges), or `dns-violation` / `ip-violation` (checked,
+and it definitively disagreed -- also the `impersonator` kind). `asn-associated`
+is its own, separate tag (AS corroboration). With `--no-verify-bots` the DNS/range
+tiers don't run at all, so only `asns` can confirm or impeach.
 
 ## Annotation -- an orthogonal fact about the agent
 

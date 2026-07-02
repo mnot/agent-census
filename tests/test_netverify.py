@@ -9,7 +9,7 @@ import pytest
 
 from agent_census import identity, netverify, pipeline
 from agent_census.dataload import CrawlerSpec
-from agent_census.model import ClientId, Kind, VerificationStatus
+from agent_census.model import ChannelVerdict, ClientId, Kind, VerificationStatus
 from agent_census.netverify import BotVerifier
 from agent_census.parsing import resolve
 from agent_census.parsing.apache import PRESETS
@@ -195,16 +195,18 @@ def test_subnet_key_is_unverified_not_impersonator(monkeypatch: pytest.MonkeyPat
     assert result.status is VerificationStatus.UNVERIFIED
 
 
-def test_out_of_range_is_impostor_before_dns(monkeypatch: pytest.MonkeyPatch) -> None:
-    # A definite out-of-range IP fails the range check, which short-circuits to
-    # impersonator before reverse DNS is ever consulted.
+def test_out_of_range_is_impostor_even_when_dns_confirms(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Both channels are always checked when both are declared (not short-circuited),
+    # so the independent `ip`/`dns` channel verdicts stay accurate -- here the ip
+    # channel violates even though dns confirms, and the merged verdict is still
+    # impersonator (either channel failing is enough).
     _patch_spec(monkeypatch, "RangeBot", CrawlerSpec(domains=("example.com",), ranges=("10.0.0.0/24",)))
-
-    def fail(_arg: str) -> None:
-        raise AssertionError("DNS must not be consulted once the range check fails")
-
-    monkeypatch.setattr(netverify, "_reverse_dns", fail)
-    assert BotVerifier().verify("203.0.113.9", "RangeBot/1.0").status is VerificationStatus.IMPERSONATOR
+    monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: ("host.example.com", False))
+    monkeypatch.setattr(netverify, "_forward_ips", lambda host: {"203.0.113.9"})
+    verification = BotVerifier().verify("203.0.113.9", "RangeBot/1.0")
+    assert verification.status is VerificationStatus.IMPERSONATOR
+    assert verification.ip is ChannelVerdict.VIOLATION
+    assert verification.dns is ChannelVerdict.VERIFIED
 
 
 def test_internet_archive_verified_by_published_range(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -219,8 +221,16 @@ def test_internet_archive_verified_by_published_range(monkeypatch: pytest.Monkey
     verifier = BotVerifier()
     ua = "Mozilla/5.0 (compatible; archive.org_bot; +http://archive.org/details/archive.org_bot)"
     assert verifier.needs(ua)
-    assert verifier.verify("207.241.224.5", ua).status is VerificationStatus.VERIFIED
-    assert verifier.verify("8.8.8.8", ua).status is VerificationStatus.IMPERSONATOR
+    # (archive.org_bot's real spec declares only `domains`, no ranges -- so this
+    # exercises the dns-only channel; `ip` stays not_checked either way.)
+    verified = verifier.verify("207.241.224.5", ua)
+    assert verified.status is VerificationStatus.VERIFIED
+    assert verified.dns is ChannelVerdict.VERIFIED
+    assert verified.ip is ChannelVerdict.NOT_CHECKED
+    impersonator = verifier.verify("8.8.8.8", ua)
+    assert impersonator.status is VerificationStatus.IMPERSONATOR
+    assert impersonator.dns is ChannelVerdict.VIOLATION
+    assert impersonator.ip is ChannelVerdict.NOT_CHECKED
 
 
 def test_ranges_url_fetched_and_used(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -233,20 +243,24 @@ def test_ranges_url_fetched_and_used(monkeypatch: pytest.MonkeyPatch) -> None:
     assert verifier.verify("198.51.100.1", "FetchBot/1.0").status is VerificationStatus.IMPERSONATOR
 
 
-def test_out_of_fetched_range_is_impostor_before_dns(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Out-of-range against a fetched feed fails first, before reverse DNS.
+def test_out_of_fetched_range_is_impostor_even_when_dns_confirms(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Same as the inline-ranges case, with a fetched (not inline) range feed: both
+    # channels still run, ip violates and dns confirms, merged verdict stays
+    # impersonator.
     _patch_spec(
         monkeypatch,
         "BothBot",
         CrawlerSpec(domains=("example.com",), ranges_url="https://example.test/r.json"),
     )
     monkeypatch.setattr(netverify, "_fetch_ranges_text", lambda url, name=None: '{"prefixes": [{"ipv4Prefix": "192.0.2.0/24"}]}')
-
-    def fail(_arg: str) -> None:
-        raise AssertionError("DNS must not run once the range check fails")
-
-    monkeypatch.setattr(netverify, "_reverse_dns", fail)
-    assert BotVerifier().verify("198.51.100.1", "BothBot/1.0").status is VerificationStatus.IMPERSONATOR
+    monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: ("host.example.com", False))
+    monkeypatch.setattr(netverify, "_forward_ips", lambda host: {"198.51.100.1"})
+    verification = BotVerifier().verify("198.51.100.1", "BothBot/1.0")
+    assert verification.status is VerificationStatus.IMPERSONATOR
+    assert verification.ip is ChannelVerdict.VIOLATION
+    assert verification.dns is ChannelVerdict.VERIFIED
 
 
 def test_ranges_url_fetch_failure_is_unverified(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -292,19 +306,31 @@ def test_strict_requires_both_range_and_rdns(monkeypatch: pytest.MonkeyPatch) ->
     _patch_spec(monkeypatch, "BothBot", CrawlerSpec(**_BOTH))
     monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: ("c.example.com", False))
     monkeypatch.setattr(netverify, "_forward_ips", lambda host: {"160.79.104.5"})
-    assert BotVerifier().verify("160.79.104.5", "BothBot/1.0").status is VerificationStatus.VERIFIED
+    verification = BotVerifier().verify("160.79.104.5", "BothBot/1.0")
+    assert verification.status is VerificationStatus.VERIFIED
+    assert verification.ip is ChannelVerdict.VERIFIED
+    assert verification.dns is ChannelVerdict.VERIFIED
 
 
 def test_strict_in_range_but_wrong_rdns_is_impostor(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Both channels are checked (not short-circuited): the range verifies while
+    # DNS violates -- an independent per-channel disagreement, and either channel
+    # failing is enough for the merged impersonator verdict.
     _patch_spec(monkeypatch, "BothBot", CrawlerSpec(**_BOTH))
     monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: ("c.evil.example", False))
-    assert BotVerifier().verify("160.79.104.5", "BothBot/1.0").status is VerificationStatus.IMPERSONATOR
+    verification = BotVerifier().verify("160.79.104.5", "BothBot/1.0")
+    assert verification.status is VerificationStatus.IMPERSONATOR
+    assert verification.ip is ChannelVerdict.VERIFIED
+    assert verification.dns is ChannelVerdict.VIOLATION
 
 
 def test_strict_in_range_transient_rdns_is_unverified(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_spec(monkeypatch, "BothBot", CrawlerSpec(**_BOTH))
     monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: (None, False))  # transient
-    assert BotVerifier().verify("160.79.104.5", "BothBot/1.0").status is VerificationStatus.UNVERIFIED
+    verification = BotVerifier().verify("160.79.104.5", "BothBot/1.0")
+    assert verification.status is VerificationStatus.UNVERIFIED
+    assert verification.ip is ChannelVerdict.VERIFIED
+    assert verification.dns is ChannelVerdict.UNVERIFIED
 
 
 def test_rdns_fallback_in_range_skips_dns(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -314,7 +340,10 @@ def test_rdns_fallback_in_range_skips_dns(monkeypatch: pytest.MonkeyPatch) -> No
         raise AssertionError("DNS must not run when the range already verifies")
 
     monkeypatch.setattr(netverify, "_reverse_dns", fail)
-    assert BotVerifier().verify("160.79.104.5", "BothBot/1.0").status is VerificationStatus.VERIFIED
+    verification = BotVerifier().verify("160.79.104.5", "BothBot/1.0")
+    assert verification.status is VerificationStatus.VERIFIED
+    assert verification.ip is ChannelVerdict.VERIFIED
+    assert verification.dns is ChannelVerdict.NOT_CHECKED  # never ran -- ranges already decided
 
 
 def test_rdns_fallback_uses_dns_when_ranges_unobtainable(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -326,7 +355,12 @@ def test_rdns_fallback_uses_dns_when_ranges_unobtainable(monkeypatch: pytest.Mon
     monkeypatch.setattr(netverify, "_fetch_ranges_text", lambda url, name=None: "")  # ranges unavailable
     monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: ("c.example.com", False))
     monkeypatch.setattr(netverify, "_forward_ips", lambda host: {"203.0.113.5"})
-    assert BotVerifier().verify("203.0.113.5", "BothBot/1.0").status is VerificationStatus.VERIFIED
+    verification = BotVerifier().verify("203.0.113.5", "BothBot/1.0")
+    assert verification.status is VerificationStatus.VERIFIED
+    assert verification.dns is ChannelVerdict.VERIFIED
+    # The range check did run (and was inconclusive) before falling back to DNS --
+    # that's carried on `ip` too, rather than silently dropped as not_checked.
+    assert verification.ip is ChannelVerdict.UNVERIFIED
 
 
 def test_rdns_fallback_impostor_when_dns_also_fails(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -337,7 +371,10 @@ def test_rdns_fallback_impostor_when_dns_also_fails(monkeypatch: pytest.MonkeyPa
     )
     monkeypatch.setattr(netverify, "_fetch_ranges_text", lambda url, name=None: "")
     monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: (None, True))  # definitive no PTR
-    assert BotVerifier().verify("203.0.113.5", "BothBot/1.0").status is VerificationStatus.IMPERSONATOR
+    verification = BotVerifier().verify("203.0.113.5", "BothBot/1.0")
+    assert verification.status is VerificationStatus.IMPERSONATOR
+    assert verification.dns is ChannelVerdict.VIOLATION
+    assert verification.ip is ChannelVerdict.UNVERIFIED
 
 
 def test_verified_bot_ips_merge_into_one_entry(monkeypatch: pytest.MonkeyPatch) -> None:

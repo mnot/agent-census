@@ -13,10 +13,13 @@ tag; a genuine crawler can misbehave without forging its identity.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from .. import uas
 from ..dataload import load_shared_tuning, load_tuning
 from ..model import (
     BotVerification,
+    ChannelVerdict,
     ClientFeatures,
     ComplianceReport,
     RobotsVerdict,
@@ -393,6 +396,35 @@ def _wba_tag(wba: WbaResult | None) -> dict[str, str]:
     return tags
 
 
+# The default evidence text per channel/verdict, used only when the channel
+# didn't supply its own (it always does in practice; this is a fallback so the
+# tag is never left without a reason). `NOT_CHECKED` emits no tag at all --
+# absence (nothing declared for this channel, or a fallback that skipped it) is
+# never read as a signal.
+_CHANNEL_NAMES = {"dns": "reverse/forward DNS", "ip": "the published IP ranges"}
+_CHANNEL_DEFAULT: dict[ChannelVerdict, str] = {
+    ChannelVerdict.VERIFIED: "confirmed the declared crawler",
+    ChannelVerdict.UNVERIFIED: "was inconclusive (a timeout, or unfetchable data)",
+    ChannelVerdict.VIOLATION: "did not confirm the declared crawler",
+}
+
+
+def _channel_tags(
+    channel: Literal["dns", "ip"], verdict: ChannelVerdict, evidence: str | None
+) -> dict[str, str]:
+    """The `<channel>-verified` / `<channel>-unverified` / `<channel>-violation` tag
+    for one independent identity channel, or nothing when it was never checked.
+
+    `dns` and `ip` are surfaced separately (rather than one merged network tag) so
+    a reader can see which specific channel confirmed or disagreed -- an agent
+    declaring both can have one verify while the other doesn't.
+    """
+    if verdict is ChannelVerdict.NOT_CHECKED:
+        return {}
+    why = evidence or f"{_CHANNEL_NAMES[channel]} {_CHANNEL_DEFAULT[verdict]}"
+    return {f"{channel}-{verdict.value}": why}
+
+
 def _fact_tags(
     features: ClientFeatures,
     compliance: ComplianceReport | None,
@@ -417,31 +449,15 @@ def _fact_tags(
         tags["asn-attributed"] = (
             f"origin AS {features.as_number or '–'} is a recognised crawler network"
         )
-    if verification is not None and verification.status is VerificationStatus.VERIFIED:
-        tags["verified"] = (
-            verification.evidence[0]
-            if verification.evidence
-            else "reverse/forward DNS or a published IP range confirmed the declared crawler"
-        )
+    if verification is not None:
+        tags.update(_channel_tags("dns", verification.dns, verification.dns_evidence))
+        tags.update(_channel_tags("ip", verification.ip, verification.ip_evidence))
     if verification is not None and verification.status is VerificationStatus.ASN_ASSOCIATED:
         # UA names a crawler and its origin AS is one that crawler uses -- corroborated.
         tags["asn-associated"] = (
             verification.evidence[0]
             if verification.evidence
             else "User-Agent names a known crawler and its origin AS is one that crawler uses"
-        )
-    if (
-        verification is not None
-        and verification.network_checked
-        and verification.status in (VerificationStatus.IMPERSONATOR, VerificationStatus.UNVERIFIED)
-    ):
-        # Had rdns/range info to check the declared identity against, but it failed
-        # or was inconclusive -- the mirror of `verified`. Always surfaced so a
-        # not-confirmed declared crawler is visible; the kind/verdict are unchanged.
-        tags["unverified"] = (
-            verification.evidence[0]
-            if verification.evidence
-            else "declared a crawler we could check, but DNS / IP range didn't confirm it"
         )
     if _declares_known_crawler(features):
         tags["declares-known-bot"] = "User-Agent names a known crawler"

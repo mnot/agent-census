@@ -650,3 +650,39 @@ class WbaVerifier:
         head = self.verify(claims[0])
         mixed = any(self.verify(other).status is not head.status for other in claims[1:])
         return replace(head, mixed=True) if mixed else head
+
+
+# Ceiling on distinct Web Bot Auth nonces tracked for replay detection, so a log
+# with an unbounded number of signed requests can't exhaust memory. Generous --
+# signed traffic is rare today; past it we stop learning new nonces (a documented
+# limit, not a crash). Tightening / Bloom-filtering this is a future refinement.
+_WBA_NONCE_CAP = 1_000_000
+
+
+class WbaNonceTracker:
+    """Tracks Web Bot Auth signature nonces across a whole log for replay detection
+    -- something an edge server checking one request at a time can't do.
+
+    A nonce seen again from a *different* origin is a captured signature replayed
+    elsewhere (``replay_ips`` names both origins); seen again from the *same*
+    origin is just a signer reusing nonces, a milder note (``reused_nonces``).
+    """
+
+    def __init__(self, cap: int = _WBA_NONCE_CAP) -> None:
+        self._cap = cap
+        self._origin: dict[str, str] = {}
+        self.replay_ips: set[str] = set()
+        self.replayed_nonces: set[str] = set()
+        self.reused_nonces: set[str] = set()
+
+    def track(self, nonce: str, ip: str) -> None:
+        first = self._origin.get(nonce)
+        if first is None:
+            if len(self._origin) < self._cap:
+                self._origin[nonce] = ip
+        elif first != ip:  # the same signature presented from a different origin
+            self.replayed_nonces.add(nonce)
+            self.replay_ips.add(first)
+            self.replay_ips.add(ip)
+        else:  # one origin reusing a nonce -- a signer quirk, not a replay
+            self.reused_nonces.add(nonce)

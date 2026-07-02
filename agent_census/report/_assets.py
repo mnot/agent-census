@@ -279,6 +279,13 @@ section.kind { margin-top: 2.25rem; }
 input.filter { display: block; width: 100%; max-width: 30rem; margin: 0;
   padding: .4rem .55rem; border: 1px solid #8886; border-radius: 6px;
   background: Canvas; color: CanvasText; font: inherit; }
+/* Legend for the tag chips' colour tokens, right under the filterbar so it's easy
+   to find while reading tags -- but not itself sticky, since it's a reference the
+   reader checks occasionally rather than a control needed while scrolling. */
+.tagkey { margin: 0 0 .8rem; }
+.tagkey summary { padding: .15rem 0; }
+.tagkey-groups { display: flex; flex-wrap: wrap; gap: .3rem 2rem; margin-top: .4rem; }
+.tagkey-group h3 { margin: 0 0 .3rem; font-size: .8rem; font-weight: 600; color: var(--muted); }
 footer { margin-top: 3rem; color: var(--muted); font-size: .85rem; }
 """.strip()
 

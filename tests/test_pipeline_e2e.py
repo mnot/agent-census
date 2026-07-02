@@ -104,6 +104,41 @@ def test_vhost_filter_falls_back_to_host_header(tmp_path: Path) -> None:
     assert {p.client_id.ip for p in result.profiles} == {"1.1.1.1"}
 
 
+def test_min_requests_excludes_low_volume_clients_everywhere(tmp_path: Path) -> None:
+    # --min-requests must drop sub-threshold clients from EVERYTHING at once:
+    # the per-kind rollups, the detail profiles, and the header client/singleton
+    # counts -- not just the detail list.
+    ua = (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/119.0 Safari/537.36"
+    )
+    lines = []
+    for i in range(1, 6):  # five clients with two requests each -> kept
+        for minute, path in ((0, "/"), (5, "/about")):
+            lines.append(
+                f'10.0.0.{i} - - [10/Oct/2023:12:{minute:02d}:00 +0000] '
+                f'"GET {path} HTTP/1.1" 200 100 "-" "{ua}"'
+            )
+    for j in range(1, 4):  # three one-request clients -> below the floor
+        lines.append(
+            f'10.0.1.{j} - - [10/Oct/2023:12:00:00 +0000] "GET / HTTP/1.1" 200 100 "-" "{ua}"'
+        )
+    log = tmp_path / "mix.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+
+    full = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
+    assert full.identity_stats.client_count == 8  # 5 + 3
+    assert full.identity_stats.singletons == 3
+
+    filtered = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"), min_requests=2)
+    assert filtered.identity_stats.client_count == 5  # the three singletons are gone
+    assert filtered.identity_stats.singletons == 0
+    assert sum(r.clients for r in filtered.rollups.values()) == 5  # rollups agree
+    assert all(p.features.request_count >= 2 for p in filtered.profiles)  # so does detail
+    assert sum(r.requests for r in filtered.rollups.values()) == 10  # 5 clients x 2
+
+
 def test_summary_cadence_covers_clients_the_cap_dropped(tmp_path: Path) -> None:
     # The per-kind cap keeps only the highest-volume profiles, but the summary glyph
     # must reflect the whole kind (it sits beside the exact request count). A long

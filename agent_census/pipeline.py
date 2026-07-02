@@ -446,6 +446,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
     quiescent_seconds: float | None = None,
     retired_cap: int = DEFAULT_RETIRED_CAP,
     max_per_kind: int = DEFAULT_MAX_PER_KIND,
+    min_requests: int = 1,
     vhosts: Sequence[str] | None = None,
     asn_resolver: AsnResolver | None = None,
     since_seconds: float | None = None,
@@ -472,6 +473,11 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
     whole run. Declared crawlers are kept resident so their IPs can still be
     merged. ``keep_signals=False`` drops per-client classifier signals (only
     inspect reads them).
+
+    ``min_requests`` ignores any client below that many requests -- it is dropped
+    at finalisation, so it appears in no rollup, cross-tab cell, detail row, or
+    header count, and never seeds the reference-browser pool. (The per-IP
+    multi-UA diagnostic stays a raw-stream count.)
 
     ``vhosts`` scopes the analysis to one or more virtual hosts: a line whose
     served vhost (logged ``%v``, else the Host header) contains none of the given
@@ -547,9 +553,17 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         network_category: str | None = None,
         force_asn: str | None = None,
     ) -> None:
-        nonlocal singleton_count
+        nonlocal singleton_count, client_count
         ua_count = len(uas_by_ip.get(key.ip) or (None,))
         features = acc.finalize(ua_count_for_ip=ua_count)
+        # --min-requests floor: a client below it is ignored everywhere -- no
+        # rollup, no cross-tab cell, no detail row, and not counted or sampled
+        # into the reference pool. Enforced here, the single finalisation point,
+        # so every view is consistent (client_count is tallied here too, not at
+        # ingest, so the header total reflects only surviving clients).
+        if features.request_count < min_requests:
+            return
+        client_count += 1
         if force_asn is not None:
             features = replace(features, as_number=force_asn)
         if asn_resolver is not None:
@@ -737,7 +751,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
 
     def route_regular(entry: LogEntry, declared: bool) -> None:
         """Group a non-folded request the ordinary way (resident/evictable/retired)."""
-        nonlocal client_count, multi_ua_ips
+        nonlocal multi_ua_ips
         key = strategy.key(entry)
         acc = resident.get(key)
         if acc is None:
@@ -749,7 +763,6 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             acc = retired.pop(key)
             evictable[key] = acc
         if acc is None:
-            client_count += 1
             ip_refs[key.ip] += 1
             token = uas.product_token(entry.user_agent) if robots is not None else None
             tokens[key] = token
@@ -866,7 +879,6 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             network=egress_group[name],
             network_category=_NET_EGRESS,
         )
-        client_count += 1
     for (subnet, user_agent), acc in dc_acc.items():
         # One client per datacenter (subnet, UA); the subnet is its identity.
         did = ClientId(ip=subnet, user_agent=user_agent)
@@ -882,7 +894,6 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             network=datacenter_provider(rep_ip) or OTHER_HOSTING,
             network_category=_NET_DATACENTER,
         )
-        client_count += 1
     for (label, _), acc in asn_acc.items():
         # A recognised ASN operator: one entry for the whole AS, identified by the
         # operator label, not an IP. Forcing the AS number drives classification
@@ -896,7 +907,6 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             tuple(sorted(asn_members[(label, None)])),
             force_asn=asn_number[label],
         )
-        client_count += 1
     for (subnet, token), acc in cr_acc.items():
         # A declared but unverifiable crawler: one entry per (subnet, token). The
         # subnet is the identity; UA variants within it have already collapsed.
@@ -916,7 +926,6 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             network=provider or RESIDENTIAL_NETWORK,
             network_category=_NET_DATACENTER if provider else _NET_RESIDENTIAL,
         )
-        client_count += 1
 
     # Persist any Web Bot Auth keys learned this run (content-addressed, permanent).
     if wba_verifier is not None:

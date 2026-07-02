@@ -54,13 +54,15 @@ def test_asn_tier_corroborates_impeaches_and_abstains() -> None:
     assert _status(None) is None  # no AS in the log -> can't say (never impersonator)
 
 
-def test_range_and_asn_channels_combine_as_or() -> None:
+def test_network_and_asn_channels_combine_as_or() -> None:
     verified = BotVerification(VerificationStatus.VERIFIED)
-    impostor = BotVerification(VerificationStatus.IMPERSONATOR)  # e.g. out-of-range
-    # An in-range VERIFIED is the strongest proof and stands, whatever the AS says.
+    # A network-channel failure, from *either* channel: an out-of-range IP or a
+    # failing rDNS check (e.g. facebookexternalhit, which verifies by domains).
+    impostor = BotVerification(VerificationStatus.IMPERSONATOR)
+    # A network VERIFIED is the strongest proof and stands, whatever the AS says.
     assert _status("99999", verified) == "verified"
     assert _status("140577", verified) == "verified"
-    # OR: an in-list AS rescues an out-of-range hit -- confirmed, not forged.
+    # OR: an in-list AS rescues a network-channel failure -- confirmed, not forged.
     assert _status("140577", impostor) == "asn_associated"
     # But a hit that fails *both* channels stays an impersonator.
     assert _status("99999", impostor) == "impersonator"

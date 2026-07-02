@@ -191,8 +191,8 @@ intact.
   channel — `dns-verified` (rDNS), `ip-verified` (published IP range), and
   `wba-verified` (a valid Web Bot Auth signature); also the Search-Engine kind.
 - **ASN-Associated Green** (`#008459`): origin AS matches the declared crawler —
-  confirming it even when the IP fell outside the operator's published ranges
-  (the range/AS channels combine as an OR); coarser than an IP/DNS hit
+  confirming it even when the network channel (IP range or rDNS) said otherwise
+  (the network/AS channels combine as an OR); coarser than an IP/DNS hit
   (`asn-associated`).
 - **Caution Amber** (`#b45309`): a declared crawler that *could* be checked but
   wasn't confirmed — `dns-unverified` / `ip-unverified`, each channel's mirror of

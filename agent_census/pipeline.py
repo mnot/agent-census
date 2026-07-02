@@ -169,11 +169,12 @@ def _resolve_asn_verification(
     verification: BotVerification | None, features: ClientFeatures
 ) -> BotVerification | None:
     """The offline ASN tier: ``asns`` is a second identity channel that combines
-    with ranges/rDNS as an OR (full rationale on ``CrawlerSpec.asns``). An in-range
-    ``VERIFIED`` stands; else an in-list origin AS confirms the identity even when
-    the IP was outside the published ranges (``ASN_ASSOCIATED``); a known AS that is
-    both wrong and out-of-range impersonates; a missing AS leaves the network
-    verdict untouched. Agents that declare no ``asns`` pass straight through.
+    with the network channel (IP range and/or rDNS) as an OR (full rationale on
+    ``CrawlerSpec.asns``). A network ``VERIFIED`` stands; else an in-list origin AS
+    confirms the identity even when the network channel said otherwise -- an
+    out-of-range IP *or* a failing rDNS check (``ASN_ASSOCIATED``); a known AS that
+    is wrong while the network channel also failed impersonates; a missing AS leaves
+    the network verdict untouched. Agents that declare no ``asns`` pass through.
     """
     if verification is not None and verification.status is VerificationStatus.VERIFIED:
         return verification  # strongest proof; the AS tier can't improve on it

@@ -227,14 +227,16 @@ class CrawlerSpec:
     ranges_url: str | None = None
     fmt: str = "prefixes"  # how to parse ranges_url (see iprange.extract_cidrs)
     # AS numbers the operator is expected to crawl from -- a second identity channel
-    # that combines with ranges/rDNS as an OR (see pipeline
-    # ``_resolve_asn_verification``). An in-range / rDNS ``VERIFIED`` is the
+    # that combines with the network channel (IP ranges and/or rDNS domains) as an
+    # OR (see pipeline ``_resolve_asn_verification``). A network ``VERIFIED`` is the
     # strongest proof and stands; otherwise a UA match from one of these AS numbers
-    # confirms the identity even when the IP fell outside the published ranges
-    # (``ASN_ASSOCIATED`` -- coarser than a range hit); a UA match from a different
-    # logged AS *and* outside any range is impersonation. A missing AS number is
-    # never read as impersonation. Declare alongside ranges for an operator that
-    # scans from IPs across an AS it owns beyond its published subnets (e.g. Censys).
+    # confirms the identity even when the network channel said otherwise -- an IP
+    # outside the ranges *or* a failing rDNS check (``ASN_ASSOCIATED``, coarser than
+    # a range/DNS hit); a UA match from a different logged AS while the network
+    # channel also failed is impersonation. A missing AS number is never read as
+    # impersonation. Declare alongside ranges/domains for an operator whose traffic
+    # also comes from an AS it owns (e.g. Censys's ASNs beyond its published
+    # subnets, or facebookexternalhit from AS32934 when its rDNS can't be confirmed).
     asns: tuple[int, ...] = ()
     # When an agent declares both ranges and domains, both must verify by default
     # (either failing is impersonation). Set this for operators whose reverse DNS

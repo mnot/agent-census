@@ -228,7 +228,12 @@ def test_headless_with_no_purpose_is_automation() -> None:
         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) HeadlessChrome/149.0.0.0 Safari/537.36",
     )
-    assert classify_client(feats).primary is Kind.AUTOMATION
+    result = classify_client(feats)
+    assert result.primary is Kind.AUTOMATION
+    # The fallback's evidence is the whole reason for the verdict -- the same
+    # sentence for every such client -- so it's flagged boilerplate, not caption
+    # material (a report should show nothing rather than that restatement).
+    assert result.boilerplate_lead is True
 
 
 def test_automation_loses_to_an_identified_purpose() -> None:
@@ -623,6 +628,8 @@ def test_combiner_spoofed_browser_from_datacenter() -> None:
     result = combine(signals, _FAKE_BROWSER, datacenter=True, unknown_threshold=0.45)
     assert result.primary is Kind.SPOOFED_BROWSER
     assert {"browser-ua", "no-assets", "cold", "datacenter"} <= result.tags
+    # Same fixed-sentence-is-the-whole-reason shape as the automation fallback.
+    assert result.boilerplate_lead is True
 
 
 def test_browser_version_parsing_and_age() -> None:
@@ -1298,6 +1305,10 @@ def test_known_bot_match_without_declared_name_carries_no_agent_name() -> None:
         ClientFeatures(request_count=4, user_agent="Mozilla/5.0 (compatible; Googlebot/2.1)")
     )
     assert result.agent_name is None
+    # But its evidence[0] is still flagged as boilerplate (it's just the identity
+    # declaration) regardless of whether `name` is set -- a report caption should
+    # skip it either way, not just when there's a declared name to show instead.
+    assert result.boilerplate_lead is True
 
 
 def test_known_bot_match_carries_declared_name_to_classification() -> None:
@@ -1339,7 +1350,11 @@ def test_native_app_stack_is_app_kind() -> None:
     cfnet = ClientFeatures(
         request_count=20, user_agent="HackerNews/1541 CFNetwork/3860.600.12 Darwin/25.5.0"
     )
-    assert classify_client(cfnet).primary is Kind.APP
+    result = classify_client(cfnet)
+    assert result.primary is Kind.APP
+    # It's the same evidence for every App client -- naming the platform stack,
+    # never a fact specific to this one -- so a report caption should skip it.
+    assert result.boilerplate_lead is True
     dart = ClientFeatures(request_count=5, user_agent="Dart/3.11 (dart:io)")
     assert classify_client(dart).primary is Kind.APP
 

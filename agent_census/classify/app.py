@@ -28,5 +28,13 @@ class AppClientClassifier(Classifier):
         if token is None:
             return []
         # A platform networking stack is an unambiguous native-app identity, so one
-        # match is enough to carry it past the unknown threshold on its own.
-        return [self._signal(0.65, [f"native-app networking stack in User-Agent ({token})"])]
+        # match is enough to carry it past the unknown threshold on its own. It's
+        # also the whole story -- every App client says this, so it's not caption
+        # material (see Signal.boilerplate_lead).
+        return [
+            self._signal(
+                0.65,
+                [f"native-app networking stack in User-Agent ({token})"],
+                boilerplate_lead=True,
+            )
+        ]

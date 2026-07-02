@@ -119,6 +119,32 @@ def test_top_evidence_empty_when_only_identity_declaration() -> None:
     assert top_evidence(profile) == "–"
 
 
+def _boilerplate_profile(evidence: tuple[str, ...]) -> ClientProfile:
+    return ClientProfile(
+        client_id=ClientId(ip="203.0.113.1", user_agent="MyApp/1.0 CFNetwork/1240"),
+        entries=(),
+        features=ClientFeatures(),
+        classification=Classification(
+            primary=Kind.APP, confidence=0.65, evidence=evidence, boilerplate_lead=True
+        ),
+    )
+
+
+def test_top_evidence_skips_boilerplate_lead_without_an_agent_name() -> None:
+    # App and a below-threshold known-bot/app match carry no agent_name (there's
+    # no declared identity to head the row with) but still flag evidence[0] as
+    # boilerplate -- the skip must not depend on agent_name being set too.
+    profile = _boilerplate_profile(("native-app networking stack in User-Agent (CFNetwork)",))
+    assert top_evidence(profile) == "–"
+
+
+def test_top_evidence_boilerplate_lead_still_yields_to_real_evidence() -> None:
+    profile = _boilerplate_profile(
+        ("native-app networking stack in User-Agent (CFNetwork)", "polls just 1 URL(s) repeatedly")
+    )
+    assert top_evidence(profile) == "polls just 1 URL(s) repeatedly"
+
+
 def _agent_profile(
     *,
     agent_name: str | None = None,

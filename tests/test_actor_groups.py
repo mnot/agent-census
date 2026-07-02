@@ -72,10 +72,12 @@ def test_group_actors_merges_across_observational_tags() -> None:
     assert group.observational_tags == frozenset({"checked-robots"})
 
 
-def test_group_actors_merges_but_hides_disagreeing_mutually_exclusive_tags() -> None:
-    # has-cache and lacks-cache are opposite poles of one fact -- still merges (the
-    # split key excludes both), but neither is shown since the members disagree; a
-    # folded row can't claim both "makes conditional requests" and "never does."
+def test_group_actors_merges_and_shows_both_poles_when_members_disagree() -> None:
+    # has-cache and lacks-cache are opposite poles of one fact, enforced mutually
+    # exclusive per profile -- still merges (both are excluded from the fold key),
+    # and both show on the row: seeing both poles together can only mean the
+    # members disagree, which is a true, informative fact about the group ("some
+    # members cache, some don't"), not a contradiction to hide.
     profiles = [
         _profile("1.1.1.1", "bot/1", tags=frozenset({"datacenter", "has-cache"})),
         _profile("2.2.2.2", "bot/1", tags=frozenset({"datacenter", "lacks-cache"})),
@@ -84,25 +86,14 @@ def test_group_actors_merges_but_hides_disagreeing_mutually_exclusive_tags() -> 
     assert len(groups) == 1
     group = groups[0]
     assert group.collapsed
-    assert group.observational_tags == frozenset()
-
-
-def test_group_actors_shows_unanimous_mutually_exclusive_tag() -> None:
-    # Every member agrees on the same pole -> safe to show on the folded row.
-    profiles = [
-        _profile("1.1.1.1", "bot/1", tags=frozenset({"datacenter", "has-cache"})),
-        _profile("2.2.2.2", "bot/1", tags=frozenset({"datacenter", "has-cache"})),
-    ]
-    groups = group_actors(profiles)
-    assert len(groups) == 1
-    assert groups[0].observational_tags == frozenset({"has-cache"})
+    assert group.observational_tags == frozenset({"has-cache", "lacks-cache"})
 
 
 def test_group_actors_never_shows_singleton_on_a_folded_row() -> None:
     # Both members individually made exactly one request, but the merged actor's
     # total is 2 -- "singleton" would misrepresent the group even though every
-    # member agrees on it, so it's excluded from display outright (unlike
-    # has-cache/cadence, it's never shown here, not even when unanimous).
+    # member carries it, so unlike the other observational tags it's excluded from
+    # display outright rather than unioned.
     profiles = [
         _profile("1.1.1.1", "bot/1", requests=1, tags=frozenset({"datacenter", "singleton"})),
         _profile("2.2.2.2", "bot/1", requests=1, tags=frozenset({"datacenter", "singleton"})),

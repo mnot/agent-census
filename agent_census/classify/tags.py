@@ -63,18 +63,15 @@ OBSERVATIONAL_TAGS = frozenset(
     {"checked-robots", "has-cache", "lacks-cache", "singleton", "uses-HEAD", "post-heavy"}
 ) | CADENCE_TAGS
 
-# Of the observational tags, these have no opposing pole and don't depend on the
-# group's combined request volume -- safe to show on a folded row whenever *any*
-# member earned them.
-UNION_DISPLAY_TAGS = frozenset({"checked-robots", "uses-HEAD", "post-heavy"})
-
-# These are one-of-N per profile (has-cache/lacks-cache; the cadence trio), so
-# unioning them risks showing a contradictory pair on one row. Show them only when
-# every member agrees. ``singleton`` is excluded from display entirely rather than
-# put here: even a unanimous "every member made exactly one request" is false of
-# the merged actor once >1 member is folded together, since the group's total is
-# then >1 by construction.
-UNANIMOUS_DISPLAY_TAGS = frozenset({"has-cache", "lacks-cache"}) | CADENCE_TAGS
+# Observational tags worth showing on a folded row -- all of them except
+# ``singleton``, unioned across members: has-cache/lacks-cache and the cadence trio
+# are mutually exclusive per profile (``if``/``elif`` in this module), so both poles
+# appearing together can only mean the members disagree -- a true, informative fact
+# about the group ("some members cache, some don't"), not a contradiction to hide.
+# ``singleton`` is excluded outright instead: it's a volume claim ("made exactly one
+# request") that's false of the merged actor the moment >1 member is folded
+# together, regardless of whether every member individually satisfies it.
+OBSERVATIONAL_DISPLAY_TAGS = OBSERVATIONAL_TAGS - {"singleton"}
 
 # Browser fingerprint thresholds, shared with the relative-tag reference predicate
 # (``classify.relative.is_reference_browser``) so "what counts as browser-like" is

@@ -7,7 +7,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
-from ..classify.tags import OBSERVATIONAL_TAGS, UNANIMOUS_DISPLAY_TAGS, UNION_DISPLAY_TAGS
+from ..classify.tags import OBSERVATIONAL_DISPLAY_TAGS, OBSERVATIONAL_TAGS
 from ..model import ClientProfile, Kind
 from ..pipeline import OTHER_HOSTING, RESIDENTIAL_NETWORK, KindRollup
 
@@ -168,23 +168,17 @@ class ActorGroup:
 
     @property
     def observational_tags(self) -> frozenset[str]:
-        """Observational tags to show on the folded row.
+        """Observational tags to show on the folded row -- any member's, unioned.
 
         Excluded from :func:`group_actors`'s folding key (see ``OBSERVATIONAL_TAGS``)
         since they're incidental to which slice of an actor's traffic a given member
-        happened to carry, not its identity -- but still worth surfacing, carefully:
-        ``UNION_DISPLAY_TAGS`` show when any member earned them; ``UNANIMOUS_DISPLAY_TAGS``
-        (mutually-exclusive families like has-cache/lacks-cache or the cadence trio)
-        only when every member agrees, so a mixed group shows neither pole rather than
-        a contradictory pair. ``singleton`` is never shown here -- see its definition.
+        happened to carry, not its identity -- but still worth surfacing on the row.
+        See ``OBSERVATIONAL_DISPLAY_TAGS`` for why ``singleton`` alone is dropped.
         """
-        union_tags: set[str] = set()
-        unanimous_tags = set(UNANIMOUS_DISPLAY_TAGS)
+        tags: set[str] = set()
         for member in self.members:
-            member_tags = member.classification.tags
-            union_tags |= member_tags & UNION_DISPLAY_TAGS
-            unanimous_tags &= member_tags
-        return frozenset(union_tags | unanimous_tags)
+            tags |= member.classification.tags & OBSERVATIONAL_DISPLAY_TAGS
+        return frozenset(tags)
 
 
 def group_actors(profiles: Sequence[ClientProfile]) -> list[ActorGroup]:

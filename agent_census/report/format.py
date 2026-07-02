@@ -7,7 +7,7 @@ from datetime import datetime
 from functools import lru_cache
 
 from ..dataload import load_egress_networks
-from ..model import ChannelVerdict, ClientFeatures, ClientProfile, Kind, VerificationStatus
+from ..model import ChannelVerdict, ClientFeatures, ClientProfile, Kind
 
 _KHTML_MARKER = "(khtml, like gecko)"
 # Layout-engine tokens: their presence in a trimmed preamble means the UA wore a
@@ -49,20 +49,21 @@ def elide_ua(ua: str | None, *, is_browser: bool = False) -> str | None:
 
 
 def top_evidence(profile: ClientProfile) -> str:
-    """The single most salient evidence line for a client.
+    """The single most salient *extra* fact about a client -- something its
+    identity, tags, and other columns on the same row don't already say.
 
-    A verified identity is the strongest thing we can say about a client, so it
-    always wins the headline; otherwise fall back to the primary classifier's
-    own evidence.
+    Verification evidence is never used here: whether merged ("N IP(s)
+    verified as X") or per-IP ("A ↔ B confirmed for X"), it only restates the
+    identity already headlining the row and the dns-verified / ip-verified
+    tag already carrying that channel's own description. Classification
+    evidence is preferred, but when a classifier set ``agent_name`` (only
+    :mod:`classify.known_bot`, for both its UA and ASN matches) its own
+    leading evidence line is that same declaration by construction, so it's
+    skipped in favour of whatever supporting fact follows it, if any.
     """
-    verification = profile.verification
-    if (
-        verification is not None
-        and verification.status is VerificationStatus.VERIFIED
-        and verification.evidence
-    ):
-        return verification.evidence[0]
     evidence = profile.classification.evidence
+    if profile.classification.agent_name and evidence:
+        evidence = evidence[1:]
     return evidence[0] if evidence else "–"
 
 

@@ -74,17 +74,47 @@ def _profile(verification: BotVerification | None) -> ClientProfile:
     )
 
 
-def test_top_evidence_prefers_verification() -> None:
+def test_top_evidence_ignores_verification() -> None:
+    # Verification evidence only ever restates the identity + tag already shown
+    # elsewhere on the row, so it's never used for the hero caption -- even when
+    # VERIFIED, classification evidence wins.
     verified = BotVerification(
         VerificationStatus.VERIFIED, evidence=("3 IP(s) verified as googlebot.com",)
     )
-    assert top_evidence(_profile(verified)) == "3 IP(s) verified as googlebot.com"
-
-
-def test_top_evidence_falls_back_when_not_verified() -> None:
+    assert top_evidence(_profile(verified)) == "UA names Googlebot"
     assert top_evidence(_profile(None)) == "UA names Googlebot"
     inconclusive = BotVerification(VerificationStatus.UNVERIFIED, evidence=("lookup failed",))
     assert top_evidence(_profile(inconclusive)) == "UA names Googlebot"
+
+
+def _known_bot_profile(evidence: tuple[str, ...]) -> ClientProfile:
+    return ClientProfile(
+        client_id=ClientId(ip="203.0.113.1", user_agent="Mastodon/1.0"),
+        entries=(),
+        features=ClientFeatures(),
+        classification=Classification(
+            primary=Kind.SOCIAL_PREVIEW,
+            confidence=0.9,
+            evidence=evidence,
+            agent_name="Mastodon",
+        ),
+    )
+
+
+def test_top_evidence_skips_identity_declaration_for_known_bot() -> None:
+    # known_bot's own evidence[0] just names the agent, which is already the
+    # row's identity header -- skip it for whatever supporting fact follows.
+    profile = _known_bot_profile(
+        ("User-Agent declares 'Mastodon', a known social-preview / link-unfurl bot", "fetched /robots.txt")
+    )
+    assert top_evidence(profile) == "fetched /robots.txt"
+
+
+def test_top_evidence_empty_when_only_identity_declaration() -> None:
+    profile = _known_bot_profile(
+        ("User-Agent declares 'Mastodon', a known social-preview / link-unfurl bot",)
+    )
+    assert top_evidence(profile) == "–"
 
 
 def _agent_profile(

@@ -16,12 +16,14 @@ from ..pipeline import OTHER_HOSTING, RESIDENTIAL_NETWORK, KindRollup
 # does* -- never by a presumed beneficiary or intent (the kind wheel is
 # classification, not judgement). Reading top to bottom is a rough good -> can't-say
 # gradient, ending with the two unattributed buckets. Each label names the band's
-# common trait: People are human-driven (a feed reader is a person, just in other
-# software); Utility bots reference or observe content (index, snapshot, unfurl,
-# ping) rather than ingest it; Harvesters ingest content for a third party's reuse;
-# Suspicious is defined by conduct (probing, forging identity, injecting), not by
-# whether the actor is malicious; Unattributed is machine-or-maybe-machine with no
-# purpose pinned down.
+# common trait: People-like traffic behaves the way a person would (a feed reader is
+# a person, just in other software) -- "-like" because a browser-shaped behaviour
+# profile and a self-declared app UA are both inferred, never confirmed; individual
+# kind blurbs below spell out what each one's evidence actually is. Utility bots
+# reference or observe content (index, snapshot, unfurl, ping) rather than ingest
+# it; Harvesters ingest content for a third party's reuse; Suspicious is defined by
+# conduct (probing, forging identity, injecting), not by whether the actor is
+# malicious; Unattributed is machine-or-maybe-machine with no purpose pinned down.
 @dataclass(frozen=True)
 class KindCluster:
     """An ordered band of kinds shown together, under one side label."""
@@ -31,7 +33,7 @@ class KindCluster:
 
 
 KIND_CLUSTERS: tuple[KindCluster, ...] = (
-    KindCluster("People", (Kind.BROWSER, Kind.APP, Kind.FEED_READER)),
+    KindCluster("People-like", (Kind.BROWSER, Kind.APP, Kind.FEED_READER)),
     KindCluster(
         "Utility bots",
         (Kind.SEARCH_ENGINE, Kind.ARCHIVER, Kind.SOCIAL_PREVIEW, Kind.MONITOR),
@@ -79,17 +81,21 @@ def clusters_present(
 
 
 KIND_BLURB: dict[Kind, str] = {
-    Kind.BROWSER: "Interactive browsers loading pages and their sub-resources.",
-    Kind.APP: "Native mobile / desktop apps requesting via a platform networking stack.",
+    Kind.BROWSER: "Browser-like clients -- loading pages and their sub-resources with "
+    "human-like timing.",
+    Kind.APP: "Clients whose User-Agent names a native-app networking stack (Apple's "
+    "CFNetwork, Flutter's dart:io, ...) rather than a browser engine or crawler.",
     Kind.CRAWLER: "Bots fetching pages without browser sub-resource loading -- a "
     "self-declared crawler UA, or systematic link-following / broad coverage.",
     Kind.SEARCH_ENGINE: "Declared search-engine crawlers indexing the site.",
-    Kind.ARCHIVER: "Web-archiving / preservation crawlers (Internet Archive / Wayback Machine).",
-    Kind.SOCIAL_PREVIEW: "Link-unfurl fetchers building share previews.",
-    Kind.AI_CRAWLER: "AI / LLM data-gathering crawlers.",
-    Kind.SEO_MARKETING: "SEO / marketing / brand-monitoring crawlers.",
-    Kind.DATA_HARVESTER: "Crawlers ingesting content into a private corpus or dataset "
-    "(plagiarism indexes, data brokers) -- not public search, preservation, or AI training.",
+    Kind.ARCHIVER: "Declared web-archiving / preservation crawlers (Internet Archive / "
+    "Wayback Machine).",
+    Kind.SOCIAL_PREVIEW: "Declared link-unfurl fetchers building share previews.",
+    Kind.AI_CRAWLER: "Declared AI / LLM data-gathering crawlers.",
+    Kind.SEO_MARKETING: "Declared SEO / marketing / brand-monitoring crawlers.",
+    Kind.DATA_HARVESTER: "Declared crawlers whose stated purpose is building a private "
+    "corpus or dataset (plagiarism indexes, data brokers) -- not public search, "
+    "preservation, or AI training.",
     Kind.IMPERSONATOR: "Clients faking a declared crawler identity -- the origin's reverse "
     "DNS, IP range, or AS number doesn't match the crawler it names.",
     Kind.SCRAPER: "Content harvesters hitting pages cold, without following links.",
@@ -97,7 +103,8 @@ KIND_BLURB: dict[Kind, str] = {
     Kind.SPOOFED_BROWSER: "Datacenter clients wearing a browser UA without browser behaviour.",
     Kind.AUTOMATION: "Clearly automated clients (headless engine, no browser cache, or a "
     "library UA) whose specific purpose couldn't be identified.",
-    Kind.SPAM_BOT: "Form/comment spam and credential-stuffing bots.",
+    Kind.SPAM_BOT: "Form/comment spam and submission-endpoint abuse (comment forms, login, "
+    "xmlrpc).",
     Kind.FEED_READER: "RSS/Atom feed pollers.",
     Kind.MONITOR: "Uptime / monitoring checks on a fixed schedule.",
     Kind.UNKNOWN: "Clients no classifier could characterize -- and with no machine tell to "

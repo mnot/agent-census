@@ -419,6 +419,19 @@ def test_safari_year_numbering_ages_on_continuous_scale() -> None:
     assert band("14.1") == "stale"  # but still only stale, never ancient
 
 
+def test_safari_age_band_has_a_neutral_middle() -> None:
+    # Safari's band is current (fresh) / stale (>=2yr) with a deliberate neutral
+    # None in between (~one year behind is normal for OS-bundled Safari).
+    from agent_census.uas import _safari_age_band
+
+    assert _safari_age_band(-20.0) is None  # implausibly ahead: no credit
+    assert _safari_age_band(0.0) == "current"
+    assert _safari_age_band(13.0) == "current"  # upper edge of current
+    assert _safari_age_band(18.0) is None  # neutral middle -- neither current nor stale
+    assert _safari_age_band(24.0) == "stale"  # two annual versions behind
+    assert _safari_age_band(60.0) == "stale"  # never escalates past stale
+
+
 def test_impossible_version_browser_is_capped() -> None:
     from datetime import datetime, timezone
 

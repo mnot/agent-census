@@ -105,6 +105,9 @@ class RangeIndex:
 
 _RANGES_TTL = 7 * 24 * 60 * 60  # refresh fetched range files weekly
 _FETCH_TIMEOUT = 10
+# Cap a fetched range list so a hostile/misconfigured feed can't exhaust memory.
+# Real provider lists are well under this; 16 MiB is generous headroom.
+_MAX_FETCH_BYTES = 16 * 1024 * 1024
 _INTERVALS_CACHE_VERSION = 1  # bump to invalidate cached parses when a parser changes
 
 
@@ -184,7 +187,7 @@ def _http_get(url: str) -> str | None:
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=_FETCH_TIMEOUT) as response:  # noqa: S310
-            return str(response.read().decode("utf-8", "replace"))
+            return str(response.read(_MAX_FETCH_BYTES).decode("utf-8", "replace"))
     except (OSError, ValueError):
         return None
 

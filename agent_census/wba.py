@@ -499,6 +499,7 @@ _FETCH_TIMEOUT = 10
 # a rejected scheme fails closed to UNVERIFIABLE (never forgery), like any other
 # unobtainable key. Mirrors ``wba_check._ALLOWED_SCHEMES``.
 _ALLOWED_SCHEMES = frozenset({"http", "https"})
+_MAX_DIRECTORY_BYTES = 4 * 1024 * 1024
 
 
 def _key_store_path() -> Path:
@@ -525,7 +526,10 @@ def _http_get(url: str) -> str | None:
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=_FETCH_TIMEOUT) as response:  # noqa: S310
-            return str(response.read().decode("utf-8", "replace"))
+            # Cap the body: the directory is fetched from an untrusted host, so a
+            # huge/endless response must not exhaust memory. A JWK directory is a
+            # few keys; 4 MiB is ample.
+            return str(response.read(_MAX_DIRECTORY_BYTES).decode("utf-8", "replace"))
     except (OSError, ValueError):
         return None
 

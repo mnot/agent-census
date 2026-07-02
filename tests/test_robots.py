@@ -120,6 +120,29 @@ def test_compliance_unknown_without_rules() -> None:
     assert report.verdict is RobotsVerdict.UNKNOWN
 
 
+def test_from_network_caps_the_response_size(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # A hostile/misconfigured origin serving an enormous robots.txt must not be
+    # buffered whole: from_network reads at most _MAX_ROBOTS_BYTES.
+    import urllib.request
+
+    from agent_census.robots import source
+
+    class _Resp:
+        def __enter__(self):  # type: ignore[no-untyped-def]
+            return self
+
+        def __exit__(self, *_a: object) -> None:
+            return None
+
+        def read(self, size: int = -1) -> bytes:
+            assert size == source._MAX_ROBOTS_BYTES  # capped, not an unbounded read
+            return b"a" * size
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: _Resp())
+    doc = source.from_network("https://example.invalid/robots.txt")
+    assert len(doc.text) == source._MAX_ROBOTS_BYTES
+
+
 def test_url_for_host_variants() -> None:
     assert url_for_host("example.com") == "https://example.com/robots.txt"
     assert url_for_host("https://example.com") == "https://example.com/robots.txt"

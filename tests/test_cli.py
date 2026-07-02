@@ -178,6 +178,16 @@ def test_format_alternatives_supersede_each_other() -> None:
     assert cfg.get("log_format") == "%h %t" and "log_format_preset" not in cfg
 
 
+def test_save_writes_owner_only_permissions() -> None:
+    # The config can hold a secret API token; the file must never be group/world
+    # readable, and must not pass through a looser mode on the way there.
+    import stat
+
+    userconfig.save({"cf_api_token": "cfat_secret"})
+    mode = stat.S_IMODE(userconfig.config_path().stat().st_mode)
+    assert mode == 0o600
+
+
 def test_load_tolerates_a_non_object_config() -> None:
     # A hand-edited config that is valid JSON but not an object (here, a list)
     # must fall back to defaults, not crash the whole CLI on .items().

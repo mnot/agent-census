@@ -563,7 +563,11 @@ def _actor_tbody(
     # One AS across the fold -> name it (greyed, like the per-client AS) instead of "1 ASNs".
     asn_html = f" <span class='cid-as'>{_esc(as_display(*shared))}</span>" if shared else ""
     pattern = _pattern_cell(
-        _aggregate_buckets(actor.members, window), top_evidence(actor.lead), actor.requests, peak
+        _aggregate_buckets(actor.members, window),
+        top_evidence(actor.lead),
+        actor.requests,
+        peak,
+        window,
     )
     # For a known agent, lead with its own identity -- a declared name, else an
     # rDNS-confirmed host -- and demote the IP/ASN spread to a line below it

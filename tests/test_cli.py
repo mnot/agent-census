@@ -178,6 +178,15 @@ def test_format_alternatives_supersede_each_other() -> None:
     assert cfg.get("log_format") == "%h %t" and "log_format_preset" not in cfg
 
 
+def test_load_tolerates_a_non_object_config() -> None:
+    # A hand-edited config that is valid JSON but not an object (here, a list)
+    # must fall back to defaults, not crash the whole CLI on .items().
+    path = userconfig.config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('["not", "a", "dict"]', encoding="utf-8")
+    assert userconfig.load() == {}
+
+
 def test_identity_defaults_to_ip_ua_when_unset() -> None:
     args = _analyze_args([LOG])
     _apply_persisted_settings(args)

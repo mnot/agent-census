@@ -40,6 +40,12 @@ def load() -> dict[str, str]:
         data = json.loads(config_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
+    if not isinstance(data, dict):
+        # Valid JSON but not an object (a list, string, number, ...): json.loads
+        # succeeds, so the guard above doesn't catch it. Fall back to defaults
+        # rather than crash on .items() -- a hand-edited config shouldn't abort
+        # every run.
+        return {}
     return {k: v for k, v in data.items() if k in PERSISTED and isinstance(v, str)}
 
 

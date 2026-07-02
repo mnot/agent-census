@@ -75,9 +75,12 @@ _KIND_COLORS: dict[Kind, str] = {
 
 # Tag colour tokens. Each tag maps to a style token, realised as a CSS class
 # (.tag--<token>) in the report stylesheet; an unmapped tag falls through to the
-# neutral grey .tag default. The tokens encode three overlaid systems:
+# neutral grey .tag default. The tokens encode four overlaid systems:
 #   * identity trust     -- green (confirmed) -> yellow (doubt) -> red (forged)
 #   * behaviour/botness  -- cool human -> warm bot -> orange notable -> red hostile
+#   * relative outlier   -- violet: a magnitude claim vs. this site's real browsers,
+#                            not itself evidence of automation (unlike bot's
+#                            structural signals) or of misconduct (unlike notable)
 #   * origin / egress    -- cool context band
 # Red is the shared terminal for either a forged identity or hostile conduct.
 # Loud terminals are white-text solids; the quiet middle bands are colour-mix
@@ -127,10 +130,10 @@ _TAG_TOKENS: dict[str, str] = {
     "post-heavy": "notable",
     "exotic-method": "notable",
     "ua-rotating": "notable",
-    "high-rate": "notable",
-    "high-bytes": "notable",
-    "wide-breadth": "notable",
-    "long-session": "notable",
+    "high-rate": "outlier",
+    "high-bytes": "outlier",
+    "wide-breadth": "outlier",
+    "long-session": "outlier",
     "no-user-agent": "notable",
     "probe-paths": "danger",
     "ancient-browser-ua": "danger",  # forged identity -> shared red terminal
@@ -154,6 +157,60 @@ def tag_class(tag: str) -> str:
     """CSS class for a tag chip: the neutral ``tag`` plus its colour token, if any."""
     token = _TAG_TOKENS.get(tag)
     return f"tag tag--{token}" if token else "tag"
+
+
+# One representative label per colour token, grouped the same way _TAG_TOKENS'
+# header comment describes the four overlaid systems -- so the key explains what
+# the colour means rather than listing every tag that uses it.
+_TAG_KEY_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
+    (
+        "Identity",
+        [
+            ("trust", "confirmed by a verification channel"),
+            ("trust-soft", "supporting signal, not a full verification"),
+            ("doubt", "unverified or stale"),
+            ("danger", "declared identity contradicted"),
+            ("danger-deep", "forged: cryptographic or UA proof of impersonation"),
+        ],
+    ),
+    (
+        "Behaviour",
+        [
+            ("human", "browser-like"),
+            ("bot", "structural evidence of automation, e.g. no asset loads"),
+            ("notable", "conduct a legitimate client wouldn't normally show"),
+        ],
+    ),
+    (
+        "Relative to this site",
+        [
+            ("outlier", "well beyond this site's real browsers on one metric"),
+        ],
+    ),
+    (
+        "Origin",
+        [
+            ("origin", "datacentre-hosted"),
+            ("egress", "privacy relay, VPN, or proxy egress"),
+        ],
+    ),
+]
+
+
+def _tag_key() -> str:
+    """Collapsible legend explaining the tag chips' colour tokens."""
+    groups = []
+    for title, entries in _TAG_KEY_GROUPS:
+        chips = "".join(
+            f'<span class="tag tag--{token}">{_esc(label)}</span>' for token, label in entries
+        )
+        groups.append(f'<div class="tagkey-group"><h3>{_esc(title)}</h3>{chips}</div>')
+    return (
+        '<details class="tagkey">'
+        "<summary>Tag colour key</summary>"
+        f'<div class="tagkey-groups">{"".join(groups)}</div>'
+        "</details>"
+    )
 
 
 # Hover descriptions for the cross-tab column headers. The egress buckets group
@@ -902,6 +959,7 @@ def render_report_html(
         "Show all</button>"
         "</span>"
         "</div>",
+        _tag_key(),
         # Filled and shown by the filter script when a query hides every client.
         '<p id="nomatch" class="muted" role="status" hidden></p>',
     ]

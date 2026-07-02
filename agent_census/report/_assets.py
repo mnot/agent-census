@@ -177,6 +177,12 @@ tr:hover td { background: #8881; }
   border-color: #ea580c88; color: light-dark(#9a3412, #fed7aa); }
 .tag--danger { background: #dc2626; color: #fff; }
 .tag--danger-deep { background: #991b1b; color: #fff; }
+/* A magnitude claim vs. this site's real browsers (high-rate, high-bytes,
+   wide-breadth, long-session) -- not itself evidence of automation (that's
+   .tag--bot) or of misconduct (that's .tag--notable), so it gets its own hue
+   rather than borrowing either's implication. */
+.tag--outlier { background: color-mix(in srgb, #8b5cf6 14%, Canvas);
+  border-color: #8b5cf688; color: light-dark(#5b21b6, #ddd6fe); }
 .tag--origin { background: color-mix(in srgb, #6366f1 14%, Canvas);
   border-color: #6366f188; color: light-dark(#3730a3, #c7d2fe); }
 .tag--egress { background: color-mix(in srgb, #06b6d4 16%, Canvas);
@@ -279,6 +285,13 @@ section.kind { margin-top: 2.25rem; }
 input.filter { display: block; width: 100%; max-width: 30rem; margin: 0;
   padding: .4rem .55rem; border: 1px solid #8886; border-radius: 6px;
   background: Canvas; color: CanvasText; font: inherit; }
+/* Legend for the tag chips' colour tokens, right under the filterbar so it's easy
+   to find while reading tags -- but not itself sticky, since it's a reference the
+   reader checks occasionally rather than a control needed while scrolling. */
+.tagkey { margin: 0 0 .8rem; }
+.tagkey summary { padding: .15rem 0; }
+.tagkey-groups { display: flex; flex-wrap: wrap; gap: .3rem 2rem; margin-top: .4rem; }
+.tagkey-group h3 { margin: 0 0 .3rem; font-size: .8rem; font-weight: 600; color: var(--muted); }
 footer { margin-top: 3rem; color: var(--muted); font-size: .85rem; }
 """.strip()
 

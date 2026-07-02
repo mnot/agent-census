@@ -8,7 +8,6 @@ from functools import lru_cache
 
 from ..dataload import load_egress_networks
 from ..model import ChannelVerdict, ClientFeatures, ClientProfile, Kind, WbaStatus
-from ..wba import display_operator
 
 _KHTML_MARKER = "(khtml, like gecko)"
 # Layout-engine tokens: their presence in a trimmed preamble means the UA wore a
@@ -336,10 +335,16 @@ def agent_identity(profile: ClientProfile) -> str | None:
     client's own User-Agent header makes, not a confirmed identity, and heading
     a row with it would read as more certain than it is.
 
-    WBA sits ahead of rDNS: a verified signature is a cryptographic proof of
-    the operator (the impersonator gate in the combiner already treats it as
-    outranking the network channel), and ``display_operator`` yields a curated
-    name rather than a raw hostname.
+    WBA sits ahead of rDNS: a signature cryptographically confirmed against the
+    operator's key -- VERIFIED and EXPIRED alike, the same pair the impersonator
+    gate in the combiner already treats as outranking the network channel -- is
+    proof of the operator, stronger evidence than a resolved hostname. Gated on
+    ``wba.operator`` specifically, not :func:`wba.display_operator`'s
+    ``signer_domain`` fallback: a signature can verify against a key fetched
+    from the claimed Signature-Agent URL itself, with no curated-operator match
+    at all, and that self-published domain is only as trustworthy as the
+    client's own claim about itself -- exactly the "confusing identity" this
+    function already declines to show for an rDNS CIDR or a raw UA token.
 
     The rDNS check specifically -- not the merged verification status -- decides
     the last tier: an agent verified by IP range alone (no declared domains)
@@ -350,10 +355,8 @@ def agent_identity(profile: ClientProfile) -> str | None:
     if cls.agent_name:
         return cls.agent_name
     wba = profile.wba
-    if wba is not None and wba.status is WbaStatus.VERIFIED:
-        operator = display_operator(wba)
-        if operator:
-            return operator
+    if wba is not None and wba.status in (WbaStatus.VERIFIED, WbaStatus.EXPIRED) and wba.operator:
+        return wba.operator
     verification = profile.verification
     if (
         verification is not None

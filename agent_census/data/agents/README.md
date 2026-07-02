@@ -37,7 +37,7 @@ that presents its token. Three independent checks, in precedence order:
   `--no-verify-bots` turns it off.
 - **`ranges`** (list of CIDRs) and/or **`ranges_url`** (string) -- the client's IP
   must fall in the agent's published ranges. `ranges_url` is fetched and cached;
-  **`format`** (string) says how to parse it (`prefixes`, `json`, `text`,
+  **`format`** (string) says how to parse it (`prefixes`, `text`, `csv`,
   `ripestat`, …; default `prefixes`). The range check runs by default;
   `--no-verify-bots` turns it off, and `--no-fetch-ranges` skips the `ranges_url`
   fetch so only the inline `ranges` are checked.

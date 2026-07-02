@@ -17,7 +17,7 @@ colors:
   asn-associated-green: "#008459"    # origin AS corroborates the declared crawler
   caution-amber: "#b45309"           # unverified declared crawler; the page-level warn color (light)
   alert-amber: "#b85900"             # ignores-robots, ua-rotating, 404-storm
-  threat-red: "#dc2626"              # probe-paths, traversal, impersonator, forged-referer, vuln-scanner
+  threat-red: "#dc2626"              # probe-paths, traversal, forged-referer, dns-violation, ip-violation, vuln-scanner
   deep-red: "#b91c1c"                # encoding-evasion, impersonator kind
   datacenter-violet: "#9333ea"       # origin is hosting, not an eyeball network
   relay-blue: "#0079bc"              # iCloud Private Relay — a positive browser signal
@@ -59,6 +59,13 @@ typography:
   headline:
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
     fontSize: "1.25rem"
+    fontWeight: 700
+    lineHeight: 1.4
+  title:
+    # h3 inside inspect cards; no dedicated CSS token, so it renders at the
+    # browser default (~1.17rem, bold) rather than a fixed size.
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    fontSize: "1.17rem"
     fontWeight: 700
     lineHeight: 1.4
   body:
@@ -162,7 +169,8 @@ enterprise BI (no 3-D bars, no skeuomorphic gauges, no decorative chartjunk). Th
 report earns trust by under-reacting, not over-reacting.
 
 **Key Characteristics:**
-- Flat. No shadows anywhere; depth is hairlines and tonal washes only.
+- Flat. No shadows on the ledger; depth is hairlines and tonal washes (the one
+  floating popover aside).
 - System-native: OS light/dark substrate, system font stack, zero assets.
 - Dense by intent — tables run wide and long; the operator wants the data.
 - Color is a legend, never decoration. Every hue is a documented fact.
@@ -204,8 +212,9 @@ intact.
 - **Alert Amber** (`#b85900`): conduct worth a second look — `ignores-robots`,
   `ua-rotating`, `404-storm`. Also the Scraper kind.
 - **Threat Red** (`#dc2626`): hostile intent — `probe-paths`, `traversal`,
-  `forged-referer`, `impersonator`, `dns-violation`, `ip-violation`,
-  spoofed/impossible browser UAs. Also the Vuln-Scanner kind.
+  `forged-referer`, `dns-violation`, `ip-violation`, spoofed/impossible browser
+  UAs. Also the Vuln-Scanner kind. (The Impersonator *kind* is Deep Red below; the
+  tags that drive it are the two `*-violation`s here.)
 - **Deep Red** (`#b91c1c`): the most deliberate evasion — `encoding-evasion`;
   also the Impersonator kind.
 - **Datacenter Violet** (`#9333ea`): origin is hosting, not an eyeball network
@@ -299,9 +308,12 @@ permitted second family, and only for verbatim strings.
 
 ## 4. Elevation
 
-This system has **no shadows at all**. It is flat by conviction: a ledger is ink
-on paper, and depth that isn't carrying information is just theater. Separation
-and grouping are done entirely with **hairline borders** (`#888` + alpha) and
+The ledger surface carries **no shadows**. It is flat by conviction: a ledger is
+ink on paper, and depth that isn't carrying information is just theater. The lone
+exception is the tag-key popover — a transient overlay that genuinely floats above
+the page — which uses a soft drop shadow to lift off what it covers; nothing
+embedded in the ledger gets one. Separation and grouping are done entirely with
+**hairline borders** (`#888` + alpha) and
 **tonal washes** (the same gray at lower alpha). A table's rows are divided by 1px
 rules; its header sits under a 2px rule; the hosting/off-network split in the
 cross-tab is a 2px vertical rule (`.netdiv`); a hovered row gets a faint
@@ -310,16 +322,18 @@ not a floating surface. Quantitative emphasis (which cell holds the volume) is
 carried by **variable-alpha color heat**, not by lift.
 
 ### Named Rules
-**The Flat-Ledger Rule.** No `box-shadow`, ever — not on cards, not on hover, not
-on the sticky filter. If something needs to feel separated, use a hairline or a
-tonal wash. If it needs emphasis, use weight or color-heat. Depth is reserved for
-nothing, because there is none.
+**The Flat-Ledger Rule.** No `box-shadow` on the ledger surface — not on cards,
+not on hover, not on the sticky filter, not on tables. If something on the page
+needs to feel separated, use a hairline or a tonal wash; if it needs emphasis, use
+weight or color-heat. The one permitted shadow is on a transient overlay that
+floats above the page (the tag-key popover); nothing in the ledger itself gets
+depth, because there is none.
 
 ## 5. Components
 
 Every component is monochrome-by-default and earns color only when it has a fact
-to report. Nothing here uses a shadow, a gradient, or a custom control where a
-native one exists.
+to report. Nothing here uses a gradient or a custom control where a native one
+exists, and only the floating tag-key popover carries a shadow.
 
 ### Badges (Kind)
 - **Character:** a confident, filled identity stamp.
@@ -423,7 +437,9 @@ native one exists.
   documented hostile-conduct signals.
 - **Don't** ship **over-chromed enterprise BI** — no 3-D bars, no skeuomorphic
   gauges, no decorative chartjunk. The bars and heat must read honestly.
-- **Don't** add a `box-shadow` anywhere — the Flat-Ledger Rule is absolute.
+- **Don't** add a `box-shadow` to anything embedded in the ledger — cards, rows,
+  filter, tables. Per the Flat-Ledger Rule, the only shadow allowed is on a
+  transient floating overlay (the tag-key popover).
 - **Don't** hardcode a background or text hex; never break the System-Color
   Substrate Rule.
 - **Don't** introduce a web font, a display face, or a second sans. One system

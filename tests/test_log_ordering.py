@@ -39,6 +39,20 @@ def _write(path: Path, days: list[int], ip: str = "1.1.1.1") -> Path:
     return path
 
 
+def test_gz_bomb_line_is_chopped_not_buffered_whole(tmp_path: Path) -> None:
+    # A .gz that expands to one enormous newline-free run must not be read into a
+    # single multi-gigabyte string. read_lines chops it into bounded pieces.
+    from agent_census.logsource import _MAX_LINE_CHARS, read_lines
+
+    total = _MAX_LINE_CHARS * 3 + 500  # no newlines at all
+    path = tmp_path / "bomb.log.gz"
+    path.write_bytes(gzip.compress(b"a" * total))
+    pieces = list(read_lines(path))
+    assert len(pieces) >= 4  # chopped, not one giant line
+    assert all(len(p) <= _MAX_LINE_CHARS for p in pieces)
+    assert sum(len(p) for p in pieces) == total  # nothing lost
+
+
 # --- duration parsing -------------------------------------------------------
 
 

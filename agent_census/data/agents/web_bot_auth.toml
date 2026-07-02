@@ -22,3 +22,11 @@
 [[operator]]
 name = "Ahrefs"
 agent_urls = ["https://ahrefs.com"]
+
+
+[[operator]]
+name = "You"
+agent_urls = ["https://you.com"]
+keyids = [
+    "5hbjTA0RjjhxRRquk32fSeRWfTgAdSHCZMK1afI1qvI",
+]

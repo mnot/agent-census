@@ -103,8 +103,11 @@ ua_substring = "ImagesiftBot"
 domains = ["imagesift.com"]
 
 [[agent]]
+# https://you.com/docs/youbot
 ua_substring = "YouBot"
-domains = ["you.com"]
+domains = ["search.you.com"]
+ranges = ["68.67.112.0/24"]
+wba_operator = "You"
 
 [[agent]]
 # https://developers.facebook.com/docs/sharing/webmasters/web-crawlers/

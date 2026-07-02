@@ -8,24 +8,10 @@ these otherwise fall through to UNKNOWN despite being ordinary app traffic.
 
 from __future__ import annotations
 
-import re
-from functools import lru_cache
-
-from ..dataload import load_list
 from ..model import ClientFeatures, Kind, Signal
+from ..uas import app_stack_token
 from .base import Classifier
 from .tags import identifies_as_known_agent
-
-_APP_TOKENS = re.compile("|".join(re.escape(token) for token in load_list("app_clients")), re.I)
-
-
-@lru_cache(maxsize=16384)
-def app_stack_token(ua: str | None) -> str | None:
-    """The native-app networking token in the UA, or None."""
-    if not ua:
-        return None
-    match = _APP_TOKENS.search(ua)
-    return match.group(0) if match else None
 
 
 class AppClientClassifier(Classifier):

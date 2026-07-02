@@ -557,6 +557,18 @@ document.addEventListener('keydown', function (event) {
   }
 }, false);
 
+// Escape clears every active filter, wherever it came from (typed, a table
+// click, or a shared URL fragment restored on load) -- the reader shouldn't
+// have to hunt down "Show all" just to get back to the whole report.
+document.addEventListener('keydown', function (event) {
+  if (event.key !== 'Escape') return;
+  if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+  var input = document.querySelector('input.filter');
+  var on = activeKind !== null || activeNet !== null || (input && input.value.trim() !== '');
+  if (!on) return;
+  runFilterControl('all');
+}, false);
+
 // Make a table's horizontal-scroll track keyboard-operable, but ONLY while it
 // actually overflows -- a focusable region with nothing to scroll is a dead tab
 // stop. Re-checked on resize and after filtering. The accessible name is taken

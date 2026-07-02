@@ -37,10 +37,12 @@ from .aggregate import (
 )
 from .format import (
     actor_spread,
+    agent_identity,
     as_display,
     client_id_parts,
     count,
     fmt_ts,
+    full_ua,
     human_bytes,
     kind_label,
     ordered_tags,
@@ -589,12 +591,14 @@ def _client_cell(profile: ClientProfile, flag: str = "") -> str:
     """Stacked identity cell: IP/network on top, AS org, then the UA (2-line clamp)."""
     prefix, org, ua = client_id_parts(profile)
     org_line = f'<div class="cid-as">{_esc(org)}</div>' if org else ""
+    raw = full_ua(profile)
+    ua_title = f' title="{_esc(raw)}"' if raw else ""
     return (
         f'<td class="cid copy" data-copy="{_esc(profile.client_id.ip)}" '
         f'title="Click to copy this id for: inspect --client">'
         f'<div class="mono cid-id">{flag}{_esc(prefix)}</div>'
         f"{org_line}"
-        f'<div class="mono cid-ua">{_esc(ua or "–")}</div></td>'
+        f'<div class="mono cid-ua"{ua_title}>{_esc(ua or "–")}</div></td>'
     )
 
 
@@ -701,12 +705,14 @@ def _folded_tbody(
             f"class='asum frow' data-filter=\"{_esc(haystack)}\""
             f"{_netcol_attr([profile], net_col or {})}"
         )
+    raw = full_ua(profile)
+    ua_title = f' title="{_esc(raw)}"' if raw else ""
     toggle = _disclosure(f"Show {count(len(members), 'member IP')} of {prefix}")
     summary = (
         f"<tr {row_attrs}><td class='cid'>{toggle}"
         f"{flag}<span class='mono'>{_esc(prefix)}</span>{org_html}"
         f"<span class='muted'> · {count(len(members), 'IP')}</span>"
-        f'<span class="actor-ua mono">{_esc(ua or "–")}</span></td>'
+        f'<span class="actor-ua mono"{ua_title}>{_esc(ua or "–")}</span></td>'
         f"<td class='num'>{profile.features.request_count:,}</td>"
         f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
         f"<td class='num'>{cls.confidence:.0%}</td>"
@@ -778,11 +784,24 @@ def _actor_tbody(
             f"class='asum frow' data-filter=\"{_esc(haystack)}\""
             f"{_netcol_attr(list(actor.members), net_col)}"
         )
+    raw = full_ua(actor.lead)
+    ua_title = f' title="{_esc(raw)}"' if raw else ""
     toggle = _disclosure(f"Show {count(len(actor.members), 'grouped client')}")
+    # For a known agent, lead with its own identity -- name, else an rDNS-confirmed
+    # host, else the UA token that matched it -- and demote the IP/ASN spread to a
+    # line below it (like the network's own AS org). Otherwise the spread is the
+    # only identity we have, so it stays the header line as before.
+    identity = agent_identity(actor.lead)
+    net_line = f"{_esc(spread)}{asn_html}"
+    id_html = (
+        f"<span class='cid-id mono'>{_esc(identity)}</span><div class='cid-as'>{net_line}</div>"
+        if identity
+        else net_line
+    )
     summary = (
         f"<tr {row_attrs}>"
-        f"<td class='cid'>{toggle}{flag}{_esc(spread)}{asn_html}"
-        f'<span class="actor-ua mono">{_esc(ua or "–")}</span></td>'
+        f"<td class='cid'>{toggle}{flag}{id_html}"
+        f'<span class="actor-ua mono"{ua_title}>{_esc(ua or "–")}</span></td>'
         f"<td class='num'>{actor.requests:,}</td>"
         f"<td class='num'>{human_bytes(actor.total_bytes)}</td>"
         f"<td class='num'>{cls.confidence:.0%}</td>"

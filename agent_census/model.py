@@ -231,6 +231,12 @@ class Signal:
     confidence: float
     evidence: tuple[str, ...]
     classifier: str
+    # Set only by a known-agent match: the operator's declared name and the raw
+    # UA token that matched it (or, for an ASN-primary agent, its label and
+    # ``None`` for the token). Lets the report show the agent's own identity
+    # rather than a bare IP/network, without re-deriving the match from the UA.
+    agent_name: str | None = None
+    matched_token: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -247,6 +253,10 @@ class Classification:
     # reads, so it is populated only when signals are kept (``keep_signals``); the
     # bulk ``analyze`` path leaves it empty to avoid holding a string per client.
     tag_evidence: tuple[tuple[str, str], ...] = ()
+    # The winning signal's known-agent identity, carried through from Signal (see
+    # its docstring) -- None unless a known-agent classifier won.
+    agent_name: str | None = None
+    matched_token: str | None = None
 
 
 class RobotsVerdict(str, Enum):

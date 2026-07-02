@@ -27,11 +27,20 @@ class Classifier(ABC):
     def evaluate(self, features: ClientFeatures) -> list[Signal]:
         """Return signals supporting :attr:`label` (possibly empty)."""
 
-    def _signal(self, confidence: float, evidence: list[str]) -> Signal:
+    def _signal(
+        self,
+        confidence: float,
+        evidence: list[str],
+        *,
+        agent_name: str | None = None,
+        matched_token: str | None = None,
+    ) -> Signal:
         """Helper to build a signal for this classifier's label."""
         return Signal(
             kind=self.label,
             confidence=min(confidence, 1.0),
             evidence=tuple(evidence),
             classifier=self.name,
+            agent_name=agent_name,
+            matched_token=matched_token,
         )

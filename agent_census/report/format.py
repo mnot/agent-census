@@ -320,6 +320,30 @@ def client_id_parts(profile: ClientProfile) -> tuple[str, str | None, str | None
     return prefix, org, ua
 
 
+def full_ua(profile: ClientProfile) -> str | None:
+    """The un-elided User-Agent behind a stacked cell's clamped/elided line --
+    for a hover tooltip, so a truncated UA is never a dead end."""
+    cid = profile.client_id
+    return cid.user_agent if cid.user_agent is not None else profile.features.user_agent
+
+
+def agent_identity(profile: ClientProfile) -> str | None:
+    """A known agent's own identity for a header line, in priority order: its
+    declared name, an rDNS-confirmed hostname, or the raw UA token that matched
+    it. ``None`` when nothing named this client -- it isn't a recognised agent."""
+    cls = profile.classification
+    if cls.agent_name:
+        return cls.agent_name
+    verification = profile.verification
+    if (
+        verification is not None
+        and verification.status is VerificationStatus.VERIFIED
+        and verification.resolved_host
+    ):
+        return verification.resolved_host
+    return cls.matched_token
+
+
 def client_label(profile: ClientProfile) -> str:
     """The one-line ``identity | user-agent [· AS org]`` label (Markdown, headers)."""
     prefix, org, ua = client_id_parts(profile)

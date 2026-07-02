@@ -480,8 +480,18 @@ def verify_claim(claim: WbaClaim, public_key: Ed25519PublicKey) -> tuple[WbaStat
     except InvalidSignature:
         return WbaStatus.FORGED, "Ed25519 signature does not verify against the operator's key"
     expires = claim.params.expires
-    if expires is not None and claim.timestamp is not None and claim.timestamp > expires:
-        return WbaStatus.EXPIRED, "valid signature, but the request post-dates its `expires`"
+    if expires is not None:
+        if claim.timestamp is None:
+            # The signature carries an `expires`, but the request has no timestamp
+            # to check it against, so freshness can't be confirmed. Don't grant the
+            # fresh VERIFIED tier on an unverifiable freshness claim -- treat it as
+            # not-fresh (still a valid signature, so EXPIRED, not FORGED).
+            return (
+                WbaStatus.EXPIRED,
+                "valid signature, but the request has no timestamp to check `expires`",
+            )
+        if claim.timestamp > expires:
+            return WbaStatus.EXPIRED, "valid signature, but the request post-dates its `expires`"
     return WbaStatus.VERIFIED, "valid Ed25519 signature, within its freshness window"
 
 
@@ -492,6 +502,14 @@ def verify_claim(claim: WbaClaim, public_key: Ed25519PublicKey) -> tuple[WbaStat
 # Signature-Agent) can build the same URL without duplicating the path.
 WELL_KNOWN_DIRECTORY = "/.well-known/http-message-signatures-directory"
 _FETCH_TIMEOUT = 10
+# The directory URL comes from the attacker-controlled ``Signature-Agent`` header,
+# and ``urlsplit`` accepts any scheme (``file``, ``ftp``, ``data``, ...) while
+# ``urlopen`` will happily follow one -- so a crafted ``Signature-Agent`` would
+# otherwise be an SSRF / local-file-read primitive. Only http(s) is ever fetched;
+# a rejected scheme fails closed to UNVERIFIABLE (never forgery), like any other
+# unobtainable key. Mirrors ``wba_check._ALLOWED_SCHEMES``.
+_ALLOWED_SCHEMES = frozenset({"http", "https"})
+_MAX_DIRECTORY_BYTES = 4 * 1024 * 1024
 
 
 def _key_store_path() -> Path:
@@ -505,10 +523,23 @@ def _directory_url(agent_url: str) -> str:
 
 
 def _http_get(url: str) -> str | None:
+    # Refuse any non-http(s) scheme before a request is made: the URL derives from
+    # the untrusted Signature-Agent header, so file://, ftp://, etc. must not reach
+    # urlopen. A refused fetch returns None, which the caller treats as "key not
+    # obtained" -- UNVERIFIABLE, never a false verify.
+    try:
+        scheme = urllib.parse.urlsplit(url).scheme.lower()
+    except ValueError:
+        return None
+    if scheme not in _ALLOWED_SCHEMES:
+        return None
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=_FETCH_TIMEOUT) as response:  # noqa: S310
-            return str(response.read().decode("utf-8", "replace"))
+            # Cap the body: the directory is fetched from an untrusted host, so a
+            # huge/endless response must not exhaust memory. A JWK directory is a
+            # few keys; 4 MiB is ample.
+            return str(response.read(_MAX_DIRECTORY_BYTES).decode("utf-8", "replace"))
     except (OSError, ValueError):
         return None
 

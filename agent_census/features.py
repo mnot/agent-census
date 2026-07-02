@@ -177,7 +177,11 @@ _REQUEST_BUCKETS = 40
 
 def _iat_bucket(delta: float) -> int:
     """Histogram bucket for an inter-arrival delta in seconds."""
-    if delta <= 0:
+    # Guard non-finite deltas: int(math.log10(inf)) raises OverflowError and
+    # int(nan) raises ValueError. Not reachable via the shipped parsers (a
+    # datetime can't yield an inf/nan timestamp), but this is a low-level
+    # primitive, so fail safe into the underflow bucket rather than crash.
+    if not math.isfinite(delta) or delta <= 0:
         return 0
     idx = int((math.log10(delta) - _IAT_MIN_EXP) * _IAT_PER_DECADE) + 1
     return max(1, min(idx, _IAT_BUCKETS - 1))
@@ -319,7 +323,9 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
     def add(self, entry: LogEntry) -> None:
         path = entry.path
         self.count += 1
-        self.total_bytes += entry.bytes_sent or 0
+        # Clamp to 0: a malformed/adversarial bytes field could be negative, which
+        # would silently corrupt total_bytes (and the mean/bandwidth built on it).
+        self.total_bytes += max(entry.bytes_sent or 0, 0)
         if self.user_agent is None and entry.user_agent:
             self.user_agent = entry.user_agent
         if (self.as_org is None or self.as_number is None) and entry.extra:
@@ -464,10 +470,15 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
             self._minute_counts = {}
         minute = int(ts // 60)
         self._minute_counts[minute] = self._minute_counts.get(minute, 0) + 1
-        # Inter-arrival in stream order (≈ time order); skip out-of-order negatives.
-        if self._prev_ts is not None and ts >= self._prev_ts:
+        # Inter-arrival in stream order (≈ time order). An out-of-order (earlier)
+        # timestamp is skipped -- but the baseline must NOT retreat to it, or the
+        # next in-order delta is measured from the wrong point and inflated. Keep
+        # _prev_ts monotonic so it always tracks the latest timestamp seen.
+        if self._prev_ts is None:
+            self._prev_ts = ts
+        elif ts >= self._prev_ts:
             self._record_delta(ts - self._prev_ts)
-        self._prev_ts = ts
+            self._prev_ts = ts
 
     def _record_delta(self, delta: float) -> None:
         self._iat_count += 1

@@ -44,10 +44,14 @@ def _type_ok(value: object, kind: str) -> bool:
         return isinstance(value, date)
     if kind == "str[]":
         return isinstance(value, list) and all(isinstance(x, str) for x in value)
-    if kind == "int[]":
-        # bool is an int subclass in Python; exclude it so `true` isn't a valid ASN.
+    if kind in ("int[]", "asn[]"):
+        # bool is an int subclass in Python; exclude it so `true` isn't a valid int.
+        # "asn[]" additionally bounds each value to the 32-bit ASN range, rejecting
+        # a negative or absurdly large number that would reach a Radar/URL lookup.
+        ranged = kind == "asn[]"
         return isinstance(value, list) and all(
-            isinstance(x, int) and not isinstance(x, bool) for x in value
+            isinstance(x, int) and not isinstance(x, bool) and (not ranged or 0 <= x <= 0xFFFFFFFF)
+            for x in value
         )
     raise AssertionError(f"unknown schema type {kind!r}")  # pragma: no cover
 
@@ -182,7 +186,7 @@ _AGENT_SCHEMA = {
     "ranges": "str[]",
     "ranges_url": "str",
     "format": "str",
-    "asns": "int[]",
+    "asns": "asn[]",
     "asn_primary": "bool",
     "rdns_fallback": "bool",
     "user_triggered": "bool",
@@ -193,7 +197,7 @@ _SOURCE_SCHEMA = {
     "ranges": "str[]",
     "ranges_url": "str",
     "format": "str",
-    "asns": "int[]",
+    "asns": "asn[]",
 }
 _NETWORK_SCHEMA = {
     "name": "str",
@@ -202,7 +206,7 @@ _NETWORK_SCHEMA = {
     "ranges": "str[]",
     "ranges_url": "str",
     "format": "str",
-    "asns": "int[]",
+    "asns": "asn[]",
 }
 _FAMILY_SCHEMA = {
     "name": "str",

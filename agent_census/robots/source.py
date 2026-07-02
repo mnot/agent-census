@@ -17,6 +17,10 @@ from .. import USER_AGENT
 from ..errors import ConfigError
 
 _FETCH_TIMEOUT = 10
+# Cap the fetched body so a malicious or misconfigured origin can't exhaust memory
+# with an enormous (or endless) robots.txt. 512 KiB is Google's documented parse
+# limit for robots.txt, so nothing legitimate is lost.
+_MAX_ROBOTS_BYTES = 512 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,7 +57,7 @@ def from_network(url: str) -> RobotsDoc:
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=_FETCH_TIMEOUT) as response:  # noqa: S310
-            raw = response.read()
+            raw = response.read(_MAX_ROBOTS_BYTES)
     except (OSError, ValueError) as exc:
         raise ConfigError(f"could not fetch robots.txt from {url}: {exc}") from exc
     text = raw.decode("utf-8", errors="replace")

@@ -30,6 +30,31 @@ def test_rules_basic_allow_deny() -> None:
     assert not rules.can_fetch("BadBot", "/anything")
 
 
+def test_wildcard_and_anchor_rules() -> None:
+    # RFC 9309 §2.2.3: '*' matches any run, a trailing '$' anchors the path end.
+    # The stdlib matcher ignores both, so these all read as allowed there.
+    pdf = RobotsRules("User-agent: *\nDisallow: /private/*.pdf$")
+    assert not pdf.can_fetch("*", "/private/report.pdf")  # wildcard + anchor bites
+    assert pdf.can_fetch("*", "/private/report.txt")  # different extension is fine
+    assert pdf.can_fetch("*", "/private/report.pdf.gz")  # $ anchor: not the end
+
+    mid = RobotsRules("User-agent: *\nDisallow: /*?session=")
+    assert not mid.can_fetch("*", "/page?session=1")  # mid-string wildcard
+
+    exact = RobotsRules("User-agent: *\nDisallow: /admin$")
+    assert not exact.can_fetch("*", "/admin")  # exactly /admin is blocked
+    assert exact.can_fetch("*", "/admin/panel")  # anything longer is not
+
+
+def test_most_specific_rule_wins_and_allow_breaks_ties() -> None:
+    # The longest matching pattern decides; a same-length Allow beats a Disallow.
+    rules = RobotsRules("User-agent: *\nDisallow: /a/\nAllow: /a/keep")
+    assert rules.can_fetch("*", "/a/keep")  # more specific Allow
+    assert not rules.can_fetch("*", "/a/block")  # only the Disallow matches
+    tie = RobotsRules("User-agent: *\nDisallow: /p\nAllow: /p")
+    assert tie.can_fetch("*", "/p")  # equal length -> Allow wins
+
+
 def test_matched_group_and_crawl_delay() -> None:
     rules = RobotsRules(ROBOTS)
     assert rules.matched_group("BadBot") == "BadBot"
@@ -93,6 +118,29 @@ def test_compliance_unknown_without_rules() -> None:
     feats = extract_features(entries)
     report = evaluate(entries, feats, rules, None)
     assert report.verdict is RobotsVerdict.UNKNOWN
+
+
+def test_from_network_caps_the_response_size(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # A hostile/misconfigured origin serving an enormous robots.txt must not be
+    # buffered whole: from_network reads at most _MAX_ROBOTS_BYTES.
+    import urllib.request
+
+    from agent_census.robots import source
+
+    class _Resp:
+        def __enter__(self):  # type: ignore[no-untyped-def]
+            return self
+
+        def __exit__(self, *_a: object) -> None:
+            return None
+
+        def read(self, size: int = -1) -> bytes:
+            assert size == source._MAX_ROBOTS_BYTES  # capped, not an unbounded read
+            return b"a" * size
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: _Resp())
+    doc = source.from_network("https://example.invalid/robots.txt")
+    assert len(doc.text) == source._MAX_ROBOTS_BYTES
 
 
 def test_url_for_host_variants() -> None:

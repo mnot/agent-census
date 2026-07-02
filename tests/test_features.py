@@ -66,6 +66,14 @@ def test_volume_and_bandwidth() -> None:
     assert feats.mean_bytes == 200
 
 
+def test_negative_bytes_are_clamped() -> None:
+    # A malformed/adversarial bytes field must not push total_bytes negative.
+    feats = extract_features(
+        [entry("/a", bytes_sent=100), entry("/b", bytes_sent=-500, offset=1)]
+    )
+    assert feats.total_bytes == 100
+
+
 def test_status_ratios_and_404_paths() -> None:
     entries = [
         entry("/x", status=404, offset=0),
@@ -156,6 +164,22 @@ def test_regular_timing_low_cv() -> None:
     assert feats.rate_regularity is not None
     assert feats.rate_regularity < 0.01
     assert feats.inter_arrival_median == 60.0
+
+
+def test_out_of_order_timestamp_keeps_baseline_monotonic() -> None:
+    # An earlier-than-previous timestamp (clock skew, interleaved workers) is
+    # skipped, and the baseline must not retreat to it -- otherwise the next
+    # in-order gap is measured from the wrong point and over-reported.
+    from agent_census.features import FeatureAccumulator
+
+    acc = FeatureAccumulator()
+    for off in (0, 120, 60, 180):  # 60 arrives late, after 120
+        acc.add(entry("/p", offset=off))
+    feats = acc.finalize()
+    # Deltas: 0->120 and 120->180; the late 60 is dropped, not used as a baseline
+    # (which would have measured 120->? as 180-60=120 and hidden the real 60 gap).
+    assert feats.inter_arrival_min == 60.0
+    assert feats.inter_arrival_mean == pytest.approx(90.0)
 
 
 def test_high_volume_timing_is_bounded_but_accurate() -> None:
@@ -278,3 +302,12 @@ def test_request_buckets_empty_for_single_minute_burst() -> None:
 
 def test_request_buckets_empty_without_requests() -> None:
     assert extract_features([]).request_buckets == ()
+
+
+def test_iat_bucket_handles_non_finite_deltas() -> None:
+    # int(math.log10(inf)) / int(nan) would raise; the guard must fail safe.
+    from agent_census.features import _iat_bucket
+
+    assert _iat_bucket(float("inf")) == 0
+    assert _iat_bucket(float("nan")) == 0
+    assert _iat_bucket(-1.0) == 0

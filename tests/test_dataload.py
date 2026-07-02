@@ -70,7 +70,8 @@ def test_ua_signatures_load() -> None:
     sig = load_ua_signatures()
     assert "applewebkit" in sig.browser_engines
     assert "scrapy" in sig.automation_substrings
-    assert sig.automation_standalone_words == ("feed",)
+    assert "rss" not in sig.automation_substrings  # anchored, not a bare substring
+    assert sig.automation_standalone_words == ("feed", "rss")
     assert sig.automation_suffix_words == ("bot",)
     assert "puppeteer" in sig.headless_engines
     assert "curl" in sig.library_names
@@ -230,9 +231,19 @@ def test_validate_rejects_unknown_key() -> None:
 
 
 def test_validate_rejects_bad_type() -> None:
-    # asns must be a list of ints, not strings.
-    with pytest.raises(ConfigError, match=r"'asns' must be int\[\]"):
+    # asns must be a list of AS numbers, not strings.
+    with pytest.raises(ConfigError, match=r"'asns' must be asn\[\]"):
         _validate_records("x.toml", "agent", [{"name": "X", "asns": ["35237"]}], _AGENT_SCHEMA)
+
+
+def test_validate_rejects_out_of_range_asn() -> None:
+    # An AS number outside the 32-bit range is rejected, not silently accepted.
+    with pytest.raises(ConfigError, match=r"'asns' must be asn\[\]"):
+        _validate_records("x.toml", "agent", [{"name": "X", "asns": [-1]}], _AGENT_SCHEMA)
+    with pytest.raises(ConfigError, match=r"'asns' must be asn\[\]"):
+        _validate_records(
+            "x.toml", "agent", [{"name": "X", "asns": [4294967296]}], _AGENT_SCHEMA
+        )
 
 
 def test_validate_rejects_missing_required() -> None:

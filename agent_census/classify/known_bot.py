@@ -35,9 +35,9 @@ class KnownBotClassifier(Classifier):
             return self._by_asn(features)
         token, spec = known
         confidence = _T["ua_base"]
-        # top_evidence() in report/format.py drops evidence[0] whenever agent_name is
-        # set, on the assumption that it's this same identity declaration -- keep it
-        # first if more evidence is ever prepended.
+        # top_evidence() in report/format.py drops evidence[0] (boilerplate_lead=True)
+        # in favour of whatever more specific evidence follows -- keep the identity
+        # declaration first if more evidence is ever prepended.
         evidence = [f"User-Agent declares {token!r}, a known {self.descriptor}"]
         if features.fetched_robots_txt:
             confidence += _T["robots_bonus"]
@@ -48,9 +48,11 @@ class KnownBotClassifier(Classifier):
             and features.evasion_hits == 0
         )
         if no_probing:
+            # Confidence-only: true of nearly every declared crawler, so it's not
+            # a fact worth a caption's one line -- it would just be a second kind
+            # of boilerplate replacing the first.
             confidence += _T["no_probing_bonus"]
-            evidence.append("no vulnerability probing observed")
-        return [self._signal(confidence, evidence, agent_name=spec.name)]
+        return [self._signal(confidence, evidence, agent_name=spec.name, boilerplate_lead=True)]
 
     def _by_asn(self, features: ClientFeatures) -> list[Signal]:
         """Recognise an agent by its origin AS number when the UA doesn't name it.
@@ -68,5 +70,6 @@ class KnownBotClassifier(Classifier):
                 _T["asn_base"],
                 [f"origin AS{asn} is {label}, a recognised {self.descriptor} network"],
                 agent_name=label,
+                boilerplate_lead=True,
             )
         ]

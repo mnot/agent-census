@@ -99,6 +99,16 @@ class CloudflareParser(LogParser):
                     skip_reason="line is not valid JSON", line_no=line_no, raw_line=stripped
                 )
                 continue
+            except RecursionError:
+                # Deeply nested JSON exceeds the interpreter's recursion limit.
+                # RecursionError is a RuntimeError, not a ValueError, so it would
+                # otherwise escape and abort the whole run on one hostile line.
+                yield ParseOutcome(
+                    skip_reason="JSON line is nested too deeply",
+                    line_no=line_no,
+                    raw_line=stripped,
+                )
+                continue
             if not isinstance(record, dict):
                 yield ParseOutcome(
                     skip_reason="JSON line is not an object", line_no=line_no, raw_line=stripped

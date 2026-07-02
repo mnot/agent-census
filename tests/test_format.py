@@ -24,6 +24,7 @@ from agent_census.report.format import (
     elide_ua,
     feature_rows,
     human_duration,
+    md_escape,
     top_evidence,
     truncate,
 )
@@ -117,6 +118,32 @@ def test_top_evidence_empty_when_only_identity_declaration() -> None:
         ("User-Agent declares 'Mastodon', a known social-preview / link-unfurl bot",)
     )
     assert top_evidence(profile) == "–"
+
+
+def _boilerplate_profile(evidence: tuple[str, ...]) -> ClientProfile:
+    return ClientProfile(
+        client_id=ClientId(ip="203.0.113.1", user_agent="MyApp/1.0 CFNetwork/1240"),
+        entries=(),
+        features=ClientFeatures(),
+        classification=Classification(
+            primary=Kind.APP, confidence=0.65, evidence=evidence, boilerplate_lead=True
+        ),
+    )
+
+
+def test_top_evidence_skips_boilerplate_lead_without_an_agent_name() -> None:
+    # App and a below-threshold known-bot/app match carry no agent_name (there's
+    # no declared identity to head the row with) but still flag evidence[0] as
+    # boilerplate -- the skip must not depend on agent_name being set too.
+    profile = _boilerplate_profile(("native-app networking stack in User-Agent (CFNetwork)",))
+    assert top_evidence(profile) == "–"
+
+
+def test_top_evidence_boilerplate_lead_still_yields_to_real_evidence() -> None:
+    profile = _boilerplate_profile(
+        ("native-app networking stack in User-Agent (CFNetwork)", "polls just 1 URL(s) repeatedly")
+    )
+    assert top_evidence(profile) == "polls just 1 URL(s) repeatedly"
 
 
 def _agent_profile(
@@ -303,3 +330,10 @@ def test_count_pluralises_to_match() -> None:
 )
 def test_human_duration(seconds: int, text: str) -> None:
     assert human_duration(seconds) == text
+
+
+def test_md_escape_neutralises_pipe_and_line_breaks() -> None:
+    # A pipe or any CR/LF in a cell would break the Markdown table structure.
+    assert md_escape("a|b") == "a\\|b"
+    assert md_escape("a\r\nb") == "a  b"  # CRLF -> two spaces, no row break
+    assert md_escape("a\rb") == "a b"  # bare CR is neutralised too

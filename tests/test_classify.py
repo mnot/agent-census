@@ -49,6 +49,21 @@ def test_lone_probe_is_a_scanner_not_a_singleton() -> None:
     assert classify_client(feats).primary is Kind.VULN_SCANNER
 
 
+def test_signal_confidence_never_goes_negative() -> None:
+    # The browser classifier sums and subtracts weights and can net below 0 (a
+    # metronomic, non-browser-shaped client). Signal.confidence must stay in [0, 1].
+    from agent_census.classify.browser import BrowserClassifier
+
+    feats = ClientFeatures(
+        request_count=200,
+        rate_regularity=0.0,  # perfectly metronomic -> penalty
+        asset_coload_ratio=0.0,
+        ua_looks_like_browser=False,
+    )
+    for signal in BrowserClassifier().evaluate(feats):
+        assert 0.0 <= signal.confidence <= 1.0
+
+
 def test_one_probe_amid_normal_traffic_stays_incidental() -> None:
     # A single probe buried in otherwise normal traffic is not enough on its own.
     feats = ClientFeatures(
@@ -228,7 +243,12 @@ def test_headless_with_no_purpose_is_automation() -> None:
         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) HeadlessChrome/149.0.0.0 Safari/537.36",
     )
-    assert classify_client(feats).primary is Kind.AUTOMATION
+    result = classify_client(feats)
+    assert result.primary is Kind.AUTOMATION
+    # The fallback's evidence is the whole reason for the verdict -- the same
+    # sentence for every such client -- so it's flagged boilerplate, not caption
+    # material (a report should show nothing rather than that restatement).
+    assert result.boilerplate_lead is True
 
 
 def test_automation_loses_to_an_identified_purpose() -> None:
@@ -417,6 +437,19 @@ def test_safari_year_numbering_ages_on_continuous_scale() -> None:
     assert band("18.0") is None  # last year's release -- not yet stale
     assert band("17.0") == "stale"  # ~2+ years behind by mid-2026
     assert band("14.1") == "stale"  # but still only stale, never ancient
+
+
+def test_safari_age_band_has_a_neutral_middle() -> None:
+    # Safari's band is current (fresh) / stale (>=2yr) with a deliberate neutral
+    # None in between (~one year behind is normal for OS-bundled Safari).
+    from agent_census.uas import _safari_age_band
+
+    assert _safari_age_band(-20.0) is None  # implausibly ahead: no credit
+    assert _safari_age_band(0.0) == "current"
+    assert _safari_age_band(13.0) == "current"  # upper edge of current
+    assert _safari_age_band(18.0) is None  # neutral middle -- neither current nor stale
+    assert _safari_age_band(24.0) == "stale"  # two annual versions behind
+    assert _safari_age_band(60.0) == "stale"  # never escalates past stale
 
 
 def test_impossible_version_browser_is_capped() -> None:
@@ -623,6 +656,8 @@ def test_combiner_spoofed_browser_from_datacenter() -> None:
     result = combine(signals, _FAKE_BROWSER, datacenter=True, unknown_threshold=0.45)
     assert result.primary is Kind.SPOOFED_BROWSER
     assert {"browser-ua", "no-assets", "cold", "datacenter"} <= result.tags
+    # Same fixed-sentence-is-the-whole-reason shape as the automation fallback.
+    assert result.boilerplate_lead is True
 
 
 def test_browser_version_parsing_and_age() -> None:
@@ -643,6 +678,12 @@ def test_browser_version_parsing_and_age() -> None:
     ) == ("safari", 16)
     # Non-browsers report nothing.
     assert uas.browser_version("curl/8.0") is None
+
+    # A crafted UA with a multi-thousand-digit version must not crash (int() would
+    # raise on Python 3.11+ past the 4300-digit limit); the capture is length-bounded.
+    huge = "Mozilla/5.0 Chrome/" + "9" * 100_000 + " Safari/537.36"
+    parsed = uas.browser_version(huge)
+    assert parsed is not None and parsed[0] == "chrome"
 
     at = datetime(2026, 6, 1, tzinfo=timezone.utc)
     old = uas.version_age_months("Chrome/106.0.0.0", at)
@@ -671,6 +712,18 @@ def test_contact_marker_in_ua_reads_as_a_bot_not_a_browser() -> None:
         "(KHTML, like Gecko) Version/17 Safari/605.1.15"
     )
     assert uas.looks_like_browser(real) and not uas.declares_bot(real)
+
+
+def test_rss_declares_bot_only_as_a_whole_word() -> None:
+    from agent_census import uas
+
+    # 'rss' is a short token, so it must match as a whole word only -- otherwise
+    # it fires inside ordinary product names / surnames like 'Larsson'.
+    assert not uas.declares_bot("Mozilla/5.0 (X11) Larsson/1.0")
+    assert not uas.declares_bot("Carsson/2.0")
+    # A genuine RSS-tool token is still recognised.
+    assert uas.declares_bot("Some RSS Reader/1.0")
+    assert uas.declares_bot("rss-parser/3.1")
 
 
 def test_combiner_fake_browser_without_datacenter_stays_unknown() -> None:
@@ -1298,6 +1351,10 @@ def test_known_bot_match_without_declared_name_carries_no_agent_name() -> None:
         ClientFeatures(request_count=4, user_agent="Mozilla/5.0 (compatible; Googlebot/2.1)")
     )
     assert result.agent_name is None
+    # But its evidence[0] is still flagged as boilerplate (it's just the identity
+    # declaration) regardless of whether `name` is set -- a report caption should
+    # skip it either way, not just when there's a declared name to show instead.
+    assert result.boilerplate_lead is True
 
 
 def test_known_bot_match_carries_declared_name_to_classification() -> None:
@@ -1339,7 +1396,11 @@ def test_native_app_stack_is_app_kind() -> None:
     cfnet = ClientFeatures(
         request_count=20, user_agent="HackerNews/1541 CFNetwork/3860.600.12 Darwin/25.5.0"
     )
-    assert classify_client(cfnet).primary is Kind.APP
+    result = classify_client(cfnet)
+    assert result.primary is Kind.APP
+    # It's the same evidence for every App client -- naming the platform stack,
+    # never a fact specific to this one -- so a report caption should skip it.
+    assert result.boilerplate_lead is True
     dart = ClientFeatures(request_count=5, user_agent="Dart/3.11 (dart:io)")
     assert classify_client(dart).primary is Kind.APP
 

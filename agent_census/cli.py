@@ -273,7 +273,8 @@ def _add_shared(parser: argparse.ArgumentParser) -> None:
         metavar="H",
         default=24.0,
         help="free a client's state after H hours of inactivity to cap memory "
-        "(default: %(default)s; 0 disables)",
+        "(default: %(default)s; 0 disables -- with it off, distinct-client memory is "
+        "unbounded, so a client rotating its User-Agent per request can grow it freely)",
     )
     out_group.add_argument(
         "--max-per-kind",
@@ -695,6 +696,7 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
             keep_signals=args.command in ("inspect", "calibrate"),
             quiescent_seconds=quiescent,
             max_per_kind=args.max_per_kind,
+            min_requests=getattr(args, "min_requests", 1),  # analyze-only; others keep every client
             vhosts=args.vhost,
             asn_resolver=asn_resolver,
             since_seconds=args.since,
@@ -792,12 +794,10 @@ def main(argv: Sequence[str] | None = None) -> int:  # pylint: disable=too-many-
             args.max_per_kind = 0  # the digest needs every client, not the top-N tail
         ctx = _run_pipeline(args)
         if args.command == "analyze":
+            # --min-requests is enforced inside the pipeline now (at the single
+            # finalisation point), so summary, cross-tab, detail, and the header
+            # client/singleton counts all reflect the same surviving set.
             result = ctx.result
-            if args.min_requests > 1:
-                kept = tuple(
-                    p for p in result.profiles if p.features.request_count >= args.min_requests
-                )
-                result = dataclasses.replace(result, profiles=kept)
             source = _source_label(args)
             if args.md:
                 text = render_report(

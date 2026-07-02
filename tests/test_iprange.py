@@ -133,6 +133,17 @@ def test_range_index_empty_is_false() -> None:
     assert not RangeIndex([], []).contains("1.2.3.4")
 
 
+def test_ipv4_mapped_ipv6_matches_ipv4_ranges() -> None:
+    # A dual-stack server may log an IPv4 peer as ::ffff:a.b.c.d; it must still
+    # match the IPv4 range it really belongs to (contains and ip_in both).
+    idx = RangeIndex.from_networks(parse_networks(("203.0.113.0/24",)))
+    assert idx.contains("::ffff:203.0.113.9")
+    assert idx.contains("203.0.113.9")
+    assert not idx.contains("::ffff:198.51.100.1")
+    nets = parse_networks(("203.0.113.0/24",))
+    assert ip_in("::ffff:203.0.113.9", nets) is not None
+
+
 def test_fetch_range_intervals_caches_the_parse(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     import agent_census.iprange as ir
 

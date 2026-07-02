@@ -702,8 +702,13 @@ def _parse_asns(text: str) -> list[int]:
     out: list[int] = []
     for token in re.split(r"[,\s]+", text.strip()):
         token = token[2:] if token[:2].lower() == "as" else token
-        if token.isdigit():
-            out.append(int(token))
+        # A 32-bit ASN is at most 10 digits; the length bound both rejects
+        # nonsense and keeps int() away from the 4300-digit conversion limit
+        # (which would raise ValueError on an absurdly long --asn token).
+        if token.isdigit() and len(token) <= 10:
+            asn = int(token)
+            if 0 <= asn <= 0xFFFFFFFF:
+                out.append(asn)
     return out
 
 

@@ -26,6 +26,13 @@ def test_parse_asns_accepts_as_prefix_and_separators() -> None:
     assert _parse_asns("garbage, , AS") == []
 
 
+def test_parse_asns_rejects_out_of_range_and_absurd_tokens() -> None:
+    # Above the 32-bit ASN ceiling is dropped, not accepted.
+    assert _parse_asns("4294967296") == []
+    # A multi-thousand-digit token must not crash int() (4300-digit limit).
+    assert _parse_asns("9" * 100_000) == []
+
+
 def test_org_tokens_drops_generic_words() -> None:
     assert _org_tokens("Hetzner Online GmbH") == {"hetzner"}  # 'online'/'gmbh' generic
     assert _org_tokens("Amazon.com, Inc.") == {"amazon", "com"}

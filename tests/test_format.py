@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from agent_census.model import (
     BotVerification,
+    ChannelVerdict,
     Classification,
     ClientFeatures,
     ClientId,
@@ -14,6 +15,7 @@ from agent_census.model import (
 import pytest
 
 from agent_census.report.format import (
+    agent_identity,
     as_label,
     client_label,
     count,
@@ -83,6 +85,70 @@ def test_top_evidence_falls_back_when_not_verified() -> None:
     assert top_evidence(_profile(None)) == "UA names Googlebot"
     inconclusive = BotVerification(VerificationStatus.UNVERIFIED, evidence=("lookup failed",))
     assert top_evidence(_profile(inconclusive)) == "UA names Googlebot"
+
+
+def _agent_profile(
+    *,
+    agent_name: str | None = None,
+    matched_token: str | None = None,
+    verification: BotVerification | None = None,
+) -> ClientProfile:
+    return ClientProfile(
+        client_id=ClientId(ip="203.0.113.1", user_agent="Googlebot/2.1"),
+        entries=(),
+        features=ClientFeatures(),
+        classification=Classification(
+            primary=Kind.SEARCH_ENGINE,
+            confidence=0.9,
+            evidence=("e",),
+            agent_name=agent_name,
+            matched_token=matched_token,
+        ),
+        verification=verification,
+    )
+
+
+def test_agent_identity_prefers_declared_name() -> None:
+    profile = _agent_profile(
+        agent_name="Googlebot",
+        matched_token="Googlebot",
+        verification=BotVerification(
+            VerificationStatus.VERIFIED, resolved_host="crawl.googlebot.com", dns=ChannelVerdict.VERIFIED
+        ),
+    )
+    assert agent_identity(profile) == "Googlebot"
+
+
+def test_agent_identity_falls_back_to_rdns_host() -> None:
+    profile = _agent_profile(
+        verification=BotVerification(
+            VerificationStatus.VERIFIED, resolved_host="crawl.googlebot.com", dns=ChannelVerdict.VERIFIED
+        )
+    )
+    assert agent_identity(profile) == "crawl.googlebot.com"
+
+
+def test_agent_identity_falls_back_to_matched_token() -> None:
+    assert agent_identity(_agent_profile(matched_token="Googlebot")) == "Googlebot"
+
+
+def test_agent_identity_none_for_an_unrecognised_client() -> None:
+    assert agent_identity(_agent_profile()) is None
+
+
+def test_agent_identity_ignores_ip_range_match_as_a_hostname() -> None:
+    # An agent verified by IP range alone (no declared domains, e.g. ClaudeBot)
+    # has `resolved_host` set to the matched CIDR by netverify, not a hostname --
+    # the `dns` channel stays NOT_CHECKED in that case. Showing the CIDR as the
+    # agent's "identity" would be a network, not a name.
+    range_only = BotVerification(
+        VerificationStatus.VERIFIED,
+        resolved_host="20.171.207.0/24",
+        ip=ChannelVerdict.VERIFIED,
+        dns=ChannelVerdict.NOT_CHECKED,
+    )
+    profile = _agent_profile(matched_token="ClaudeBot", verification=range_only)
+    assert agent_identity(profile) == "ClaudeBot"
 
 
 def _dc_profile(tags: set[str], as_org: str | None, as_number: str | None = None) -> ClientProfile:

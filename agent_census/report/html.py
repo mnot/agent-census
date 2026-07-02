@@ -8,13 +8,15 @@ external assets, no dependencies.
 
 from __future__ import annotations
 
-import html
-
 from .. import __version__
 from ..model import ClientProfile, Kind
-from ..pipeline import OTHER_HOSTING, RESIDENTIAL_NETWORK, AnalysisResult, KindRollup
+from ..pipeline import AnalysisResult, KindRollup
 from ._assets import CSS, SCRIPT
-from ._netscript import NET_SCRIPT
+from ._htmlutil import esc as _esc
+from ._htmlutil import kind_badge as _kind_badge
+from ._networktab import net_col_index as _net_col_index
+from ._networktab import netcol_attr as _netcol_attr
+from ._networktab import network_table as _network_table
 from ._sparkline import Window as _Window
 from ._sparkline import aggregate_buckets as _aggregate_buckets
 from ._sparkline import axis_span as _axis_span
@@ -28,7 +30,6 @@ from .aggregate import (
     KIND_BLURB,
     KIND_ORDER,
     ActorGroup,
-    NetworkMatrix,
     by_kind,
     clusters_present,
     group_actors,
@@ -37,41 +38,18 @@ from .aggregate import (
 )
 from .format import (
     actor_spread,
+    agent_identity,
     as_display,
     client_id_parts,
     count,
     fmt_ts,
+    full_ua,
     human_bytes,
-    kind_label,
     ordered_tags,
     tag_title,
     top_evidence,
 )
 from .geo import CountryFlags
-
-# Kind badge fills. White-text badges, so each fill is held at >=4.5:1 against
-# white (deepened along OKLCH lightness from its original hue where needed);
-# the hue family -- the actual signal -- is preserved.
-_KIND_COLORS: dict[Kind, str] = {
-    Kind.BROWSER: "#2563eb",
-    Kind.APP: "#6062ed",
-    Kind.CRAWLER: "#007d9e",
-    Kind.SEARCH_ENGINE: "#00862e",
-    Kind.ARCHIVER: "#047857",
-    Kind.SOCIAL_PREVIEW: "#0079bb",
-    Kind.AI_CRAWLER: "#7c3aed",
-    Kind.SEO_MARKETING: "#a36600",
-    Kind.DATA_HARVESTER: "#a16207",
-    Kind.IMPERSONATOR: "#b91c1c",
-    Kind.SCRAPER: "#b85900",
-    Kind.VULN_SCANNER: "#dc2626",
-    Kind.SPOOFED_BROWSER: "#d14000",
-    Kind.SPAM_BOT: "#d92476",
-    Kind.FEED_READER: "#478200",
-    Kind.MONITOR: "#008277",
-    Kind.AUTOMATION: "#78716c",
-    Kind.UNKNOWN: "#6b7280",
-}
 
 # Tag colour tokens. Each tag maps to a style token, realised as a CSS class
 # (.tag--<token>) in the report stylesheet; an unmapped tag falls through to the
@@ -213,35 +191,6 @@ def _tag_key() -> str:
     )
 
 
-# Hover descriptions for the cross-tab column headers. The egress buckets group
-# several networks, so spell out their members; the catch-all columns get a note.
-_NETWORK_HELP: dict[str, str] = {
-    "Privacy proxies": "Anonymising relays that front real users' own browsers "
-    "(iCloud Private Relay, Tor exit nodes). The source IP is not an identity.",
-    "VPNs": "Consumer VPN exit pools (e.g. NordVPN) — many users behind a shared address pool.",
-    "Corporate proxies": "Enterprise security gateways / SASE fronting a company's users "
-    "(Zscaler, Netskope).",
-    OTHER_HOSTING: (
-        "Hosting providers too small for their own column, plus any datacentre "
-        "columns still scrolled off to the right — scroll right to reveal them."
-    ),
-    RESIDENTIAL_NETWORK: "Consumer ISP, mobile, and otherwise unrecognised networks.",
-}
-
-
-def _network_title(name: str, category: str) -> str:
-    """Hover description for a cross-tab column header."""
-    if name in _NETWORK_HELP:
-        return _NETWORK_HELP[name]
-    if category == "datacenter":
-        return f"{name}: a datacenter / cloud hosting network."
-    return ""
-
-
-def _esc(text: str) -> str:
-    return html.escape(text, quote=True)
-
-
 def _page(title: str, content: str) -> str:
     return (
         '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
@@ -252,11 +201,6 @@ def _page(title: str, content: str) -> str:
         f"agent-census</a> {_esc(__version__)}.</footer>\n</main>\n"
         f"<script>{SCRIPT}</script>\n</body>\n</html>\n"
     )
-
-
-def _kind_badge(kind: Kind) -> str:
-    color = _KIND_COLORS.get(kind, "#6b7280")
-    return f'<span class="badge" style="background:{color}">{_esc(kind_label(kind))}</span>'
 
 
 def _tags_html(tags: frozenset[str]) -> str:
@@ -402,223 +346,6 @@ def _summary_table(result: AnalysisResult, patterns: dict[Kind, str], window: _W
     )
 
 
-# Client-side: recompute the network cross-tab when the toggle changes. Each body
-# cell carries data-v (its raw count); the script reformats text, shades a pale-blue
-# heat by share of the row (counts / % of kind) or column (% of network) max, and
-# bolds that group's leader. The Total column and All-kinds row stay raw counts.
-def _num(value: int) -> str:
-    return f"{value:,}" if value else "–"
-
-
-def _net_col_index(
-    matrix: NetworkMatrix | None, network_rollups: dict[str, dict[Kind, KindRollup]]
-) -> dict[str, int]:
-    """Map each raw origin-network name to the cross-tab column index it lands in.
-
-    A named column maps to itself; every datacentre folded into ``OTHER_HOSTING``
-    (and the literal ``OTHER_HOSTING`` fallback) maps to that column. This is the
-    same collapse :func:`network_matrix` applies, so a client row's column matches
-    the cell the reader clicks. Used to tag client rows for the network filter.
-    """
-    if matrix is None:
-        return {}
-    index = {net: i for i, net in enumerate(matrix.networks)}
-    out: dict[str, int] = {}
-    for net in network_rollups:
-        col = net if net in index else OTHER_HOSTING
-        if col in index:
-            out[net] = index[col]
-    return out
-
-
-def _netcol_attr(profiles: list[ClientProfile], net_col: dict[str, int]) -> str:
-    """``data-netcol`` listing the column indices an actor's members occupy.
-
-    An actor group folds clients that differ only by IP/ASN, so its members can
-    span several networks; the network filter shows the row if *any* member is in
-    the chosen column.
-    """
-    if not net_col:
-        return ""
-    idxs = sorted({net_col[p.network] for p in profiles if p.network in net_col})
-    return f' data-netcol="{" ".join(str(i) for i in idxs)}"' if idxs else ""
-
-
-def _network_table(matrix: NetworkMatrix | None) -> str:
-    if matrix is None:
-        return ""
-    nets = matrix.networks
-    has_other = OTHER_HOSTING in nets
-    # The first non-hosting column gets the thick hosted|off-network rule. Non-hosting
-    # headers carry a faint grey wash.
-    first_off = next((i for i, n in enumerate(nets) if not matrix.is_hosting(n)), None)
-
-    def div(i: int) -> str:
-        return " netdiv" if i == first_off else ""
-
-    def title(net: str) -> str:
-        desc = _network_title(net, matrix.categories.get(net, ""))
-        return f' title="{_esc(desc)}"' if desc else ""
-
-    def is_dc(net: str) -> bool:
-        return matrix.is_hosting(net) and net != OTHER_HOSTING
-
-    # Column roles. Named datacentres scroll horizontally (class ``dcs``); the pinned
-    # "Other datacenters", the off-network columns and Total stay put (``stick-r``),
-    # as does Kind on the left (``stick-l``). Other reads as part of the datacentre
-    # group, so the heavy group rule sits after it (the ``netdiv`` before off-network).
-    def role(net: str) -> str:
-        return " dcs" if is_dc(net) else " stick-r"
-
-    def hd(i: int, net: str) -> str:
-        cls = f"num vh{div(i)}{role(net)}" + ("" if matrix.is_hosting(net) else " netoff")
-        hid = " id='netotherhd'" if net == OTHER_HOSTING else ""
-        cue = "<b class='othercue' aria-hidden='true'></b>" if net == OTHER_HOSTING else ""
-        return (
-            f"<th class='{cls}'{hid}{title(net)} data-net='{i}'>"
-            f"<span>{_esc(net)}</span>{cue}</th>"
-        )
-
-    head = (
-        "<tr><th class='band'></th><th class='stick-l'>Kind</th>"
-        + "".join(hd(i, n) for i, n in enumerate(nets))
-        + "<th class='num netdiv stick-r'>Total</th></tr>"
-    )
-
-    # The Total column and All-kinds row carry their own (red) heat, keyed to the
-    # biggest per-kind and per-network total -- a different axis from the blue cells.
-    peak_row = max(matrix.row_totals.values(), default=0)
-    peak_col = max(matrix.col_totals.values(), default=0)
-
-    def heat(value: int, peak: int) -> str:
-        # Red magnitude heat as a background-IMAGE (over the cell's opaque base) so a
-        # pinned cell stays solid above the datacentre columns scrolling behind it.
-        if value <= 0 or peak <= 0:
-            return ""
-        alpha = value / peak * 0.8
-        return (
-            ' style="background-image:linear-gradient('
-            f'rgba(220,38,38,{alpha:.3f}),rgba(220,38,38,{alpha:.3f}))"'
-        )
-
-    def cell_cls(i: int, net: str) -> str:
-        return f"num mxcell{div(i)}{role(net)}" + (" othercol" if net == OTHER_HOSTING else "")
-
-    def cell_attrs(net: str, kind: Kind) -> str:
-        # The pinned Other body cells fold in whatever datacentre columns are scrolled
-        # out of view; data-agg is the static folded tail those are added onto.
-        if net != OTHER_HOSTING:
-            return ""
-        return f" data-kind='{kind.value}' data-agg='{matrix.cell(net, kind)}'"
-
-    # A band cell rides on *every* row (not a rowspan): the heat/pin script keys
-    # columns by cellIndex, so the leftmost column must be uniform across rows. The
-    # rotated label shows only on each band's first row; the rest are empty.
-    present = set(matrix.kinds)
-    rows = []
-    for ci, (cluster, members) in enumerate(clusters_present(lambda k: k in present)):
-        for offset, kind in enumerate(members):
-            cells = "".join(
-                f"<td class='{cell_cls(i, n)}' data-v='{matrix.cell(n, kind)}' "
-                f"data-net='{i}'{cell_attrs(n, kind)}>{_num(matrix.cell(n, kind))}</td>"
-                for i, n in enumerate(nets)
-            )
-            band = (
-                f"<th class='band' scope='rowgroup'><span>{_esc(cluster.label)}</span></th>"
-                if offset == 0
-                else "<td class='band'></td>"
-            )
-            tr = "<tr class='bandstart'>" if (offset == 0 and ci > 0) else "<tr>"
-            rows.append(
-                f'{tr}{band}<td class="stick-l">'
-                f'<a href="#{kind.value}">{_kind_badge(kind)}</a></td>'
-                f"{cells}<td class='num netdiv stick-r'{heat(matrix.row_totals[kind], peak_row)}>"
-                f"{matrix.row_totals[kind]:,}</td></tr>"
-            )
-
-    def total_cell(i: int, net: str) -> str:
-        col = matrix.col_totals[net]
-        cls = f"num{div(i)}{role(net)}" + (" othertot" if net == OTHER_HOSTING else "")
-        # The pinned Other total grows as datacentres scroll out of view; stash its
-        # aggregate (folded tail) and the peak so the script can re-tally and re-heat.
-        agg = f" data-agg='{col}' data-peak='{peak_col}'" if net == OTHER_HOSTING else ""
-        # data-v lets the script fold scrolled-out datacentre totals into the live
-        # Other total too (these cells aren't mxcell, so paint() leaves them alone).
-        return (
-            f"<td class='{cls}'{heat(col, peak_col)} data-net='{i}' "
-            f"data-v='{col}'{agg}>{col:,}</td>"
-        )
-
-    totals = "".join(total_cell(i, n) for i, n in enumerate(nets))
-    rows.append(
-        "<tr class='netall'><td class='band'></td>"
-        "<td class='stick-l'><strong>All kinds</strong></td>"
-        f"{totals}<td class='num netdiv stick-r'"
-        ' style="background-image:linear-gradient(rgba(220,38,38,0.8),rgba(220,38,38,0.8))">'
-        f"{matrix.total:,}</td></tr>"
-    )
-    # Phone fallback: a picker for the single network column shown when the matrix
-    # folds (see the .netcolctl media query). Defaults to the busiest network.
-    colpick = ""
-    if len(nets) > 1:
-        default_i = max(range(len(nets)), key=lambda i: matrix.col_totals[nets[i]])
-        col_opts = "".join(
-            f"<option value='{i}'{' selected' if i == default_i else ''}>"
-            f"{_esc(net)} ({matrix.col_totals[net]:,})</option>"
-            for i, net in enumerate(nets)
-        )
-        colpick = (
-            f" <label class='netcolctl'>Column <select id='netcol'>{col_opts}</select></label>"
-        )
-    control = (
-        "<div class='netctl'><label>Show <select id='netmode'>"
-        "<option value='count'>counts</option>"
-        "<option value='row'>% of kind</option>"
-        "<option value='col'>% of network</option>"
-        "</select></label>" + colpick + "</div>"
-    )
-    # The spatial guidance only makes sense with every column visible (desktop);
-    # on a phone the table folds to one network, so swap in a note about the picker.
-    spatial = (
-        "Hosting reads left of the thick rule, off-network "
-        "(relays / Tor / residential) to its right."
-        + (
-            " The named datacentres scroll horizontally; the smallest fold into the "
-            f"pinned “{_esc(OTHER_HOSTING)}” column, which tallies whatever is scrolled "
-            "out of view."
-            if has_other
-            else ""
-        )
-    )
-    narrow = (
-        " <span class='netnarrow'>On a narrow screen the table folds to one network — "
-        "choose which with the Column control above.</span>"
-        if len(nets) > 1
-        else ""
-    )
-    # Up-front affordance cue (italic/grey); the caption below carries the finer points.
-    hint = (
-        '<p class="hint">Click a cell to filter the report to that kind and network — '
-        "use “Show all” (by the filter box) to clear.</p>"
-    )
-    caption = (
-        '<p class="muted">A Total-column number filters by kind only; an All-kinds '
-        f"number by network only; “{_esc(OTHER_HOSTING)}” covers the folded small "
-        "datacentres. Counts default; the toggle switches to row or column shares "
-        "(the Total column keeps the raw count). Cell shading tracks the same axis — "
-        "across each kind, or down each network. "
-        f"<span class='netwide'>{spatial}</span>{narrow}</p>"
-    )
-    return (
-        "<h2>Requests by kind and network</h2>\n"
-        + hint
-        + control
-        + f"<div class='tscroll'><table id='nettab'>{head}{''.join(rows)}</table></div>\n"
-        + caption
-        + NET_SCRIPT
-    )
-
-
 def _section_head(window: _Window) -> str:
     """The client-table header row. The request-pattern column reads "Requests over
     <span>", naming the span its shared x-axis covers (every sparkline in the report
@@ -646,12 +373,14 @@ def _client_cell(profile: ClientProfile, flag: str = "") -> str:
     """Stacked identity cell: IP/network on top, AS org, then the UA (2-line clamp)."""
     prefix, org, ua = client_id_parts(profile)
     org_line = f'<div class="cid-as">{_esc(org)}</div>' if org else ""
+    raw = full_ua(profile)
+    ua_title = f' title="{_esc(raw)}"' if raw else ""
     return (
         f'<td class="cid copy" data-copy="{_esc(profile.client_id.ip)}" '
         f'title="Click to copy this id for: inspect --client">'
         f'<div class="mono cid-id">{flag}{_esc(prefix)}</div>'
         f"{org_line}"
-        f'<div class="mono cid-ua">{_esc(ua or "–")}</div></td>'
+        f'<div class="mono cid-ua"{ua_title}>{_esc(ua or "–")}</div></td>'
     )
 
 
@@ -674,6 +403,7 @@ def _client_row(
                 profile.client_id.ip,
                 profile.client_id.user_agent or "",
                 org or "",
+                agent_identity(profile) or "",
                 *ordered_tags(cls.tags),  # the tags shown in the Tags column
             )
         ).lower()
@@ -749,21 +479,35 @@ def _folded_tbody(
     members = profile.member_ips
     pattern = _pattern_cell_for(profile, window, peak)
     org_html = f" <span class='cid-as'>{_esc(org)}</span>" if org else ""
-    row_attrs = "class='asum'"
+    identity = agent_identity(profile)
     if filterable:
         haystack = " ".join(
-            (prefix, ua or "", org or "", *members, *ordered_tags(cls.tags))
+            (prefix, ua or "", org or "", identity or "", *members, *ordered_tags(cls.tags))
         ).lower()
         row_attrs = (
             f"class='asum frow' data-filter=\"{_esc(haystack)}\""
             f"{_netcol_attr([profile], net_col or {})}"
         )
+    else:
+        row_attrs = "class='asum'"
+    raw = full_ua(profile)
+    ua_title = f' title="{_esc(raw)}"' if raw else ""
     toggle = _disclosure(f"Show {count(len(members), 'member IP')} of {prefix}")
+    # For a known agent, lead with its own identity and demote the network detail
+    # to a line below, matching the grouped-actor header. The fold's own prefix is
+    # often the identity already (an ASN operator label, say) -- drop it from the
+    # demoted line rather than repeat it verbatim.
+    prefix_html = f"<span class='mono'>{_esc(prefix)}</span>" if prefix != identity else ""
+    net_line = f"{prefix_html}{org_html}<span class='muted'> · {count(len(members), 'IP')}</span>"
+    id_html = (
+        f"<span class='cid-id mono'>{_esc(identity)}</span><div class='cid-as'>{net_line}</div>"
+        if identity
+        else net_line
+    )
     summary = (
         f"<tr {row_attrs}><td class='cid'>{toggle}"
-        f"{flag}<span class='mono'>{_esc(prefix)}</span>{org_html}"
-        f"<span class='muted'> · {count(len(members), 'IP')}</span>"
-        f'<span class="actor-ua mono">{_esc(ua or "–")}</span></td>'
+        f"{flag}{id_html}"
+        f'<span class="actor-ua mono"{ua_title}>{_esc(ua or "–")}</span></td>'
         f"<td class='num'>{profile.features.request_count:,}</td>"
         f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
         f"<td class='num'>{cls.confidence:.0%}</td>"
@@ -820,6 +564,11 @@ def _actor_tbody(
     pattern = _pattern_cell(
         _aggregate_buckets(actor.members, window), top_evidence(actor.lead), actor.requests, peak
     )
+    # For a known agent, lead with its own identity -- name, else an rDNS-confirmed
+    # host, else the UA token that matched it -- and demote the IP/ASN spread to a
+    # line below it (like the network's own AS org). Otherwise the spread is the
+    # only identity we have, so it stays the header line as before.
+    identity = agent_identity(actor.lead)
     row_attrs = "class='asum'"
     if filterable:
         haystack = " ".join(
@@ -828,6 +577,7 @@ def _actor_tbody(
                     f"{m.client_id.ip} {m.client_id.user_agent or ''} {m.features.as_org or ''}"
                     for m in actor.members
                 ),
+                identity or "",
                 *ordered_tags(tags),  # the tags shown in the Tags column
             )
         ).lower()
@@ -835,11 +585,19 @@ def _actor_tbody(
             f"class='asum frow' data-filter=\"{_esc(haystack)}\""
             f"{_netcol_attr(list(actor.members), net_col)}"
         )
+    raw = full_ua(actor.lead)
+    ua_title = f' title="{_esc(raw)}"' if raw else ""
     toggle = _disclosure(f"Show {count(len(actor.members), 'grouped client')}")
+    net_line = f"{_esc(spread)}{asn_html}"
+    id_html = (
+        f"<span class='cid-id mono'>{_esc(identity)}</span><div class='cid-as'>{net_line}</div>"
+        if identity
+        else net_line
+    )
     summary = (
         f"<tr {row_attrs}>"
-        f"<td class='cid'>{toggle}{flag}{_esc(spread)}{asn_html}"
-        f'<span class="actor-ua mono">{_esc(ua or "–")}</span></td>'
+        f"<td class='cid'>{toggle}{flag}{id_html}"
+        f'<span class="actor-ua mono"{ua_title}>{_esc(ua or "–")}</span></td>'
         f"<td class='num'>{actor.requests:,}</td>"
         f"<td class='num'>{human_bytes(actor.total_bytes)}</td>"
         f"<td class='num'>{cls.confidence:.0%}</td>"

@@ -243,6 +243,9 @@ class CrawlerSpec:
     # if it uses Web Bot Auth. Lets the impersonation check catch a UA claiming
     # this agent while validly signed by a different registered operator.
     wba_operator: str | None = None
+    # The agent's declared human-readable name (e.g. "Googlebot"), for display --
+    # orthogonal to every verification field above.
+    name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -413,9 +416,7 @@ def _require_agent(entry: dict[str, Any]) -> str:
     # legitimately-signed request from this agent and misfire as impersonation, so
     # this is checked eagerly rather than left to surface at classification time.
     if wba_operator and wba_operator not in {op.name for op in load_wba_operators()}:
-        return (
-            f"'wba_operator' {wba_operator!r} names no operator in agents/web_bot_auth.toml"
-        )
+        return f"'wba_operator' {wba_operator!r} names no operator in agents/web_bot_auth.toml"
     return ""
 
 
@@ -494,6 +495,7 @@ def load_tokens(category: str) -> tuple[tuple[str, CrawlerSpec], ...]:
             rdns_fallback=bool(entry.get("rdns_fallback", False)),
             user_triggered=bool(entry.get("user_triggered", False)),
             wba_operator=entry.get("wba_operator"),
+            name=entry.get("name"),
         )
         pairs.append((ua, spec))
     return tuple(pairs)

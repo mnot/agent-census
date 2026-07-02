@@ -161,7 +161,10 @@ def combine(
             tag_evidence += (
                 ("fetches-non-feeds", "a feed reader that also requested non-feed resources"),
             )
-    evidence = tuple(e for s in signals if s.kind is primary for e in s.evidence)
+    primary_signals = [s for s in signals if s.kind is primary]
+    evidence = tuple(e for s in primary_signals for e in s.evidence)
+    agent_name = next((s.agent_name for s in primary_signals if s.agent_name), None)
+    matched_token = next((s.matched_token for s in primary_signals if s.matched_token), None)
     return Classification(
         primary=primary,
         confidence=by_label[primary],
@@ -169,6 +172,8 @@ def combine(
         evidence=evidence,
         all_signals=stored,
         tag_evidence=tag_evidence,
+        agent_name=agent_name,
+        matched_token=matched_token,
     )
 
 

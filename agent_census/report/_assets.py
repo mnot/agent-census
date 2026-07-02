@@ -412,10 +412,16 @@ function setChip(id, label, value) {
   }
 }
 
+// Shared by applyFilters and the Escape handler, so "is any filter active"
+// stays one definition as filter dimensions are added.
+function anyFilterOn(query) {
+  return query.length > 0 || activeNet !== null || activeKind !== null;
+}
+
 function applyFilters() {
   var input = document.querySelector('input.filter');
   var query = input ? input.value.trim().toLowerCase() : '';
-  var on = query.length > 0 || activeNet !== null || activeKind !== null;
+  var on = anyFilterOn(query);
   // While filtering, force every "Show more" disclosure open so hidden matches
   // surface, and suspend the exclusive-accordion name= so all stay open at once;
   // restore both (name re-applied, disclosures re-collapsed) when cleared.
@@ -582,6 +588,26 @@ document.addEventListener('keydown', function (event) {
       (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar')) {
     event.preventDefault(); runFilterControl(which);
   }
+}, false);
+
+// Escape clears the active filter, wherever it came from (typed, a table
+// click, or a shared URL fragment restored on load) -- the reader shouldn't
+// have to hunt down "Show all" just to get back to the whole report.
+document.addEventListener('keydown', function (event) {
+  if (event.key !== 'Escape') return;
+  if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+  var input = document.querySelector('input.filter');
+  if (document.activeElement === input && input.value !== '') {
+    // Back out of just the typed text first -- an active kind/network filter
+    // and the page's scroll position are a separate, coarser decision the
+    // reader didn't ask to undo by clearing what they typed. A second Escape
+    // (nothing left to type) falls through to the full clear below.
+    input.value = '';
+    applyFilters();
+    return;
+  }
+  if (!anyFilterOn(input ? input.value.trim().toLowerCase() : '')) return;
+  runFilterControl('all');
 }, false);
 
 // Make a table's horizontal-scroll track keyboard-operable, but ONLY while it

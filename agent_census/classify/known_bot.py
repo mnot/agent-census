@@ -33,7 +33,7 @@ class KnownBotClassifier(Classifier):
         known = uas.match_category(features.user_agent, self.category)
         if known is None:
             return self._by_asn(features)
-        token, _spec = known
+        token, spec = known
         confidence = _T["ua_base"]
         evidence = [f"User-Agent declares {token!r}, a known {self.descriptor}"]
         if features.fetched_robots_txt:
@@ -47,7 +47,7 @@ class KnownBotClassifier(Classifier):
         if no_probing:
             confidence += _T["no_probing_bonus"]
             evidence.append("no vulnerability probing observed")
-        return [self._signal(confidence, evidence)]
+        return [self._signal(confidence, evidence, agent_name=spec.name, matched_token=token)]
 
     def _by_asn(self, features: ClientFeatures) -> list[Signal]:
         """Recognise an agent by its origin AS number when the UA doesn't name it.
@@ -63,5 +63,6 @@ class KnownBotClassifier(Classifier):
             self._signal(
                 _T["asn_base"],
                 [f"origin AS{asn} is {label}, a recognised {self.descriptor} network"],
+                agent_name=label,
             )
         ]

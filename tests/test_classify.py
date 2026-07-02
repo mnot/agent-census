@@ -1291,6 +1291,41 @@ def test_search_engine_and_social_preview_are_distinct() -> None:
     assert facebook.primary is Kind.SOCIAL_PREVIEW
 
 
+def test_known_bot_match_carries_matched_token_to_classification() -> None:
+    # Googlebot's agents/search_engine.toml entry declares no `name`, so the report
+    # falls back to the matched UA token as the agent's identity.
+    result = classify_client(
+        ClientFeatures(request_count=4, user_agent="Mozilla/5.0 (compatible; Googlebot/2.1)")
+    )
+    assert result.agent_name is None
+    assert result.matched_token == "Googlebot"
+
+
+def test_known_bot_match_carries_declared_name_to_classification() -> None:
+    # agents/ai_crawler.toml's Colossio entry declares a `name` distinct from its
+    # ua_substring -- the classifier should surface the name, not the raw token.
+    result = classify_client(
+        ClientFeatures(request_count=3, user_agent="colossio-crawler/1.0")
+    )
+    assert result.primary is Kind.AI_CRAWLER
+    assert result.agent_name == "Colossio"
+    assert result.matched_token == "colossio"
+
+
+def test_known_bot_asn_match_carries_agent_name_to_classification() -> None:
+    from agent_census.classify.ai_crawler import AiCrawlerClassifier
+
+    # agents/ai_crawler.toml's Sberbank entry is asn_primary: recognised by AS
+    # number alone (rotating spoofed-browser UAs), so there is no UA token to
+    # carry -- only the operator label.
+    signals = AiCrawlerClassifier().evaluate(
+        ClientFeatures(request_count=3, user_agent="Mozilla/5.0", as_number="AS35237")
+    )
+    assert len(signals) == 1
+    assert signals[0].agent_name == "Sberbank"
+    assert signals[0].matched_token is None
+
+
 def test_classify_client_runs_all() -> None:
     feats = ClientFeatures(
         request_count=10,

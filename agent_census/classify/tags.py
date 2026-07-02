@@ -27,7 +27,6 @@ from ..model import (
     WbaResult,
     WbaStatus,
 )
-from ..wba import operator_for_ua
 from .feed_reader import ua_is_feed_reader
 
 # Numeric knobs: the tags' own thresholds in data/tuning/tags.toml, and the ones
@@ -94,7 +93,8 @@ def impersonation(
                 "Web Bot Auth signature failed against the operator's key",
             )
         if wba.status in (WbaStatus.VERIFIED, WbaStatus.EXPIRED):
-            claimed = operator_for_ua(features.user_agent if features is not None else None)
+            ua = features.user_agent if features is not None else None
+            claimed = uas.declared_wba_operator(ua)
             if claimed is not None and wba.operator is not None and claimed != wba.operator:
                 return True, (
                     f"User-Agent claims {claimed}, but the request is validly signed by "

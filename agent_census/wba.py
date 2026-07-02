@@ -263,22 +263,6 @@ def display_operator(result: WbaResult) -> str | None:
     return result.operator or result.signer_domain
 
 
-def operator_for_ua(ua: str | None) -> str | None:
-    """The registered operator a User-Agent claims to be, by its ``ua_substrings``.
-
-    Used for the stricter operator-vs-claim check: if a UA names a registered Web
-    Bot Auth operator, a *valid* signature from a different operator is a forged
-    identity. ``None`` when the UA matches no registered operator -- then a valid
-    signature simply confirms whoever signed, with nothing to contradict.
-    """
-    if not ua:
-        return None
-    for op in load_wba_operators():
-        if any(token in ua for token in op.ua_substrings):
-            return op.name
-    return None
-
-
 def detect_result(claim: WbaClaim) -> WbaResult:
     """The phase-1 verdict for a signed request: present and attributed, unverified.
 

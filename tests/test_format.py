@@ -128,8 +128,11 @@ def test_agent_identity_falls_back_to_rdns_host() -> None:
     assert agent_identity(profile) == "crawl.googlebot.com"
 
 
-def test_agent_identity_falls_back_to_matched_token() -> None:
-    assert agent_identity(_agent_profile(matched_token="Googlebot")) == "Googlebot"
+def test_agent_identity_never_uses_matched_token_alone() -> None:
+    # matched_token is only the raw UA substring a classifier matched on -- the
+    # client's own claim, not a confirmed identity -- so it must never surface
+    # as a header on its own, verified or not.
+    assert agent_identity(_agent_profile(matched_token="Googlebot")) is None
 
 
 def test_agent_identity_none_for_an_unrecognised_client() -> None:
@@ -140,7 +143,8 @@ def test_agent_identity_ignores_ip_range_match_as_a_hostname() -> None:
     # An agent verified by IP range alone (no declared domains, e.g. ClaudeBot)
     # has `resolved_host` set to the matched CIDR by netverify, not a hostname --
     # the `dns` channel stays NOT_CHECKED in that case. Showing the CIDR as the
-    # agent's "identity" would be a network, not a name.
+    # agent's "identity" would be a network, not a name -- and with no declared
+    # name and no confirmed hostname, there is nothing left to show at all.
     range_only = BotVerification(
         VerificationStatus.VERIFIED,
         resolved_host="20.171.207.0/24",
@@ -148,7 +152,7 @@ def test_agent_identity_ignores_ip_range_match_as_a_hostname() -> None:
         dns=ChannelVerdict.NOT_CHECKED,
     )
     profile = _agent_profile(matched_token="ClaudeBot", verification=range_only)
-    assert agent_identity(profile) == "ClaudeBot"
+    assert agent_identity(profile) is None
 
 
 def _dc_profile(tags: set[str], as_org: str | None, as_number: str | None = None) -> ClientProfile:

@@ -211,6 +211,28 @@ def test_dangling_percent_fails() -> None:
         ApacheParser("%h %")
 
 
+@pytest.mark.parametrize(
+    "fmt",
+    [
+        '"%{Referer}i%{User-Agent}i"',  # two quoted headers jammed together
+        "%h%l",  # two \S+ fields with no separator
+        "%{Referer}i%{User-Agent}i",  # the reviewer's ReDoS shape
+    ],
+)
+def test_adjacent_greedy_directives_are_rejected(fmt: str) -> None:
+    # Two capturing directives with no separator compile to overlapping unbounded
+    # quantifiers -- a catastrophic-backtracking (ReDoS) hazard on hostile log
+    # content. Reject the ambiguous format at construction instead of hanging.
+    with pytest.raises(FormatSpecError):
+        ApacheParser(fmt)
+
+
+def test_path_then_query_adjacency_is_allowed() -> None:
+    # %U%q is the one safe adjacent pair: the path's class stops at '?' exactly
+    # where the query begins, so the boundary is unambiguous -- must still build.
+    ApacheParser("%h %t %m %U%q %H %>s %b")
+
+
 def test_blank_lines_are_ignored() -> None:
     outcomes = list(ApacheParser(PRESETS["common"]).parse_lines(iter(["", "   \n"])))
     assert outcomes == []

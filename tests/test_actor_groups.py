@@ -47,14 +47,62 @@ def test_group_actors_merges_same_ua_and_tags() -> None:
 
 
 def test_group_actors_splits_on_differing_tags() -> None:
-    # Same UA, but one carries an extra tag -> two groups, not one.
+    # Same UA, but one carries an extra identity/conduct tag -> two groups, not one.
     profiles = [
         _profile("1.1.1.1", "bot/1", tags=frozenset({"datacenter"})),
-        _profile("2.2.2.2", "bot/1", tags=frozenset({"datacenter", "has-cache"})),
+        _profile("2.2.2.2", "bot/1", tags=frozenset({"datacenter", "probe-paths"})),
     ]
     groups = group_actors(profiles)
     assert len(groups) == 2
     assert all(not g.collapsed for g in groups)
+
+
+def test_group_actors_merges_across_observational_tags() -> None:
+    # Same UA, differing only by an incidental per-batch observation (checked-robots,
+    # which has no opposing pole) -> one collapsed group, tag still shown: any member
+    # earning it is enough.
+    profiles = [
+        _profile("1.1.1.1", "bot/1", tags=frozenset({"datacenter"})),
+        _profile("2.2.2.2", "bot/1", tags=frozenset({"datacenter", "checked-robots"})),
+    ]
+    groups = group_actors(profiles)
+    assert len(groups) == 1
+    group = groups[0]
+    assert group.collapsed and len(group.members) == 2
+    assert group.observational_tags == frozenset({"checked-robots"})
+
+
+def test_group_actors_merges_and_shows_both_poles_when_members_disagree() -> None:
+    # has-cache and lacks-cache are opposite poles of one fact, enforced mutually
+    # exclusive per profile -- still merges (both are excluded from the fold key),
+    # and both show on the row: seeing both poles together can only mean the
+    # members disagree, which is a true, informative fact about the group ("some
+    # members cache, some don't"), not a contradiction to hide.
+    profiles = [
+        _profile("1.1.1.1", "bot/1", tags=frozenset({"datacenter", "has-cache"})),
+        _profile("2.2.2.2", "bot/1", tags=frozenset({"datacenter", "lacks-cache"})),
+    ]
+    groups = group_actors(profiles)
+    assert len(groups) == 1
+    group = groups[0]
+    assert group.collapsed
+    assert group.observational_tags == frozenset({"has-cache", "lacks-cache"})
+
+
+def test_group_actors_never_shows_singleton_on_a_folded_row() -> None:
+    # Both members individually made exactly one request, but the merged actor's
+    # total is 2 -- "singleton" would misrepresent the group even though every
+    # member carries it, so unlike the other observational tags it's excluded from
+    # display outright rather than unioned.
+    profiles = [
+        _profile("1.1.1.1", "bot/1", requests=1, tags=frozenset({"datacenter", "singleton"})),
+        _profile("2.2.2.2", "bot/1", requests=1, tags=frozenset({"datacenter", "singleton"})),
+    ]
+    groups = group_actors(profiles)
+    assert len(groups) == 1
+    group = groups[0]
+    assert group.requests == 2
+    assert "singleton" not in group.observational_tags
 
 
 def test_group_actors_sorts_groups_by_requests() -> None:

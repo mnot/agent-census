@@ -51,6 +51,27 @@ _S = load_shared_tuning()
 # these are suppressed there -- see ``ClientProfile.is_aggregate``.
 CADENCE_TAGS = frozenset({"metronomic", "bursty", "steady"})
 
+# Tags that record an incidental fact about *this batch's own requests* -- did they
+# happen to hit /robots.txt, earn a 304, arrive as a single request, use HEAD/POST
+# heavily -- rather than the client's identity or conduct. Two IPs of the same
+# verified crawler can differ on these purely because of which slice of its traffic
+# each accumulator happened to observe, so the report-time actor grouping in
+# ``report/aggregate.py`` excludes them from its folding key -- they'd otherwise
+# split an already-identical actor into separate rows.
+OBSERVATIONAL_TAGS = frozenset(
+    {"checked-robots", "has-cache", "lacks-cache", "singleton", "uses-HEAD", "post-heavy"}
+) | CADENCE_TAGS
+
+# Observational tags worth showing on a folded row -- all of them except
+# ``singleton``, unioned across members: has-cache/lacks-cache and the cadence trio
+# are mutually exclusive per profile (``if``/``elif`` in this module), so both poles
+# appearing together can only mean the members disagree -- a true, informative fact
+# about the group ("some members cache, some don't"), not a contradiction to hide.
+# ``singleton`` is excluded outright instead: it's a volume claim ("made exactly one
+# request") that's false of the merged actor the moment >1 member is folded
+# together, regardless of whether every member individually satisfies it.
+OBSERVATIONAL_DISPLAY_TAGS = OBSERVATIONAL_TAGS - {"singleton"}
+
 # Browser fingerprint thresholds, shared with the relative-tag reference predicate
 # (``classify.relative.is_reference_browser``) so "what counts as browser-like" is
 # defined once. A real browser co-loads a page's sub-resources and follows on-site

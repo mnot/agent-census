@@ -57,12 +57,24 @@ CADENCE_TAGS = frozenset({"metronomic", "bursty", "steady"})
 # heavily -- rather than the client's identity or conduct. Two IPs of the same
 # verified crawler can differ on these purely because of which slice of its traffic
 # each accumulator happened to observe, so the report-time actor grouping in
-# ``report/aggregate.py`` excludes them from its folding key (they'd otherwise split
-# an already-identical actor into separate rows) while still unioning them for
-# display on the folded row.
+# ``report/aggregate.py`` excludes them from its folding key -- they'd otherwise
+# split an already-identical actor into separate rows.
 OBSERVATIONAL_TAGS = frozenset(
     {"checked-robots", "has-cache", "lacks-cache", "singleton", "uses-HEAD", "post-heavy"}
 ) | CADENCE_TAGS
+
+# Of the observational tags, these have no opposing pole and don't depend on the
+# group's combined request volume -- safe to show on a folded row whenever *any*
+# member earned them.
+UNION_DISPLAY_TAGS = frozenset({"checked-robots", "uses-HEAD", "post-heavy"})
+
+# These are one-of-N per profile (has-cache/lacks-cache; the cadence trio), so
+# unioning them risks showing a contradictory pair on one row. Show them only when
+# every member agrees. ``singleton`` is excluded from display entirely rather than
+# put here: even a unanimous "every member made exactly one request" is false of
+# the merged actor once >1 member is folded together, since the group's total is
+# then >1 by construction.
+UNANIMOUS_DISPLAY_TAGS = frozenset({"has-cache", "lacks-cache"}) | CADENCE_TAGS
 
 # Browser fingerprint thresholds, shared with the relative-tag reference predicate
 # (``classify.relative.is_reference_browser``) so "what counts as browser-like" is

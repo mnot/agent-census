@@ -5,7 +5,7 @@ even when the IP fell outside the published ranges; only a hit that fails *both*
 channels is an impersonator, and an in-range ``VERIFIED`` still outranks all.
 
 The tier is exercised with a synthetic ``asns`` injected onto AhrefsBot's spec
-(via ``_agent_spec``, the lookup the tier uses) so the tests check the *feature*,
+(via ``_spec_for``, the lookup the tier uses) so the tests check the *feature*,
 not whichever ASNs the curated data files happen to list at the moment.
 """
 
@@ -31,16 +31,16 @@ _ASN_FMT = '%h %l %u %t "%r" %>s %b "%{Referer}i" "%{User-Agent}i" "%{MM_ASN}e"'
 @pytest.fixture(autouse=True)
 def _ahrefs_has_asns(monkeypatch: pytest.MonkeyPatch) -> None:
     """Pin a known ``asns`` onto AhrefsBot's spec, independent of the data files."""
-    real = pipeline._agent_spec
+    real = pipeline._spec_for
 
-    def fake(ua: str | None) -> tuple[str, object] | None:
-        spec = real(ua)
+    def fake(ua: str | None, categories: tuple[str, ...]) -> tuple[str, object] | None:
+        spec = real(ua, categories)
         if spec is not None and "AhrefsBot" in (ua or ""):
             token, crawler = spec
             return token, dataclasses.replace(crawler, asns=_ASNS)
         return spec
 
-    monkeypatch.setattr(pipeline, "_agent_spec", fake)
+    monkeypatch.setattr(pipeline, "_spec_for", fake)
 
 
 def _status(as_number: str | None, prior: BotVerification | None = None) -> str | None:

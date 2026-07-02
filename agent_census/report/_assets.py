@@ -282,21 +282,25 @@ section.kind { margin-top: 2.25rem; }
 .kindhead h2 { margin-top: 0;
   scroll-margin-top: calc(var(--filterbar-h, 0px) + 0.75rem); }
 .kindhead .blurb { margin-bottom: 0; }
-/* Search box + tag key sit side by side in the sticky filter bar, so the key stays
-   reachable while scrolling instead of scrolling away with the rest of the page.
-   wrap lets the key drop under the search box on a narrow viewport instead of
-   squeezing it unreadably thin. */
-.filterrow { display: flex; align-items: flex-start; flex-wrap: wrap; gap: .5rem; }
+/* Search box + tag key sit in the sticky filter bar, so the key stays reachable
+   while scrolling instead of scrolling away with the rest of the page.
+   space-between pushes the key to the far right, away from the search box, so it
+   doesn't read as another filter control; wrap drops it under the search box on a
+   narrow viewport instead of squeezing either one unreadably thin. */
+.filterrow { display: flex; align-items: flex-start; justify-content: space-between;
+  flex-wrap: wrap; gap: .5rem; }
 input.filter { display: block; flex: 1 1 14rem; max-width: 30rem; margin: 0;
   padding: .4rem .55rem; border: 1px solid #8886; border-radius: 6px;
   background: Canvas; color: CanvasText; font: inherit; }
-/* Legend for the tag chips' colour tokens, to the right of the search box in the
-   sticky filter bar. It opens as a popover (absolutely positioned) rather than
-   pushing the row taller, so expanding it doesn't shift the filter bar's height
-   -- and, in turn, everything pinned below it (.kindhead's --filterbar-h offset). */
-.tagkey { position: relative; flex-shrink: 0; }
-.tagkey summary { padding: .4rem .7rem; border: 1px solid #8886; border-radius: 6px;
-  font-size: .85rem; white-space: nowrap; }
+/* Legend for the tag chips' colour tokens, at the far right of the sticky filter
+   bar. A plain muted link rather than a bordered button -- it's a reference, not
+   a filter control, and a border made it look like one. It opens as a popover
+   (absolutely positioned) rather than pushing the row taller, so expanding it
+   doesn't shift the filter bar's height -- and, in turn, everything pinned below
+   it (.kindhead's --filterbar-h offset). */
+.tagkey { position: relative; flex-shrink: 0; align-self: center; }
+.tagkey summary { padding: .2rem 0; color: var(--muted); font-size: .85rem;
+  white-space: nowrap; }
 .tagkey-groups { position: absolute; right: 0; top: calc(100% + .3rem); z-index: 3;
   display: flex; flex-wrap: wrap; gap: .3rem 2rem; width: max-content;
   max-width: min(90vw, 40rem); background: Canvas; border: 1px solid #8886;

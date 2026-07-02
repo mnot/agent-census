@@ -75,9 +75,12 @@ _KIND_COLORS: dict[Kind, str] = {
 
 # Tag colour tokens. Each tag maps to a style token, realised as a CSS class
 # (.tag--<token>) in the report stylesheet; an unmapped tag falls through to the
-# neutral grey .tag default. The tokens encode three overlaid systems:
+# neutral grey .tag default. The tokens encode four overlaid systems:
 #   * identity trust     -- green (confirmed) -> yellow (doubt) -> red (forged)
 #   * behaviour/botness  -- cool human -> warm bot -> orange notable -> red hostile
+#   * relative outlier   -- violet: a magnitude claim vs. this site's real browsers,
+#                            not itself evidence of automation (unlike bot's
+#                            structural signals) or of misconduct (unlike notable)
 #   * origin / egress    -- cool context band
 # Red is the shared terminal for either a forged identity or hostile conduct.
 # Loud terminals are white-text solids; the quiet middle bands are colour-mix
@@ -127,10 +130,10 @@ _TAG_TOKENS: dict[str, str] = {
     "post-heavy": "notable",
     "exotic-method": "notable",
     "ua-rotating": "notable",
-    "high-rate": "bot",
-    "high-bytes": "bot",
-    "wide-breadth": "bot",
-    "long-session": "bot",
+    "high-rate": "outlier",
+    "high-bytes": "outlier",
+    "wide-breadth": "outlier",
+    "long-session": "outlier",
     "no-user-agent": "notable",
     "probe-paths": "danger",
     "ancient-browser-ua": "danger",  # forged identity -> shared red terminal
@@ -157,7 +160,7 @@ def tag_class(tag: str) -> str:
 
 
 # One representative label per colour token, grouped the same way _TAG_TOKENS'
-# header comment describes the three overlaid systems -- so the key explains what
+# header comment describes the four overlaid systems -- so the key explains what
 # the colour means rather than listing every tag that uses it.
 _TAG_KEY_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
     (
@@ -174,8 +177,14 @@ _TAG_KEY_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
         "Behaviour",
         [
             ("human", "browser-like"),
-            ("bot", "automated -- expected for a non-browser client"),
+            ("bot", "structural evidence of automation, e.g. no asset loads"),
             ("notable", "conduct a legitimate client wouldn't normally show"),
+        ],
+    ),
+    (
+        "Relative to this site",
+        [
+            ("outlier", "well beyond this site's real browsers on one metric"),
         ],
     ),
     (

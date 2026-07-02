@@ -67,7 +67,7 @@ def top_evidence(profile: ClientProfile) -> str:
     evidence = cls.evidence
     if (cls.agent_name or cls.boilerplate_lead) and evidence:
         evidence = evidence[1:]
-    return evidence[0] if evidence else "–"
+    return evidence[0] if evidence else ""
 
 
 def as_label(org: str, number: str | None = None) -> str:

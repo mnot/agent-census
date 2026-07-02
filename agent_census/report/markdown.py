@@ -213,7 +213,7 @@ def _kind_section(
     for actor in shown:
         cls = actor.lead.classification
         tags = ", ".join(ordered_tags(cls.tags | actor.observational_tags)) or "–"
-        evidence = md_escape(truncate(top_evidence(actor.lead)))
+        evidence = md_escape(truncate(top_evidence(actor.lead))) or "–"
         lines.append(
             f"| {_actor_label(actor, flags)} | {actor.requests:,} | "
             f"{human_bytes(actor.total_bytes)} | {cls.confidence:.0%} | "

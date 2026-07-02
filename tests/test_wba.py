@@ -489,9 +489,16 @@ def test_unverifiable_defers_to_network_channel() -> None:
 
 
 def test_operator_domain_fallback_for_unregistered_signer() -> None:
-    # Same valid headers, but a Signature-Agent we don't have in the curated list.
+    # Same shape of headers, but neither the keyid nor the Signature-Agent is one
+    # we have curated -- detect_result is header-parsing only (no crypto), so
+    # swapping the keyid string is enough to exercise the "unregistered" path.
+    # (Ahrefs's own keyid is curated as of the "ahrefs keyids" data change, so
+    # reusing AHREFS_SIGNATURE_INPUT verbatim would resolve via keyid match.)
+    unregistered_input = AHREFS_SIGNATURE_INPUT.replace(
+        AHREFS_KEYID, "0000000000000000000000000000000000000000x"
+    )
     extra = {
-        wba.SIGNATURE_INPUT_HEADER: AHREFS_SIGNATURE_INPUT,
+        wba.SIGNATURE_INPUT_HEADER: unregistered_input,
         wba.SIGNATURE_HEADER: AHREFS_SIGNATURE,
         wba.SIGNATURE_AGENT_HEADER: '"https://unknown-crawler.example"',
     }

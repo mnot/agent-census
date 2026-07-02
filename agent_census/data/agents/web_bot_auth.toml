@@ -22,3 +22,28 @@
 [[operator]]
 name = "Ahrefs"
 agent_urls = ["https://ahrefs.com"]
+keyids = [
+    "e3vpiy0B6M1Wdxnizw3dqRSgpqS6SXM2qiQ6HtUwZ5g",
+    "0227KWFT1389RBnlR8TLhbMaA_Of2MbNPhmlNICS7eI",
+]
+
+[[operator]]
+name = "You"
+agent_urls = ["https://you.com"]
+keyids = [
+    "5hbjTA0RjjhxRRquk32fSeRWfTgAdSHCZMK1afI1qvI",
+]
+
+[[operator]]
+name = "OpenAI"
+agent_urls = ["https://chatgpt.com"]
+keyids = [
+    "otMqcjr17mGyruktGvJU8oojQTSMHlVm7uO-lrcqbdg",
+]
+
+[[operator]]
+name = "DuckDuckGo"
+agent_urls = ["https://bot.duckduckgo.com"]
+keyids = [
+    "5HvpfNA946z6lcCXEIOOpzlN5l0mdZE42jdqimEwPf8",
+]

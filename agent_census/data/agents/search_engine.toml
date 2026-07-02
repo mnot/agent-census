@@ -48,6 +48,7 @@ domains = ["crawl.yahoo.net"]
 ua_substring = "DuckDuckBot"
 domains = ["duckduckgo.com"]
 ranges_url = "https://duckduckgo.com/duckduckbot.json"
+wba_operator = "DuckDuckGo"
 rdns_fallback = true
 
 [[agent]]

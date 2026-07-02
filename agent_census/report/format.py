@@ -105,9 +105,21 @@ _TAG_ORDER = {
             "forged-referer",
             "datacenter",
             "asn-attributed",
-            "verified",
+            "wba-verified",
+            "wba-expired",
+            "wba",
+            "wba-unverified",
+            "wba-violation",
+            "wba-mixed",
+            "wba-replay",
+            "wba-nonce-reuse",
+            "dns-verified",
+            "ip-verified",
             "asn-associated",
-            "unverified",
+            "dns-violation",
+            "ip-violation",
+            "dns-unverified",
+            "ip-unverified",
             "declares-known-bot",
             "user-triggered",
             "no-user-agent",
@@ -173,8 +185,9 @@ _TAG_HELP: dict[str, str] = {
     "shared-ip": "Many distinct User-Agents from one IP but behaving normally — a shared "
     "egress such as NAT, VPN, proxy, or carrier gateway.",
     "ignores-robots": "Requested paths disallowed by the applicable robots.txt group.",
-    "verified": "Reverse/forward DNS or a published IP range confirmed the declared "
-    "crawler identity.",
+    "dns-verified": "Reverse DNS resolved the client's IP to a host under the declared "
+    "crawler's domain, and forward DNS confirmed it back to the same IP.",
+    "ip-verified": "The client's IP falls within a published IP range for the declared crawler.",
     "asn-associated": "User-Agent names a known crawler and its origin AS is one that "
     "crawler is configured to use -- corroboration, a lighter check than DNS / IP-range "
     "verification (which take precedence when available).",
@@ -184,9 +197,35 @@ _TAG_HELP: dict[str, str] = {
     "rather than crawling autonomously. The user-driven part is taken on trust -- not "
     "observable here, and identity verification confirms who the agent is, not that a user "
     "drove the request.",
-    "unverified": "Declared a crawler we could check by reverse DNS or IP range, but the check "
-    "didn't confirm it — it failed, or was inconclusive (a DNS timeout, unfetchable ranges). "
-    "The mirror of 'verified'; the kind and verdict are unchanged.",
+    "dns-violation": "Reverse/forward DNS definitively disagreed with the declared crawler "
+    "(a wrong or absent PTR) — drives the 'impersonator' kind.",
+    "ip-violation": "The client's IP definitively falls outside every published range for "
+    "the declared crawler — drives the 'impersonator' kind.",
+    "dns-unverified": "Declared a crawler with a domain to check by reverse DNS, but the "
+    "check was inconclusive (a timeout) rather than a pass or a definitive fail.",
+    "ip-unverified": "Declared a crawler with IP ranges to check, but they could not be "
+    "obtained (e.g. the published range feed was unreachable).",
+    "wba": "Presented a Web Bot Auth signature (a cryptographically signed request), "
+    "not yet checked against the operator's key — run with --verify-bots to verify it.",
+    "wba-verified": "A valid, fresh Web Bot Auth signature, checked against the operator's "
+    "published Ed25519 key — cryptographic proof of identity, stronger than reverse-DNS or "
+    "IP-range inference, and it outranks them.",
+    "wba-expired": "A valid Web Bot Auth signature whose `expires` was already past at request "
+    "time — the key genuinely signed it, but outside the signature's freshness window.",
+    "wba-unverified": "Presented a Web Bot Auth signature that couldn't be checked — the key "
+    "was unobtainable (e.g. rotated since), a covered field wasn't logged, or the body was "
+    "signed. Never read as forgery: that requires a signature that fails against a fetched key.",
+    "wba-violation": "A Web Bot Auth signature that failed against the operator's authentic, "
+    "fetched key — cryptographic proof of a forged identity. Drives the 'impersonator' kind; "
+    "shown alongside it so a client verified by one channel but forged on another is visible.",
+    "wba-mixed": "A sample of this client's signed requests disagreed — some signatures verified "
+    "and some did not. One identity presenting both valid and non-valid signatures is worth a "
+    "look; the headline verdict is the representative request's.",
+    "wba-replay": "A signature nonce from this client also appeared from a different origin — a "
+    "captured, validly-signed request replayed elsewhere. The whole-log view catches this where "
+    "an edge server checking one request can't; a valid signature alone wouldn't.",
+    "wba-nonce-reuse": "This client reused a signature nonce across its own requests — a signer "
+    "reusing nonces rather than a replay. Milder than a cross-origin replay; noted, not alarming.",
     "asn-attributed": "Identity is the origin AS itself -- an asn_primary network that "
     "crawls behind spoofed User-Agents, recognised by AS number rather than by its UA.",
     "probe-paths": "Requested known-vulnerable / probe paths (.env, /wp-login.php, .git/config…) "

@@ -87,7 +87,7 @@ def test_human_kinds_are_excluded() -> None:
 
 def test_identified_agents_are_excluded() -> None:
     res = _resolver({"1.1.1.1": "US"})
-    for tag in ("verified", "asn-associated", "asn-attributed"):
+    for tag in ("dns-verified", "ip-verified", "wba-verified", "asn-associated", "asn-attributed"):
         profiles = [_profile("1.1.1.1", kind=Kind.AI_CRAWLER, tags=frozenset({tag}))]
         assert country_flags(profiles, res).actors == {}, tag
 

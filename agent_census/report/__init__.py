@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from ._inspect_html import render_inspect_html
 from .calibrate import render_calibration
 from .geo import CountryFlags, country_flags
-from ._inspect_html import render_inspect_html
 from .html import render_report_html
 from .inspect import render_inspect, select_profiles
 from .markdown import render_report

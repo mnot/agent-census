@@ -1,0 +1,22 @@
+# Web Bot Auth operators: a signing identity -> a human operator name.
+#
+# Web Bot Auth (draft-meunier-web-bot-auth-architecture) has a bot sign its
+# requests with an Ed25519 key published in the operator's JWK directory. This
+# file names the operator behind a signature offline -- the "who" -- separately
+# from whether the signature cryptographically verifies (that is layered on under
+# --verify-bots). An operator is matched on either:
+#
+#   * agent_urls -- the directory / identity URL its `Signature-Agent` header
+#     points at (compared scheme + host, trailing slash and case ignored), or
+#   * keyids -- the JWK SHA-256 thumbprints (`keyid`) its signatures name. These
+#     are content-addressed and immutable, so they are append-only: add a new one
+#     as it is observed; never remove a retired one (old logs still reference it).
+#
+# ua_substrings link the operator to the crawler User-Agent it presents, so a
+# valid signature whose operator differs from the declared crawler can be flagged.
+# Keep entries to verifiable identity facts -- no characterisation of the operator.
+
+[[operator]]
+name = "Ahrefs"
+agent_urls = ["https://ahrefs.com"]
+ua_substrings = ["AhrefsBot", "AhrefsSiteAudit"]

@@ -281,6 +281,22 @@ class VerificationStatus(str, Enum):
     NOT_APPLICABLE = "not_applicable"  # UA does not declare a verifiable crawler
 
 
+class ChannelVerdict(str, Enum):
+    """Outcome of one identity-verification channel (reverse DNS, or IP range),
+    independent of the other and of the merged :class:`VerificationStatus`.
+
+    Each channel is its own tri-state-plus-absent: a genuine confirmation, an
+    inconclusive check (a timeout, unfetchable ranges), a definitive failure
+    (surfaced as ``<channel>-violation``, the evidence for an ``impersonator``
+    verdict), or nothing declared/attempted for this channel at all.
+    """
+
+    VERIFIED = "verified"
+    UNVERIFIED = "unverified"  # checked, inconclusive
+    VIOLATION = "violation"  # checked, definitively failed
+    NOT_CHECKED = "not_checked"  # nothing declared for this channel, or skipped
+
+
 @dataclass(frozen=True, slots=True)
 class BotVerification:
     """Outcome of an opt-in DNS check on a client's declared-crawler claim."""
@@ -294,6 +310,73 @@ class BotVerification:
     # declared crawler that *could* be network-verified but wasn't -- failed or
     # inconclusive -- distinct from one with nothing to check against.
     network_checked: bool = False
+    # The two identity channels, independent of each other and of `status` above
+    # (which remains the merged verdict driving the impersonation decision and
+    # the pipeline's identity fold/display). Surfaced as their own `dns-*` /
+    # `ip-*` tags so a reader can see which channel, specifically, confirmed or
+    # violated -- rather than one merged "verified"/"unverified" for both.
+    dns: ChannelVerdict = ChannelVerdict.NOT_CHECKED
+    dns_evidence: str | None = None
+    ip: ChannelVerdict = ChannelVerdict.NOT_CHECKED
+    ip_evidence: str | None = None
+
+
+class WbaStatus(str, Enum):
+    """Outcome of a Web Bot Auth signature check, a cryptographic identity tier.
+
+    Parallel to (and outranking) the network :class:`VerificationStatus`: a valid
+    signature is proof the operator's key signed the request, not an inference from
+    where the IP sits. ``PRESENT`` is the phase-1 detect-only state (a signature is
+    there, not yet cryptographically checked). ``FORGED`` -- a signature that fails
+    against the operator's *authentic* fetched key -- is the only state that means
+    impersonation; every "couldn't obtain the key / rebuild the base" path is
+    ``UNVERIFIABLE``, never forgery.
+    """
+
+    PRESENT = "present"  # a web-bot-auth signature is present; not yet verified
+    VERIFIED = "verified"  # signature valid against the operator's key, and fresh
+    EXPIRED = "expired"  # signature valid, but its `expires` is before the request
+    FORGED = "forged"  # signature fails against the operator's authentic key
+    UNVERIFIABLE = "unverifiable"  # key unobtainable / base unbuildable / body signed
+    NOT_APPLICABLE = "not_applicable"  # no web-bot-auth signature on the request
+
+
+@dataclass(frozen=True, slots=True)
+class WbaResult:
+    """Outcome of a Web Bot Auth check on a client's representative signed request.
+
+    Carried alongside :class:`BotVerification` (the network tier) rather than
+    folded into it, so the cryptographic and network channels each keep their own
+    opinion; the combiner weighs both, with a definitive WBA verdict outranking the
+    network one. ``operator`` is the human name resolved from the offline list (the
+    "who"), orthogonal to whether the signature is valid.
+    """
+
+    status: WbaStatus
+    # The curated operator name (from the offline list), or None when the signer
+    # isn't one we recognise. Kept registered-only on purpose: the impersonation
+    # operator-vs-claim check compares this, and a domain we merely fell back to
+    # could be the same operator under another name -- not grounds to cry forgery.
+    operator: str | None = None
+    # The Signature-Agent host, a display fallback for the "who" when ``operator``
+    # is unknown (e.g. ``ahrefs.com``). Never used for the impersonation decision.
+    signer_domain: str | None = None
+    keyid: str | None = None  # the JWK thumbprint the signature names
+    created: int | None = None  # signature `created` (unix seconds), if present
+    expires: int | None = None  # signature `expires` (unix seconds), if present
+    reason: str | None = None  # why UNVERIFIABLE / FORGED, for the report
+    evidence: tuple[str, ...] = ()
+    # A sparse sample of this client's signed requests disagreed: some verified,
+    # some didn't (the headline status is the representative request's). Surfaced as
+    # ``wba-mixed`` -- one identity presenting both valid and non-valid signatures.
+    mixed: bool = False
+    # A nonce in this client's signature(s) also appeared from a *different* origin:
+    # a captured signature replayed (``wba-replay``). The whole-log view is what lets
+    # us see this; an edge server checking one request can't.
+    replayed: bool = False
+    # A nonce reused across this client's own requests (same origin) -- a signer
+    # reusing nonces rather than a replay. A benign-ish note (``wba-nonce-reuse``).
+    nonce_reused: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -311,6 +394,9 @@ class ClientProfile:
     classification: Classification
     compliance: ComplianceReport | None = None
     verification: BotVerification | None = None
+    # Web Bot Auth signature verdict, when the client presented a signed request.
+    # The cryptographic-identity channel, parallel to ``verification`` (network).
+    wba: WbaResult | None = None
     # For a merged verified-bot entry: the individual IPs collapsed into it.
     member_ips: tuple[str, ...] = ()
     # Origin-network bucket this client was attributed to (hosting provider /

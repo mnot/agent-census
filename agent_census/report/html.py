@@ -83,12 +83,27 @@ _KIND_COLORS: dict[Kind, str] = {
 # Loud terminals are white-text solids; the quiet middle bands are colour-mix
 # tints (see _assets.py) that adapt to the reader's light/dark scheme.
 _TAG_TOKENS: dict[str, str] = {
-    # Identity -- who is it, and is the declared identity genuine?
-    "verified": "trust",
+    # Identity -- who is it, and is the declared identity genuine? dns/ip/wba are
+    # three independent channels, each its own verified/unverified/violation triad
+    # (see ChannelVerdict and WbaStatus) -- surfaced separately so a reader can see
+    # which specific channel confirmed or disagreed, rather than one merged tag.
+    "dns-verified": "trust",
+    "ip-verified": "trust",
+    "wba-verified": "trust",  # cryptographic identity -- as strong as the network channels
+    "wba": "trust-soft",  # a signature is present, not yet checked against the key
+    "wba-expired": "doubt",  # valid signature, but past its freshness window
+    "wba-unverified": "doubt",  # signature present but couldn't be checked
+    "dns-unverified": "doubt",
+    "ip-unverified": "doubt",
+    "wba-violation": "danger-deep",  # cryptographic forgery -- the strongest hostile signal
+    "wba-replay": "danger-deep",  # a captured signature replayed from elsewhere
+    "wba-mixed": "doubt",  # some of this client's signed requests verified, some didn't
+    "wba-nonce-reuse": "doubt",  # same-origin nonce reuse -- a milder note, not a replay
+    "dns-violation": "danger",  # network-origin mismatch -- drives the impersonator kind
+    "ip-violation": "danger",
     "asn-associated": "trust-soft",
     "asn-attributed": "trust-soft",
     "user-triggered": "trust-soft",
-    "unverified": "doubt",
     # 'stale-browser-ua' is the mild-doubt middle rung of the UA-age ramp
     # (current -> human, ancient/impossible -> danger); yellow keeps that
     # authenticity axis escalating rather than dropping to neutral grey.
@@ -139,6 +154,7 @@ def tag_class(tag: str) -> str:
     """CSS class for a tag chip: the neutral ``tag`` plus its colour token, if any."""
     token = _TAG_TOKENS.get(tag)
     return f"tag tag--{token}" if token else "tag"
+
 
 # Hover descriptions for the cross-tab column headers. The egress buckets group
 # several networks, so spell out their members; the catch-all columns get a note.

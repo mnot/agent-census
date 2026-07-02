@@ -34,7 +34,7 @@ import time
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import NamedTuple, TypeVar
+from typing import Literal, NamedTuple, TypeVar
 
 from . import uas
 from .dataload import KNOWN_AGENT_CATEGORIES, CrawlerSpec, load_tokens
@@ -44,7 +44,7 @@ from .iprange import extract_cidrs as _extract_cidrs
 from .iprange import fetch_ranges_text as _fetch_ranges_text
 from .iprange import ip_in as _ip_in
 from .iprange import parse_networks as _parse_networks
-from .model import BotVerification, ClientId, VerificationStatus
+from .model import BotVerification, ChannelVerdict, ClientId, VerificationStatus
 
 # Outcome of one verification check (range or reverse DNS): a definitive pass or
 # fail, or an inconclusive result (unfetchable ranges, a DNS timeout) that must
@@ -56,6 +56,17 @@ class _Check(NamedTuple):
     state: str  # _PASS | _FAIL | _UNKNOWN
     host: str | None  # resolved host or matched range, for the report
     why: str  # human-readable evidence line
+
+
+def _channel_verdict(check: _Check) -> ChannelVerdict:
+    """The independent per-channel verdict for one check, for the ``dns``/``ip``
+    tags -- distinct from the merged :class:`VerificationStatus` these checks also
+    feed into."""
+    return {
+        _PASS: ChannelVerdict.VERIFIED,
+        _FAIL: ChannelVerdict.VIOLATION,
+        _UNKNOWN: ChannelVerdict.UNVERIFIED,
+    }[check.state]
 
 
 _MAX_WORKERS = 64
@@ -322,55 +333,92 @@ class BotVerifier:
                 VerificationStatus.UNVERIFIED,
                 evidence=(f"no verifying domain or IP range known for {substring}",),
             )
+        if has_ranges and has_domains:
+            return self._verify_both(ip, spec, substring)
+        if has_ranges:
+            return self._verdict(self._check_range(ip, spec, substring), spec, "ip")
+        return self._verdict(self._check_rdns(ip, spec, substring), spec, "dns")
 
-        if has_ranges and has_domains and not spec.rdns_fallback:
+    def _verify_both(self, ip: str, spec: CrawlerSpec, substring: str) -> BotVerification:
+        """An agent declaring both ranges and domains: strict (both required) by
+        default, or ranges-primary-with-DNS-fallback when ``rdns_fallback`` is set.
+        """
+        if not spec.rdns_fallback:
             return self._verify_strict(ip, spec, substring)
-        if has_ranges and has_domains:  # rdns_fallback: ranges first, DNS only if unobtainable
-            check = self._check_range(ip, spec, substring)
-            if check.state is _UNKNOWN:
-                check = self._check_rdns(ip, spec, substring)
-        elif has_ranges:
-            check = self._check_range(ip, spec, substring)
-        else:
-            check = self._check_rdns(ip, spec, substring)
-        return self._verdict(check, spec)
+        rng = self._check_range(ip, spec, substring)
+        if rng.state is _UNKNOWN:
+            # Ranges were inconclusive rather than declared -- carry that verdict on
+            # `ip` too, alongside whatever DNS (the deciding channel) finds.
+            return self._verdict(self._check_rdns(ip, spec, substring), spec, "dns", other=rng)
+        return self._verdict(rng, spec, "ip")  # ranges decided; DNS never ran -> not_checked
 
     def _verify_strict(self, ip: str, spec: CrawlerSpec, substring: str) -> BotVerification:
-        """Both range and reverse DNS must pass; either definitive failure impersonates."""
+        """Both range and reverse DNS are always checked; either definitive failure
+        impersonates. Both run regardless of whether one already failed, so the
+        independent ``dns``/``ip`` channel verdicts (surfaced as their own tags)
+        stay accurate even when the other channel alone decided the merged status.
+        """
         rng = self._check_range(ip, spec, substring)
-        if rng.state is _FAIL:
-            return self._verdict(rng, spec)
         dns = self._check_rdns(ip, spec, substring)
-        if dns.state is _FAIL:
-            return self._verdict(dns, spec)
-        if rng.state is _PASS and dns.state is _PASS:
-            return BotVerification(
-                VerificationStatus.VERIFIED,
-                resolved_host=dns.host or rng.host,
-                expected_domains=spec.domains,
-                evidence=(rng.why, dns.why),
-                network_checked=True,
-            )
-        return BotVerification(  # nothing failed, but a check was inconclusive
-            VerificationStatus.UNVERIFIED,
-            resolved_host=dns.host,
-            expected_domains=spec.domains,
-            evidence=(rng.why, dns.why),
-            network_checked=True,
-        )
 
-    def _verdict(self, check: _Check, spec: CrawlerSpec) -> BotVerification:
+        def result(
+            status: VerificationStatus, resolved_host: str | None, evidence: tuple[str, ...]
+        ) -> BotVerification:
+            return BotVerification(
+                status,
+                resolved_host=resolved_host,
+                expected_domains=spec.domains,
+                evidence=evidence,
+                network_checked=True,
+                dns=_channel_verdict(dns),
+                dns_evidence=dns.why,
+                ip=_channel_verdict(rng),
+                ip_evidence=rng.why,
+            )
+
+        if rng.state is _FAIL:
+            return result(VerificationStatus.IMPERSONATOR, rng.host, (rng.why,))
+        if dns.state is _FAIL:
+            return result(VerificationStatus.IMPERSONATOR, dns.host, (dns.why,))
+        if rng.state is _PASS and dns.state is _PASS:
+            return result(VerificationStatus.VERIFIED, dns.host or rng.host, (rng.why, dns.why))
+        return result(VerificationStatus.UNVERIFIED, dns.host, (rng.why, dns.why))  # inconclusive
+
+    def _verdict(
+        self,
+        check: _Check,
+        spec: CrawlerSpec,
+        channel: Literal["dns", "ip"],
+        *,
+        other: _Check | None = None,
+    ) -> BotVerification:
+        """Verdict driven by ``check`` on ``channel``. ``other``, if given, is the
+        other channel's own check result -- e.g. an inconclusive range check that
+        fell back to DNS -- and is populated too rather than left ``NOT_CHECKED``
+        (the default when that channel was never declared, or an rdns_fallback
+        range that already decided so DNS never ran at all).
+        """
         status = {
             _PASS: VerificationStatus.VERIFIED,
             _FAIL: VerificationStatus.IMPERSONATOR,
             _UNKNOWN: VerificationStatus.UNVERIFIED,
         }[check.state]
+        other_channel: Literal["dns", "ip"] = "ip" if channel == "dns" else "dns"
+        deciding = {channel: _channel_verdict(check)}
+        deciding_evidence = {channel: check.why}
+        if other is not None:
+            deciding[other_channel] = _channel_verdict(other)
+            deciding_evidence[other_channel] = other.why
         return BotVerification(
             status,
             resolved_host=check.host,
             expected_domains=spec.domains,
             evidence=(check.why,),
             network_checked=True,
+            dns=deciding.get("dns", ChannelVerdict.NOT_CHECKED),
+            dns_evidence=deciding_evidence.get("dns"),
+            ip=deciding.get("ip", ChannelVerdict.NOT_CHECKED),
+            ip_evidence=deciding_evidence.get("ip"),
         )
 
     def verify_all(

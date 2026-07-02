@@ -7,7 +7,14 @@ classifier over a client's features and combines their signals into a single
 
 from __future__ import annotations
 
-from ..model import BotVerification, Classification, ClientFeatures, ComplianceReport, Signal
+from ..model import (
+    BotVerification,
+    Classification,
+    ClientFeatures,
+    ComplianceReport,
+    Signal,
+    WbaResult,
+)
 from .base import Classifier
 from .combiner import DEFAULT_UNKNOWN_THRESHOLD, combine
 from .registry import all_classifiers
@@ -26,6 +33,7 @@ def classify_client(
     *,
     compliance: ComplianceReport | None = None,
     verification: BotVerification | None = None,
+    wba: WbaResult | None = None,
     datacenter: bool = False,
     aggregate: bool = False,
     unknown_threshold: float = DEFAULT_UNKNOWN_THRESHOLD,
@@ -34,7 +42,8 @@ def classify_client(
     """Run all classifiers over ``features`` and combine into a verdict.
 
     ``aggregate`` marks a multi-client display fold (a privacy-relay / VPN row),
-    suppressing the per-client cadence tags.
+    suppressing the per-client cadence tags. ``wba`` is the Web Bot Auth verdict,
+    the cryptographic-identity channel weighed alongside the network ``verification``.
     """
     signals = run_classifiers(features)
     return combine(
@@ -42,6 +51,7 @@ def classify_client(
         features,
         compliance=compliance,
         verification=verification,
+        wba=wba,
         datacenter=datacenter,
         aggregate=aggregate,
         unknown_threshold=unknown_threshold,

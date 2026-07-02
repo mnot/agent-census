@@ -41,9 +41,12 @@ _FLAG_TOP = 25  # per kind, by request volume, among eligible actors
 _MAJORITY = 0.70  # share of an actor's resolved traffic a country needs for its own flag
 # Kinds we're fairly confident are a single human; a country flag there is noise.
 _EXCLUDED_KINDS = frozenset({Kind.BROWSER, Kind.FEED_READER, Kind.APP})
-# Tags meaning we've identified the *agent* by IP range / rDNS / AS -- a known global
-# operator, for which a country is meaningless. (Not about datacentre vs residential.)
-_IDENTIFIED_AGENT_TAGS = frozenset({"verified", "asn-associated", "asn-attributed"})
+# Tags meaning we've identified the *agent* by IP range / rDNS / signature / AS -- a
+# known global operator, for which a country is meaningless. (Not about datacentre
+# vs residential.)
+_IDENTIFIED_AGENT_TAGS = frozenset(
+    {"dns-verified", "ip-verified", "wba-verified", "asn-associated", "asn-attributed"}
+)
 
 
 @dataclass

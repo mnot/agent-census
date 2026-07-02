@@ -187,20 +187,23 @@ The opinionated layer. These hues appear on tags and encode agent-census's
 each is held at **≥4.5:1 against white**: where a hue was too light it was
 deepened along its OKLCH lightness axis, keeping the hue (the actual signal)
 intact.
-- **Verified Green** (`#00862e`): identity confirmed by rDNS or published IP
-  range (`verified` tag); also the Search-Engine kind.
+- **Verified Green** (`#00862e`): identity confirmed, one tag per independent
+  channel — `dns-verified` (rDNS), `ip-verified` (published IP range), and
+  `wba-verified` (a valid Web Bot Auth signature); also the Search-Engine kind.
 - **ASN-Associated Green** (`#008459`): a corroboration — origin AS
   matches the declared crawler (`asn-associated`).
 - **Caution Amber** (`#b45309`): a declared crawler that *could* be checked but
-  wasn't confirmed (`unverified`). Mirror of Verified Green. The page-level
+  wasn't confirmed — `dns-unverified` / `ip-unverified`, each channel's mirror of
+  Verified Green. A *definitive* disagreement (`dns-violation` / `ip-violation`)
+  is a stronger red, not this amber — see Threat Red below. The page-level
   `.warn` color (robots.txt mismatches, calibration warnings) is a `light-dark()`
   pair built on it — `#b45309` on light paper, `#d97706` on dark so the notice
   stays legible either way.
 - **Alert Amber** (`#b85900`): conduct worth a second look — `ignores-robots`,
   `ua-rotating`, `404-storm`. Also the Scraper kind.
 - **Threat Red** (`#dc2626`): hostile intent — `probe-paths`, `traversal`,
-  `forged-referer`, `impersonator`, spoofed/impossible browser UAs. Also the
-  Vuln-Scanner kind.
+  `forged-referer`, `impersonator`, `dns-violation`, `ip-violation`,
+  spoofed/impossible browser UAs. Also the Vuln-Scanner kind.
 - **Deep Red** (`#b91c1c`): the most deliberate evasion — `encoding-evasion`;
   also the Impersonator kind.
 - **Datacenter Violet** (`#9333ea`): origin is hosting, not an eyeball network

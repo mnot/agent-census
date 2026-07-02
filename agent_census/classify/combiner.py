@@ -18,6 +18,7 @@ from ..model import (
     ComplianceReport,
     Kind,
     Signal,
+    WbaResult,
 )
 from .tags import derive_tag_evidence, impersonation, looks_like_fake_browser
 
@@ -88,6 +89,7 @@ def combine(
     *,
     compliance: ComplianceReport | None = None,
     verification: BotVerification | None = None,
+    wba: WbaResult | None = None,
     datacenter: bool = False,
     aggregate: bool = False,
     unknown_threshold: float = DEFAULT_UNKNOWN_THRESHOLD,
@@ -101,6 +103,10 @@ def combine(
 
     ``aggregate`` marks a multi-client display fold, suppressing per-client
     cadence tags (see :func:`~agent_census.classify.tags.derive_tags`).
+
+    ``wba`` is the Web Bot Auth verdict -- the cryptographic-identity channel,
+    weighed alongside the network ``verification`` (phase 2 lets a definitive WBA
+    verdict drive the impersonator decision; phase 1 only contributes its tag).
     """
     by_label: dict[Kind, float] = {}
     for signal in signals:
@@ -121,7 +127,7 @@ def combine(
         )
 
     tag_ev = derive_tag_evidence(
-        features, compliance, verification, datacenter=datacenter, aggregate=aggregate
+        features, compliance, verification, wba, datacenter=datacenter, aggregate=aggregate
     )
     tags = set(tag_ev)
     stored = tuple(signals) if keep_signals else ()
@@ -129,8 +135,10 @@ def combine(
     tag_evidence = tuple(tag_ev.items()) if keep_signals else ()
 
     # Impersonation is decisive: a client faking a declared identity is an
-    # impersonator, whatever else it looks like.
-    faking, why = impersonation(verification)
+    # impersonator, whatever else it looks like. Web Bot Auth (cryptographic)
+    # outranks the network channel here -- a valid signature clears it, a forged
+    # one forces it.
+    faking, why = impersonation(verification, wba, features)
     if faking:
         return Classification(
             primary=Kind.IMPERSONATOR,

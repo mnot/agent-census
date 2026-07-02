@@ -13,15 +13,21 @@ tag; a genuine crawler can misbehave without forging its identity.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from .. import uas
 from ..dataload import load_shared_tuning, load_tuning
 from ..model import (
     BotVerification,
+    ChannelVerdict,
     ClientFeatures,
     ComplianceReport,
     RobotsVerdict,
     VerificationStatus,
+    WbaResult,
+    WbaStatus,
 )
+from ..wba import operator_for_ua
 from .feed_reader import ua_is_feed_reader
 
 # Numeric knobs: the tags' own thresholds in data/tuning/tags.toml, and the ones
@@ -59,14 +65,42 @@ def _declares_known_crawler(features: ClientFeatures) -> bool:
     return uas.names_known_crawler(features.user_agent)
 
 
-def impersonation(verification: BotVerification | None) -> tuple[bool, tuple[str, ...]]:
+def impersonation(
+    verification: BotVerification | None,
+    wba: WbaResult | None = None,
+    features: ClientFeatures | None = None,
+) -> tuple[bool, tuple[str, ...]]:
     """Decide whether the client is impersonating a declared identity.
 
-    Impersonation is a forged *identity*: a verification verdict that the origin
-    isn't really that crawler -- its reverse DNS, IP range, or AS number disagrees.
-    Misbehaviour such as ignoring robots.txt or probing for vulnerabilities is
-    tagged, not treated as identity theft -- a real crawler can still behave badly.
+    Impersonation is a forged *identity*. Two channels feed the verdict, with the
+    cryptographic one (Web Bot Auth) outranking the network one (reverse DNS / IP
+    range / AS number):
+
+    * A Web Bot Auth signature that *fails* against the operator's authentic key is
+      forgery, whatever the network channel says.
+    * A *valid* signature is cryptographic proof of identity: it clears a network
+      impersonator verdict -- unless the User-Agent names a *different* registered
+      operator than the one that actually signed (claiming to be one operator while
+      validly signed by another is itself a forged identity).
+    * Only when Web Bot Auth gives no definitive verdict (absent, present-only, or
+      unverifiable) does the network channel decide, as before.
+
+    Misbehaviour such as ignoring robots.txt or probing is tagged, not treated as
+    identity theft -- a real crawler can still behave badly.
     """
+    if wba is not None:
+        if wba.status is WbaStatus.FORGED:
+            return True, wba.evidence or (
+                "Web Bot Auth signature failed against the operator's key",
+            )
+        if wba.status in (WbaStatus.VERIFIED, WbaStatus.EXPIRED):
+            claimed = operator_for_ua(features.user_agent if features is not None else None)
+            if claimed is not None and wba.operator is not None and claimed != wba.operator:
+                return True, (
+                    f"User-Agent claims {claimed}, but the request is validly signed by "
+                    f"{wba.operator} -- a forged identity",
+                )
+            return False, ()  # cryptographically confirmed; outranks the network channel
     if verification is not None and verification.status is VerificationStatus.IMPERSONATOR:
         return True, verification.evidence or (
             "origin does not confirm the declared crawler (DNS / IP range / AS)",
@@ -305,6 +339,92 @@ def _conduct_tags(features: ClientFeatures) -> dict[str, str]:
     return tags
 
 
+# The phase-1 WBA states map to one tag each; the verification tier (phase 2) adds
+# the verified/expired/unverified/violation states. `wba-violation` (FORGED) is
+# additional detail alongside the `impersonator` kind it also drives -- it names
+# *which* channel caught the forgery, since dns/ip/wba can each independently
+# verify or violate on the same client.
+_WBA_TAGS: dict[WbaStatus, str] = {
+    WbaStatus.PRESENT: "wba",
+    WbaStatus.VERIFIED: "wba-verified",
+    WbaStatus.EXPIRED: "wba-expired",
+    WbaStatus.UNVERIFIABLE: "wba-unverified",
+    WbaStatus.FORGED: "wba-violation",
+}
+_WBA_TAG_DEFAULT: dict[str, str] = {
+    "wba": "presented a Web Bot Auth signature (not yet cryptographically verified)",
+    "wba-verified": "a valid, fresh Web Bot Auth signature confirmed the operator",
+    "wba-expired": "a valid Web Bot Auth signature, but past its expiry at request time",
+    "wba-unverified": "presented a Web Bot Auth signature that couldn't be checked",
+    "wba-violation": "Web Bot Auth signature failed against the operator's authentic key",
+}
+
+
+def _wba_tag(wba: WbaResult | None) -> dict[str, str]:
+    """The Web Bot Auth tags: one mutually-exclusive status tag, plus orthogonal
+    flags for a mixed identity and nonce replay/reuse.
+
+    The status is a single tag -- no stacking. ``NOT_APPLICABLE`` means no
+    signature, so nothing to tag. ``mixed`` / ``replayed`` / ``nonce_reused``
+    are independent dimensions layered on top when present.
+    """
+    if wba is None:
+        return {}
+    tags: dict[str, str] = {}
+    status_tag = _WBA_TAGS.get(wba.status)
+    if status_tag is not None:
+        tags[status_tag] = (
+            wba.reason
+            or (wba.evidence[0] if wba.evidence else None)
+            or _WBA_TAG_DEFAULT[status_tag]
+        )
+    if wba.mixed:
+        tags["wba-mixed"] = (
+            "a sample of this client's signed requests disagreed -- some signatures "
+            "verified, some did not"
+        )
+    if wba.replayed:
+        tags["wba-replay"] = (
+            "a signature nonce from this client also appeared from a different origin "
+            "-- a captured signature replayed"
+        )
+    elif wba.nonce_reused:
+        tags["wba-nonce-reuse"] = (
+            "this client reused a signature nonce across its own requests "
+            "(a signer reusing nonces, not a replay)"
+        )
+    return tags
+
+
+# The default evidence text per channel/verdict, used only when the channel
+# didn't supply its own (it always does in practice; this is a fallback so the
+# tag is never left without a reason). `NOT_CHECKED` emits no tag at all --
+# absence (nothing declared for this channel, or a fallback that skipped it) is
+# never read as a signal.
+_CHANNEL_NAMES = {"dns": "reverse/forward DNS", "ip": "the published IP ranges"}
+_CHANNEL_DEFAULT: dict[ChannelVerdict, str] = {
+    ChannelVerdict.VERIFIED: "confirmed the declared crawler",
+    ChannelVerdict.UNVERIFIED: "was inconclusive (a timeout, or unfetchable data)",
+    ChannelVerdict.VIOLATION: "did not confirm the declared crawler",
+}
+
+
+def _channel_tags(
+    channel: Literal["dns", "ip"], verdict: ChannelVerdict, evidence: str | None
+) -> dict[str, str]:
+    """The `<channel>-verified` / `<channel>-unverified` / `<channel>-violation` tag
+    for one independent identity channel, or nothing when it was never checked.
+
+    `dns` and `ip` are surfaced separately (rather than one merged network tag) so
+    a reader can see which specific channel confirmed or disagreed -- an agent
+    declaring both can have one verify while the other doesn't.
+    """
+    if verdict is ChannelVerdict.NOT_CHECKED:
+        return {}
+    why = evidence or f"{_CHANNEL_NAMES[channel]} {_CHANNEL_DEFAULT[verdict]}"
+    return {f"{channel}-{verdict.value}": why}
+
+
 def _fact_tags(
     features: ClientFeatures,
     compliance: ComplianceReport | None,
@@ -329,31 +449,15 @@ def _fact_tags(
         tags["asn-attributed"] = (
             f"origin AS {features.as_number or '–'} is a recognised crawler network"
         )
-    if verification is not None and verification.status is VerificationStatus.VERIFIED:
-        tags["verified"] = (
-            verification.evidence[0]
-            if verification.evidence
-            else "reverse/forward DNS or a published IP range confirmed the declared crawler"
-        )
+    if verification is not None:
+        tags.update(_channel_tags("dns", verification.dns, verification.dns_evidence))
+        tags.update(_channel_tags("ip", verification.ip, verification.ip_evidence))
     if verification is not None and verification.status is VerificationStatus.ASN_ASSOCIATED:
         # UA names a crawler and its origin AS is one that crawler uses -- corroborated.
         tags["asn-associated"] = (
             verification.evidence[0]
             if verification.evidence
             else "User-Agent names a known crawler and its origin AS is one that crawler uses"
-        )
-    if (
-        verification is not None
-        and verification.network_checked
-        and verification.status in (VerificationStatus.IMPERSONATOR, VerificationStatus.UNVERIFIED)
-    ):
-        # Had rdns/range info to check the declared identity against, but it failed
-        # or was inconclusive -- the mirror of `verified`. Always surfaced so a
-        # not-confirmed declared crawler is visible; the kind/verdict are unchanged.
-        tags["unverified"] = (
-            verification.evidence[0]
-            if verification.evidence
-            else "declared a crawler we could check, but DNS / IP range didn't confirm it"
         )
     if _declares_known_crawler(features):
         tags["declares-known-bot"] = "User-Agent names a known crawler"
@@ -391,6 +495,7 @@ def derive_tag_evidence(
     features: ClientFeatures,
     compliance: ComplianceReport | None,
     verification: BotVerification | None,
+    wba: WbaResult | None = None,
     *,
     datacenter: bool = False,
     aggregate: bool = False,
@@ -405,6 +510,7 @@ def derive_tag_evidence(
     evidence.update(_fingerprint_tags(features, aggregate))
     evidence.update(_conduct_tags(features))
     evidence.update(_fact_tags(features, compliance, verification, datacenter))
+    evidence.update(_wba_tag(wba))
     return evidence
 
 
@@ -412,6 +518,7 @@ def derive_tags(
     features: ClientFeatures,
     compliance: ComplianceReport | None,
     verification: BotVerification | None,
+    wba: WbaResult | None = None,
     *,
     datacenter: bool = False,
     aggregate: bool = False,
@@ -423,6 +530,6 @@ def derive_tags(
     """
     return set(
         derive_tag_evidence(
-            features, compliance, verification, datacenter=datacenter, aggregate=aggregate
+            features, compliance, verification, wba, datacenter=datacenter, aggregate=aggregate
         )
     )

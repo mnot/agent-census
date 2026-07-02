@@ -48,9 +48,13 @@ from .model import (
     LogEntry,
     RobotsVerdict,
     VerificationStatus,
+    WbaResult,
 )
 from .parsing.base import LogParser
 from .robots import RobotsRules, report_from_signals
+from .wba import SIGNATURE_INPUT_HEADER, WbaClaim, WbaNonceTracker
+from .wba import detect_result as _wba_detect
+from .wba import extract_nonce as _wba_nonce
 
 # Default inactivity gap after which a client is considered finished and evicted.
 DEFAULT_QUIESCENT_SECONDS = 24 * 60 * 60
@@ -200,6 +204,14 @@ class BotVerifier(Protocol):
     def verify_all(
         self, items: Sequence[tuple[ClientId, str | None]]
     ) -> dict[ClientId, BotVerification]: ...
+
+
+class WbaVerifier(Protocol):
+    """Verifies Web Bot Auth claims (:class:`agent_census.wba.WbaVerifier`)."""
+
+    def verify_sample(self, claims: list[WbaClaim]) -> WbaResult: ...
+
+    def save(self) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -393,6 +405,10 @@ def _merge_verified(
 
     member_ips: dict[ClientId, tuple[str, ...]] = {}
     for (domain, token), keys in groups.items():
+        # Every IP in a group passed the same channel(s), so any one member's dns/ip
+        # verdicts represent the merged entry -- carried over rather than dropped, so
+        # the operator entry still gets its dns-verified / ip-verified tag.
+        representative = verifications[keys[0]]
         merged = FeatureAccumulator()
         ips: list[str] = []
         for key in keys:
@@ -407,6 +423,11 @@ def _merge_verified(
             VerificationStatus.VERIFIED,
             resolved_host=domain,
             evidence=(f"{len(ips)} IP(s) verified as {domain}",),
+            network_checked=True,
+            dns=representative.dns,
+            dns_evidence=representative.dns_evidence,
+            ip=representative.ip,
+            ip_evidence=representative.ip_evidence,
         )
         member_ips[new_id] = tuple(ips)
     return member_ips
@@ -419,6 +440,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
     *,
     robots: RobotsRules | None = None,
     verifier: BotVerifier | None = None,
+    wba_verifier: WbaVerifier | None = None,
     unknown_threshold: float = DEFAULT_UNKNOWN_THRESHOLD,
     keep_signals: bool = True,
     quiescent_seconds: float | None = None,
@@ -511,6 +533,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
     host_counts: Counter[str] = Counter()  # served host -> line count, for the site label
     latest_ts: float | None = None
     reasons: dict[str, int] = defaultdict(int)
+    nonce_tracker = WbaNonceTracker()  # Web Bot Auth replay detection across the whole log
 
     def emit(
         key: ClientId,
@@ -595,10 +618,32 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         # tags, and keep it out of the reference-browser pool.
         aggregate = network_category == _NET_EGRESS
         verification = _resolve_asn_verification(verification, features)
+        # Web Bot Auth (the cryptographic-identity channel). A sparse sample of the
+        # client's signed requests is stashed on the accumulator; with a verifier the
+        # signatures are checked against the operator's key (and disagreement flagged
+        # mixed), else their presence is just recorded. Suppressed on an egress fold
+        # -- a representative signed request belongs to one folded client, not the row.
+        if aggregate or not acc.wba_claims:
+            wba_result = None
+        elif wba_verifier is not None:
+            wba_result = wba_verifier.verify_sample(acc.wba_claims)
+        else:
+            wba_result = _wba_detect(acc.wba_claims[0])
+        if wba_result is not None:
+            # Replay: this client's IP shared a signature nonce with another origin.
+            # Same-origin nonce reuse is a milder note. Cross-origin wins if both.
+            client_ips = set(member) or {key.ip}
+            replayed = bool(client_ips & nonce_tracker.replay_ips)
+            reused = not replayed and any(
+                c.params.nonce in nonce_tracker.reused_nonces for c in acc.wba_claims
+            )
+            if replayed or reused:
+                wba_result = replace(wba_result, replayed=replayed, nonce_reused=reused)
         classification = classify_client(
             features,
             compliance=compliance,
             verification=verification,
+            wba=wba_result,
             datacenter=in_datacenter,
             aggregate=aggregate,
             unknown_threshold=unknown_threshold,
@@ -625,6 +670,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             classification=classification,
             compliance=compliance,
             verification=verification,
+            wba=wba_result,
             member_ips=member,
             network=network,
             is_aggregate=aggregate,
@@ -747,6 +793,14 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         if served:
             host_counts[served] += 1
         ip, ua = entry.remote_host, entry.user_agent
+        # Track this signed request's nonce against its origin, for replay detection
+        # over the whole log (done per entry, not per sampled claim, so a replay
+        # beyond the sample cap is still caught).
+        sig_input = entry.extra.get(SIGNATURE_INPUT_HEADER)
+        if sig_input is not None:
+            nonce = _wba_nonce(sig_input)
+            if nonce is not None:
+                nonce_tracker.track(nonce, ip)
         asn = _asn_of(entry, ip)
         # Egress by IP range, else by AS number (VPNs/proxies that publish no list).
         network = egress.lookup(ip) or egress.lookup_asn(uas.parse_asn(asn))
@@ -863,6 +917,10 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             network_category=_NET_DATACENTER if provider else _NET_RESIDENTIAL,
         )
         client_count += 1
+
+    # Persist any Web Bot Auth keys learned this run (content-addressed, permanent).
+    if wba_verifier is not None:
+        wba_verifier.save()
 
     # Calibrate the reference pool, then fold site-relative tags into the kept
     # profiles. A cheap in-memory pass: only kept profiles are shown, and all are

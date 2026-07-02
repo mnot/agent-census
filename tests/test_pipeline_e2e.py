@@ -447,7 +447,7 @@ def test_markdown_network_table_bolds_row_leader() -> None:
 def test_verified_crawler_buckets_under_its_operator_not_residential(tmp_path: Path) -> None:
     # A verified crawler whose IP is in no datacenter range must still land in the
     # hosting group (under its operator domain), never residential.
-    from agent_census.model import BotVerification, ClientId, VerificationStatus
+    from agent_census.model import BotVerification, ChannelVerdict, ClientId, VerificationStatus
     from agent_census.pipeline import RESIDENTIAL_NETWORK
 
     class _StubVerifier:
@@ -462,6 +462,7 @@ def test_verified_crawler_buckets_under_its_operator_not_residential(tmp_path: P
                     VerificationStatus.VERIFIED,
                     resolved_host="mybot.example",
                     evidence=("ok",),
+                    dns=ChannelVerdict.VERIFIED,
                 )
                 for cid, _ua in items  # type: ignore[attr-defined]
             }
@@ -483,7 +484,7 @@ def test_verified_crawler_buckets_under_its_operator_not_residential(tmp_path: P
     assert RESIDENTIAL_NETWORK not in result.network_rollups
     profile = next(p for p in result.profiles if p.client_id.ip == "mybot.example")
     assert profile.network == "mybot.example"
-    assert {"verified", "datacenter"} <= profile.classification.tags  # verified -> hosted
+    assert {"dns-verified", "datacenter"} <= profile.classification.tags  # verified -> hosted
 
 
 def test_respect_counted_in_summary_without_per_client_tag(tmp_path: Path) -> None:

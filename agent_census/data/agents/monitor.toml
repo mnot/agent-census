@@ -8,3 +8,10 @@
 #
 # ua_substring is matched case-insensitively. Optional: ranges (inline CIDRs),
 # ranges_url (published feed, fetched + cached), domains (rDNS suffixes).
+
+[[agent]]
+# https://semonto.com/how-to/what-to-do-if-semonto-could-not-monitor-your-website
+name = "Semonto"
+ua_substring = "Semonto"
+ranges_url = "https://semonto.com/semonto-ip-addresses"
+format = "text"

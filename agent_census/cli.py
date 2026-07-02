@@ -273,7 +273,8 @@ def _add_shared(parser: argparse.ArgumentParser) -> None:
         metavar="H",
         default=24.0,
         help="free a client's state after H hours of inactivity to cap memory "
-        "(default: %(default)s; 0 disables)",
+        "(default: %(default)s; 0 disables -- with it off, distinct-client memory is "
+        "unbounded, so a client rotating its User-Agent per request can grow it freely)",
     )
     out_group.add_argument(
         "--max-per-kind",

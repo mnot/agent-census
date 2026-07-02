@@ -40,7 +40,10 @@ def select_profiles(
 
     The filters compose (AND), so ``kind`` + ``network`` drills into one cell of
     the kind x network cross-tab. ``network`` is a case-insensitive substring of
-    the origin-network label (e.g. ``aws``, ``relay``, ``residential``).
+    each client's real origin-network label (e.g. ``aws``, ``relay``,
+    ``residential``) -- matched before the report's display-time folding, so it can
+    select a low-volume datacentre that the cross-tab collapses into its
+    ``Other datacenters`` column rather than breaking out on its own.
     """
     profiles = list(result.profiles)
     if kind is not None:

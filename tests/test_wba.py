@@ -362,6 +362,22 @@ def test_verifier_fetches_thumbprint_checks_and_persists(
     assert offline.verify(_ahrefs_claim(1782543551.0)).status is WbaStatus.VERIFIED
 
 
+def test_http_get_refuses_non_http_schemes(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A crafted Signature-Agent could name a file:// / ftp:// / etc. URL; the fetch
+    # boundary must reject it before urlopen, or it becomes an SSRF/local-read.
+    def boom(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("urlopen must not be called for a non-http(s) scheme")
+
+    monkeypatch.setattr(wba.urllib.request, "urlopen", boom)
+    for url in (
+        "file:///etc/passwd",
+        "ftp://internal/secret",
+        "data:text/plain,keys",
+        "gopher://169.254.169.254/",
+    ):
+        assert wba._http_get(url) is None
+
+
 def test_verifier_offline_without_key_is_unverifiable(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

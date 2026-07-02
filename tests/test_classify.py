@@ -679,6 +679,18 @@ def test_contact_marker_in_ua_reads_as_a_bot_not_a_browser() -> None:
     assert uas.looks_like_browser(real) and not uas.declares_bot(real)
 
 
+def test_rss_declares_bot_only_as_a_whole_word() -> None:
+    from agent_census import uas
+
+    # 'rss' is a short token, so it must match as a whole word only -- otherwise
+    # it fires inside ordinary product names / surnames like 'Larsson'.
+    assert not uas.declares_bot("Mozilla/5.0 (X11) Larsson/1.0")
+    assert not uas.declares_bot("Carsson/2.0")
+    # A genuine RSS-tool token is still recognised.
+    assert uas.declares_bot("Some RSS Reader/1.0")
+    assert uas.declares_bot("rss-parser/3.1")
+
+
 def test_combiner_fake_browser_without_datacenter_stays_unknown() -> None:
     # The same costume from a non-hosting IP is only fingerprinted, not promoted.
     signals = [Signal(Kind.BROWSER, 0.3, ("ua only",), "browser")]

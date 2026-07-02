@@ -70,7 +70,8 @@ def test_ua_signatures_load() -> None:
     sig = load_ua_signatures()
     assert "applewebkit" in sig.browser_engines
     assert "scrapy" in sig.automation_substrings
-    assert sig.automation_standalone_words == ("feed",)
+    assert "rss" not in sig.automation_substrings  # anchored, not a bare substring
+    assert sig.automation_standalone_words == ("feed", "rss")
     assert sig.automation_suffix_words == ("bot",)
     assert "puppeteer" in sig.headless_engines
     assert "curl" in sig.library_names

@@ -26,12 +26,13 @@ substrings = [
     "go-http", "okhttp", "node-fetch", "axios", "curl", "wget",
     "headless", "phantomjs", "selenium",
     "facebookexternalhit", "feedfetcher",
-    "rss", "monitor", "uptime", "pingdom",
+    "monitor", "uptime", "pingdom",
 ]
 
 # Short words that have to stand on their own, so "feed" doesn't fire inside
-# "feedback". Matched with a word boundary on both sides.
-standalone_words = ["feed"]
+# "feedback" and "rss" doesn't fire inside "Larsson". Matched with a word
+# boundary on both sides.
+standalone_words = ["feed", "rss"]
 
 # Tokens a word may end with: matches "Googlebot", "bingbot", "AhrefsBot", but not
 # "robots", "about", or "botanical". Word boundary on the right only.

@@ -408,6 +408,14 @@ def _require_agent(entry: dict[str, Any]) -> str:
     # only an asn_primary agent may stand on its AS alone.
     if not entry.get("ua_substring") and not primary:
         return "an agent needs a 'ua_substring' (or 'asn_primary' with 'asns')"
+    wba_operator = entry.get("wba_operator")
+    # A stale/typo'd name wouldn't fail to load -- it would silently mismatch every
+    # legitimately-signed request from this agent and misfire as impersonation, so
+    # this is checked eagerly rather than left to surface at classification time.
+    if wba_operator and wba_operator not in {op.name for op in load_wba_operators()}:
+        return (
+            f"'wba_operator' {wba_operator!r} names no operator in agents/web_bot_auth.toml"
+        )
     return ""
 
 

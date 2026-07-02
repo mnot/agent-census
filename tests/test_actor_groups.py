@@ -47,14 +47,28 @@ def test_group_actors_merges_same_ua_and_tags() -> None:
 
 
 def test_group_actors_splits_on_differing_tags() -> None:
-    # Same UA, but one carries an extra tag -> two groups, not one.
+    # Same UA, but one carries an extra identity/conduct tag -> two groups, not one.
+    profiles = [
+        _profile("1.1.1.1", "bot/1", tags=frozenset({"datacenter"})),
+        _profile("2.2.2.2", "bot/1", tags=frozenset({"datacenter", "probe-paths"})),
+    ]
+    groups = group_actors(profiles)
+    assert len(groups) == 2
+    assert all(not g.collapsed for g in groups)
+
+
+def test_group_actors_merges_across_observational_tags() -> None:
+    # Same UA, differing only by an incidental per-batch observation (has-cache) ->
+    # one collapsed group, and the observational tag still surfaces on it.
     profiles = [
         _profile("1.1.1.1", "bot/1", tags=frozenset({"datacenter"})),
         _profile("2.2.2.2", "bot/1", tags=frozenset({"datacenter", "has-cache"})),
     ]
     groups = group_actors(profiles)
-    assert len(groups) == 2
-    assert all(not g.collapsed for g in groups)
+    assert len(groups) == 1
+    group = groups[0]
+    assert group.collapsed and len(group.members) == 2
+    assert group.observational_tags == frozenset({"has-cache"})
 
 
 def test_group_actors_sorts_groups_by_requests() -> None:

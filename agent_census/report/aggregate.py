@@ -7,6 +7,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
+from ..classify.tags import OBSERVATIONAL_TAGS
 from ..model import ClientProfile, Kind
 from ..pipeline import OTHER_HOSTING, RESIDENTIAL_NETWORK, KindRollup
 
@@ -165,18 +166,36 @@ class ActorGroup:
         )
         return org, number
 
+    @property
+    def observational_tags(self) -> frozenset[str]:
+        """Observational tags earned by any member, for display on the folded row.
+
+        These are excluded from :func:`group_actors`'s folding key (see
+        ``OBSERVATIONAL_TAGS``) since they're incidental to which slice of an
+        actor's traffic a given member happened to carry, not its identity --
+        but a folded row should still show them when *any* member earned one.
+        """
+        tags: set[str] = set()
+        for member in self.members:
+            tags |= member.classification.tags & OBSERVATIONAL_TAGS
+        return frozenset(tags)
+
 
 def group_actors(profiles: Sequence[ClientProfile]) -> list[ActorGroup]:
     """Collapse profiles differing only by IP/ASN into actor groups, biggest-first.
 
-    The signature is ``(User-Agent, tags)``: clients are folded together only when
-    they are indistinguishable apart from their address and origin AS. Within a
-    group members are ordered by request volume; groups are ordered the same way
-    by their combined requests.
+    The signature is ``(User-Agent, tags)``, excluding ``OBSERVATIONAL_TAGS``:
+    clients are folded together when they are indistinguishable apart from their
+    address, origin AS, and incidental per-batch observations (a robots.txt hit, a
+    304, request-volume/method-mix facts). Within a group members are ordered by
+    request volume; groups are ordered the same way by their combined requests.
     """
     buckets: dict[tuple[str | None, frozenset[str]], list[ClientProfile]] = {}
     for profile in profiles:
-        key = (profile.client_id.user_agent, frozenset(profile.classification.tags))
+        key = (
+            profile.client_id.user_agent,
+            frozenset(profile.classification.tags - OBSERVATIONAL_TAGS),
+        )
         buckets.setdefault(key, []).append(profile)
     groups = [
         ActorGroup(tuple(sorted(members, key=lambda p: p.features.request_count, reverse=True)))

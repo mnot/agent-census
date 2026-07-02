@@ -754,6 +754,7 @@ def _actor_tbody(
         )
         return f"<tbody>{row}</tbody>"
     cls = actor.lead.classification
+    tags = cls.tags | actor.observational_tags
     _, _, ua = client_id_parts(actor.lead)
     shared = actor.shared_asn
     spread = actor_spread(actor.distinct_ips, 0 if shared else actor.distinct_asns)
@@ -770,7 +771,7 @@ def _actor_tbody(
                     f"{m.client_id.ip} {m.client_id.user_agent or ''} {m.features.as_org or ''}"
                     for m in actor.members
                 ),
-                *ordered_tags(cls.tags),  # the tags shown in the Tags column
+                *ordered_tags(tags),  # the tags shown in the Tags column
             )
         ).lower()
         row_attrs = (
@@ -785,7 +786,7 @@ def _actor_tbody(
         f"<td class='num'>{actor.requests:,}</td>"
         f"<td class='num'>{human_bytes(actor.total_bytes)}</td>"
         f"<td class='num'>{cls.confidence:.0%}</td>"
-        f"<td>{_tags_html(cls.tags)}</td><td class='reqpat'>{pattern}</td></tr>"
+        f"<td>{_tags_html(tags)}</td><td class='reqpat'>{pattern}</td></tr>"
     )
     members = "".join(
         _member_tr(m, _flag_html(cf.for_member(m.client_id)), window, peak) for m in actor.members

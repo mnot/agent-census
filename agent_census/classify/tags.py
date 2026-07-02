@@ -52,6 +52,18 @@ _S = load_shared_tuning()
 # these are suppressed there -- see ``ClientProfile.is_aggregate``.
 CADENCE_TAGS = frozenset({"metronomic", "bursty", "steady"})
 
+# Tags that record an incidental fact about *this batch's own requests* -- did they
+# happen to hit /robots.txt, earn a 304, arrive as a single request, use HEAD/POST
+# heavily -- rather than the client's identity or conduct. Two IPs of the same
+# verified crawler can differ on these purely because of which slice of its traffic
+# each accumulator happened to observe, so the report-time actor grouping in
+# ``report/aggregate.py`` excludes them from its folding key (they'd otherwise split
+# an already-identical actor into separate rows) while still unioning them for
+# display on the folded row.
+OBSERVATIONAL_TAGS = frozenset(
+    {"checked-robots", "has-cache", "lacks-cache", "singleton", "uses-HEAD", "post-heavy"}
+) | CADENCE_TAGS
+
 # Browser fingerprint thresholds, shared with the relative-tag reference predicate
 # (``classify.relative.is_reference_browser``) so "what counts as browser-like" is
 # defined once. A real browser co-loads a page's sub-resources and follows on-site

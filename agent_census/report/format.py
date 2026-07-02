@@ -121,6 +121,8 @@ _TAG_ORDER = {
             "dns-unverified",
             "ip-unverified",
             "declares-known-bot",
+            "declares-app-client",
+            "fetches-feeds",
             "user-triggered",
             "no-user-agent",
             "checked-robots",

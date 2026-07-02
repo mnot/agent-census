@@ -3,15 +3,49 @@
 #
 # Same contract as agents/vuln_scanner.toml: presence here does not change how a
 # monitor is classified (see classify/monitor.py) -- it only binds a declared
-# identity to a verifiable origin. No entries yet; add one as a monitor that
-# publishes its ranges is found.
+# identity to a verifiable origin.
 #
 # ua_substring is matched case-insensitively. Optional: ranges (inline CIDRs),
 # ranges_url (published feed, fetched + cached), domains (rDNS suffixes).
+# ranges_url may be a single feed or a list of feeds (all fetched and merged,
+# sharing one format) -- for an operator that splits its list by IP family.
 
 [[agent]]
 # https://semonto.com/how-to/what-to-do-if-semonto-could-not-monitor-your-website
 name = "Semonto"
 ua_substring = "Semonto"
 ranges_url = "https://semonto.com/semonto-ip-addresses"
+format = "text"
+
+[[agent]]
+# Pingdom (SolarWinds) publishes its probe IPs as two plain-text lists, one per IP
+# family, linked from its probe-servers doc:
+# https://documentation.solarwinds.com/en/success_center/pingdom/content/topics/pingdom-probe-servers-ip-addresses.htm
+# Both feeds are fetched and merged. The UA carries "+http://www.pingdom.com/"
+# (tokens include Pingdom.com_bot and pingbot/2.0), so "Pingdom" matches it.
+name = "Pingdom"
+ua_substring = "Pingdom"
+ranges_url = [
+    "https://my.pingdom.com/probes/ipv4",
+    "https://my.pingdom.com/probes/ipv6",
+]
+format = "text"
+
+[[agent]]
+# UptimeRobot publishes a combined IPv4+IPv6 list, linked from
+# https://uptimerobot.com/help/locations/ . UA is
+# "Mozilla/5.0 (compatible; UptimeRobot/2.0; http://www.uptimerobot.com/)"
+# (https://help.uptimerobot.com/en/articles/11358489-what-is-the-uptimerobot-user-agent-string).
+name = "UptimeRobot"
+ua_substring = "UptimeRobot"
+ranges_url = "https://cdn.uptimerobot.com/api/IPv4andIPv6.txt"
+format = "text"
+
+[[agent]]
+# Site24x7 publishes all monitoring-location IPs as a single plain-text list,
+# linked from https://www.site24x7.com/multi-location-web-site-monitoring.html .
+# UA is "Mozilla/5.0 (compatible; Site24x7/1.0; +https://www.site24x7.com/)".
+name = "Site24x7"
+ua_substring = "Site24x7"
+ranges_url = "https://www.site24x7.com/tools/public/location-ips.txt"
 format = "text"

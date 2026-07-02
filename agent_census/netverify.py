@@ -235,19 +235,21 @@ class BotVerifier:
         if known is None:
             return False
         spec = known[1]
-        return bool(spec.domains or spec.ranges or spec.ranges_url)
+        return bool(spec.domains or spec.ranges or spec.ranges_urls)
 
     def _networks_for(self, spec: CrawlerSpec, name: str | None = None) -> tuple[_Network, ...]:
-        """Inline CIDR ranges plus any fetched (and cached) from ``ranges_url``."""
+        """Inline CIDR ranges plus any fetched (and cached) from each ``ranges_url``
+        feed. An operator may split its list across feeds (e.g. one per IP family);
+        every feed is fetched, parsed with the shared format, and merged."""
         networks = list(_parse_networks(spec.ranges))
-        if spec.ranges_url:
+        for url in spec.ranges_urls:
             with self._lock:
-                cached = self._ranges.get(spec.ranges_url)
+                cached = self._ranges.get(url)
             if cached is None:
-                text = _fetch_ranges_text(spec.ranges_url, name)
+                text = _fetch_ranges_text(url, name)
                 cached = _parse_networks(_extract_cidrs(text, spec.fmt)) if text else ()
                 with self._lock:
-                    self._ranges[spec.ranges_url] = cached
+                    self._ranges[url] = cached
             networks.extend(cached)
         return tuple(networks)
 
@@ -326,7 +328,7 @@ class BotVerifier:
                 VerificationStatus.UNVERIFIED,
                 evidence=(f"cannot verify {substring}: {ip!r} is not a single IP address",),
             )
-        has_ranges = bool(spec.ranges or spec.ranges_url)
+        has_ranges = bool(spec.ranges or spec.ranges_urls)
         has_domains = bool(spec.domains)
         if not (has_ranges or has_domains):
             return BotVerification(

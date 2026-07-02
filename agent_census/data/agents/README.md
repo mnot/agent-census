@@ -35,10 +35,12 @@ that presents its token. Three independent checks, in precedence order:
 - **`domains`** (list of strings) -- reverse/forward DNS must resolve the client's
   IP to a host under one of these domains. Runs by default (it makes DNS calls);
   `--no-verify-bots` turns it off.
-- **`ranges`** (list of CIDRs) and/or **`ranges_url`** (string) -- the client's IP
-  must fall in the agent's published ranges. `ranges_url` is fetched and cached;
-  **`format`** (string) says how to parse it (`prefixes`, `text`, `csv`,
-  `ripestat`, …; default `prefixes`). The range check runs by default;
+- **`ranges`** (list of CIDRs) and/or **`ranges_url`** (a string, or a list of
+  strings for an operator that splits its list across feeds -- e.g. one per IP
+  family) -- the client's IP must fall in the agent's published ranges. Each
+  `ranges_url` feed is fetched and cached, and all are merged; **`format`** (string)
+  says how to parse them (`prefixes`, `text`, `csv`, `ripestat`, …; default
+  `prefixes`, shared across every feed). The range check runs by default;
   `--no-verify-bots` turns it off, and `--no-fetch-ranges` skips the `ranges_url`
   fetch so only the inline `ranges` are checked.
 - **`asns`** (list of integers) -- the client's *logged* AS number must be one of
@@ -96,8 +98,8 @@ tiers don't run at all, so only `asns` can confirm or impeach.
 | `asn_primary` | bool | the AS *is* the identity; fold the whole AS, ignore the UA |
 | `domains` | string[] | verify by reverse/forward DNS |
 | `ranges` | string[] | verify by inline CIDRs |
-| `ranges_url` | string | verify by a fetched range list |
-| `format` | string | how to parse `ranges_url` (default `prefixes`) |
+| `ranges_url` | string or string[] | verify by fetched range list(s); a list is fetched and merged |
+| `format` | string | how to parse each `ranges_url` feed (default `prefixes`) |
 | `rdns_fallback` | bool | ranges primary, domains only when ranges unobtainable |
 | `asns` | int[] | verify by logged AS (lowest precedence), or the identity if `asn_primary` |
 | `user_triggered` | bool | operator's stated user-driven purpose (on trust); adds `user-triggered` tag, kind unchanged |

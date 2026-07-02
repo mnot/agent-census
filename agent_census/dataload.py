@@ -31,19 +31,30 @@ else:  # Python 3.10 has no stdlib tomllib.
     import tomli as tomllib
 
 
+def _is_str_list(value: object) -> bool:
+    return isinstance(value, list) and all(isinstance(x, str) for x in value)
+
+
+# Scalar / string type tokens and their predicates. `str|str[]` accepts either a
+# single value or a list of them (e.g. an agent's ranges_url, which may name more
+# than one published feed). `bool` is an int subclass, so `int` excludes it -- so
+# `true` isn't read as a valid integer.
+_SCALAR_PREDICATES: dict[str, Callable[[object], bool]] = {
+    "str": lambda v: isinstance(v, str),
+    "str|str[]": lambda v: isinstance(v, str) or _is_str_list(v),
+    "str[]": _is_str_list,
+    "bool": lambda v: isinstance(v, bool),
+    "int": lambda v: isinstance(v, int) and not isinstance(v, bool),
+    "date": lambda v: isinstance(v, date),
+}
+
+
 def _type_ok(value: object, kind: str) -> bool:
-    """True if ``value`` matches a schema type token (str / bool / str[] / int[])."""
-    if kind == "str":
-        return isinstance(value, str)
-    if kind == "bool":
-        return isinstance(value, bool)
-    if kind == "int":
-        # bool is an int subclass in Python; exclude it so `true` isn't a valid int.
-        return isinstance(value, int) and not isinstance(value, bool)
-    if kind == "date":
-        return isinstance(value, date)
-    if kind == "str[]":
-        return isinstance(value, list) and all(isinstance(x, str) for x in value)
+    """True if ``value`` matches a schema type token (str / bool / date / str[] /
+    int[] / asn[] / str|str[])."""
+    predicate = _SCALAR_PREDICATES.get(kind)
+    if predicate is not None:
+        return predicate(value)
     if kind in ("int[]", "asn[]"):
         # bool is an int subclass in Python; exclude it so `true` isn't a valid int.
         # "asn[]" additionally bounds each value to the 32-bit ASN range, rejecting
@@ -106,6 +117,17 @@ def _grouped_lists(
 def _is_number(value: object) -> bool:
     # bool is an int subclass in Python; exclude it so `true` isn't a valid number.
     return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _as_urls(value: object) -> tuple[str, ...]:
+    """Normalise a ``ranges_url`` field -- absent, a single URL, or a list of URLs
+    (an agent may publish its ranges across more than one feed, e.g. one per IP
+    family) -- to a tuple of URLs."""
+    if isinstance(value, str):
+        return (value,)
+    if isinstance(value, list):
+        return tuple(url for url in value if isinstance(url, str))
+    return ()
 
 
 def load_tuning(name: str, schema: Mapping[str, str]) -> Mapping[str, float]:
@@ -184,7 +206,7 @@ _AGENT_SCHEMA = {
     "name": "str",
     "domains": "str[]",
     "ranges": "str[]",
-    "ranges_url": "str",
+    "ranges_url": "str|str[]",
     "format": "str",
     "asns": "asn[]",
     "asn_primary": "bool",
@@ -228,8 +250,11 @@ class CrawlerSpec:
 
     domains: tuple[str, ...] = ()
     ranges: tuple[str, ...] = ()
-    ranges_url: str | None = None
-    fmt: str = "prefixes"  # how to parse ranges_url (see iprange.extract_cidrs)
+    # Zero or more published range feeds. More than one lets an operator that splits
+    # its list across feeds (e.g. Pingdom's separate IPv4 and IPv6 lists) be covered
+    # in full; all are fetched and merged, and all share the single ``fmt`` below.
+    ranges_urls: tuple[str, ...] = ()
+    fmt: str = "prefixes"  # how to parse each ranges_url feed (see iprange.extract_cidrs)
     # AS numbers the operator is expected to crawl from -- a second identity channel
     # that combines with the network channel (IP ranges and/or rDNS domains) as an
     # OR (see pipeline ``_resolve_asn_verification``). A network ``VERIFIED`` is the
@@ -511,7 +536,7 @@ def load_tokens(category: str) -> tuple[tuple[str, CrawlerSpec], ...]:
         spec = CrawlerSpec(
             domains=tuple(entry.get("domains", [])),
             ranges=tuple(entry.get("ranges", [])),
-            ranges_url=entry.get("ranges_url"),
+            ranges_urls=_as_urls(entry.get("ranges_url")),
             fmt=entry.get("format", "prefixes"),
             asns=tuple(entry.get("asns", [])),
             rdns_fallback=bool(entry.get("rdns_fallback", False)),
@@ -555,9 +580,10 @@ def load_asn_range_feeds() -> tuple[tuple[int, str, str], ...]:
     feeds: list[tuple[int, str, str]] = []
     for category in KNOWN_AGENT_CATEGORIES:
         for entry in _agents(category):
-            url, asns = entry.get("ranges_url"), entry.get("asns")
-            if url and asns and entry.get("asn_primary"):
-                feeds.append((int(asns[0]), url, entry.get("format", "prefixes")))
+            urls, asns = _as_urls(entry.get("ranges_url")), entry.get("asns")
+            if urls and asns and entry.get("asn_primary"):
+                fmt = entry.get("format", "prefixes")
+                feeds.extend((int(asns[0]), url, fmt) for url in urls)
     return tuple(feeds)
 
 

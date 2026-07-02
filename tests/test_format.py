@@ -90,7 +90,6 @@ def test_top_evidence_falls_back_when_not_verified() -> None:
 def _agent_profile(
     *,
     agent_name: str | None = None,
-    matched_token: str | None = None,
     verification: BotVerification | None = None,
 ) -> ClientProfile:
     return ClientProfile(
@@ -102,7 +101,6 @@ def _agent_profile(
             confidence=0.9,
             evidence=("e",),
             agent_name=agent_name,
-            matched_token=matched_token,
         ),
         verification=verification,
     )
@@ -111,7 +109,6 @@ def _agent_profile(
 def test_agent_identity_prefers_declared_name() -> None:
     profile = _agent_profile(
         agent_name="Googlebot",
-        matched_token="Googlebot",
         verification=BotVerification(
             VerificationStatus.VERIFIED, resolved_host="crawl.googlebot.com", dns=ChannelVerdict.VERIFIED
         ),
@@ -126,13 +123,6 @@ def test_agent_identity_falls_back_to_rdns_host() -> None:
         )
     )
     assert agent_identity(profile) == "crawl.googlebot.com"
-
-
-def test_agent_identity_never_uses_matched_token_alone() -> None:
-    # matched_token is only the raw UA substring a classifier matched on -- the
-    # client's own claim, not a confirmed identity -- so it must never surface
-    # as a header on its own, verified or not.
-    assert agent_identity(_agent_profile(matched_token="Googlebot")) is None
 
 
 def test_agent_identity_none_for_an_unrecognised_client() -> None:
@@ -151,7 +141,7 @@ def test_agent_identity_ignores_ip_range_match_as_a_hostname() -> None:
         ip=ChannelVerdict.VERIFIED,
         dns=ChannelVerdict.NOT_CHECKED,
     )
-    profile = _agent_profile(matched_token="ClaudeBot", verification=range_only)
+    profile = _agent_profile(verification=range_only)
     assert agent_identity(profile) is None
 
 

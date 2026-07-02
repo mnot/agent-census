@@ -327,9 +327,12 @@ def full_ua(profile: ClientProfile) -> str | None:
 
 
 def agent_identity(profile: ClientProfile) -> str | None:
-    """A known agent's own identity for a header line, in priority order: its
-    declared name, an rDNS-confirmed hostname, or the raw UA token that matched
-    it. ``None`` when nothing named this client -- it isn't a recognised agent.
+    """A known agent's own identity for a header line: its declared name, else
+    an rDNS-confirmed hostname. ``None`` otherwise -- in particular, the raw UA
+    substring a classifier matched on (``Classification.matched_token``) is
+    deliberately never used here even as a last resort: it is only a claim the
+    client's own User-Agent header makes, not a confirmed identity, and heading
+    a row with it would read as more certain than it is.
 
     The rDNS check specifically -- not the merged verification status -- decides
     the second tier: an agent verified by IP range alone (no declared domains)
@@ -346,7 +349,7 @@ def agent_identity(profile: ClientProfile) -> str | None:
         and verification.resolved_host
     ):
         return verification.resolved_host
-    return cls.matched_token
+    return None
 
 
 def client_label(profile: ClientProfile) -> str:

@@ -621,6 +621,7 @@ def _client_row(
                 profile.client_id.ip,
                 profile.client_id.user_agent or "",
                 org or "",
+                agent_identity(profile) or "",
                 *ordered_tags(cls.tags),  # the tags shown in the Tags column
             )
         ).lower()
@@ -696,22 +697,34 @@ def _folded_tbody(
     members = profile.member_ips
     pattern = _pattern_cell_for(profile, window, peak)
     org_html = f" <span class='cid-as'>{_esc(org)}</span>" if org else ""
-    row_attrs = "class='asum'"
+    identity = agent_identity(profile)
     if filterable:
         haystack = " ".join(
-            (prefix, ua or "", org or "", *members, *ordered_tags(cls.tags))
+            (prefix, ua or "", org or "", identity or "", *members, *ordered_tags(cls.tags))
         ).lower()
         row_attrs = (
             f"class='asum frow' data-filter=\"{_esc(haystack)}\""
             f"{_netcol_attr([profile], net_col or {})}"
         )
+    else:
+        row_attrs = "class='asum'"
     raw = full_ua(profile)
     ua_title = f' title="{_esc(raw)}"' if raw else ""
     toggle = _disclosure(f"Show {count(len(members), 'member IP')} of {prefix}")
+    # For a known agent, lead with its own identity and demote the network detail
+    # to a line below, matching the grouped-actor header. The fold's own prefix is
+    # often the identity already (an ASN operator label, say) -- drop it from the
+    # demoted line rather than repeat it verbatim.
+    prefix_html = f"<span class='mono'>{_esc(prefix)}</span>" if prefix != identity else ""
+    net_line = f"{prefix_html}{org_html}<span class='muted'> · {count(len(members), 'IP')}</span>"
+    id_html = (
+        f"<span class='cid-id mono'>{_esc(identity)}</span><div class='cid-as'>{net_line}</div>"
+        if identity
+        else net_line
+    )
     summary = (
         f"<tr {row_attrs}><td class='cid'>{toggle}"
-        f"{flag}<span class='mono'>{_esc(prefix)}</span>{org_html}"
-        f"<span class='muted'> · {count(len(members), 'IP')}</span>"
+        f"{flag}{id_html}"
         f'<span class="actor-ua mono"{ua_title}>{_esc(ua or "–")}</span></td>'
         f"<td class='num'>{profile.features.request_count:,}</td>"
         f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
@@ -769,6 +782,11 @@ def _actor_tbody(
     pattern = _pattern_cell(
         _aggregate_buckets(actor.members, window), top_evidence(actor.lead), actor.requests, peak
     )
+    # For a known agent, lead with its own identity -- name, else an rDNS-confirmed
+    # host, else the UA token that matched it -- and demote the IP/ASN spread to a
+    # line below it (like the network's own AS org). Otherwise the spread is the
+    # only identity we have, so it stays the header line as before.
+    identity = agent_identity(actor.lead)
     row_attrs = "class='asum'"
     if filterable:
         haystack = " ".join(
@@ -777,6 +795,7 @@ def _actor_tbody(
                     f"{m.client_id.ip} {m.client_id.user_agent or ''} {m.features.as_org or ''}"
                     for m in actor.members
                 ),
+                identity or "",
                 *ordered_tags(tags),  # the tags shown in the Tags column
             )
         ).lower()
@@ -787,11 +806,6 @@ def _actor_tbody(
     raw = full_ua(actor.lead)
     ua_title = f' title="{_esc(raw)}"' if raw else ""
     toggle = _disclosure(f"Show {count(len(actor.members), 'grouped client')}")
-    # For a known agent, lead with its own identity -- name, else an rDNS-confirmed
-    # host, else the UA token that matched it -- and demote the IP/ASN spread to a
-    # line below it (like the network's own AS org). Otherwise the spread is the
-    # only identity we have, so it stays the header line as before.
-    identity = agent_identity(actor.lead)
     net_line = f"{_esc(spread)}{asn_html}"
     id_html = (
         f"<span class='cid-id mono'>{_esc(identity)}</span><div class='cid-as'>{net_line}</div>"

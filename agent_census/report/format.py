@@ -7,7 +7,7 @@ from datetime import datetime
 from functools import lru_cache
 
 from ..dataload import load_egress_networks
-from ..model import ClientFeatures, ClientProfile, Kind, VerificationStatus
+from ..model import ChannelVerdict, ClientFeatures, ClientProfile, Kind, VerificationStatus
 
 _KHTML_MARKER = "(khtml, like gecko)"
 # Layout-engine tokens: their presence in a trimmed preamble means the UA wore a
@@ -314,8 +314,7 @@ def client_id_parts(profile: ClientProfile) -> tuple[str, str | None, str | None
     """
     cid = profile.client_id
     prefix = cid.subnet if cid.subnet is not None else cid.ip
-    raw_ua = cid.user_agent if cid.user_agent is not None else profile.features.user_agent
-    ua = elide_ua(raw_ua, is_browser=profile.classification.primary is Kind.BROWSER)
+    ua = elide_ua(full_ua(profile), is_browser=profile.classification.primary is Kind.BROWSER)
     org = profile.features.as_org if "datacenter" in profile.classification.tags else None
     return prefix, org, ua
 
@@ -330,14 +329,20 @@ def full_ua(profile: ClientProfile) -> str | None:
 def agent_identity(profile: ClientProfile) -> str | None:
     """A known agent's own identity for a header line, in priority order: its
     declared name, an rDNS-confirmed hostname, or the raw UA token that matched
-    it. ``None`` when nothing named this client -- it isn't a recognised agent."""
+    it. ``None`` when nothing named this client -- it isn't a recognised agent.
+
+    The rDNS check specifically -- not the merged verification status -- decides
+    the second tier: an agent verified by IP range alone (no declared domains)
+    has its ``resolved_host`` set to the matched CIDR by :mod:`netverify`, which
+    is a network, not a name, and would be a confusing "identity" to show.
+    """
     cls = profile.classification
     if cls.agent_name:
         return cls.agent_name
     verification = profile.verification
     if (
         verification is not None
-        and verification.status is VerificationStatus.VERIFIED
+        and verification.dns is ChannelVerdict.VERIFIED
         and verification.resolved_host
     ):
         return verification.resolved_host

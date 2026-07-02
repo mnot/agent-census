@@ -47,9 +47,7 @@ class KnownBotClassifier(Classifier):
         if no_probing:
             confidence += _T["no_probing_bonus"]
             evidence.append("no vulnerability probing observed")
-        return [
-            self._signal(confidence, evidence, agent_name=spec.name, matched_token=token)
-        ]
+        return [self._signal(confidence, evidence, agent_name=spec.name, matched_token=token)]
 
     def _by_asn(self, features: ClientFeatures) -> list[Signal]:
         """Recognise an agent by its origin AS number when the UA doesn't name it.

@@ -416,9 +416,7 @@ def _require_agent(entry: dict[str, Any]) -> str:
     # legitimately-signed request from this agent and misfire as impersonation, so
     # this is checked eagerly rather than left to surface at classification time.
     if wba_operator and wba_operator not in {op.name for op in load_wba_operators()}:
-        return (
-            f"'wba_operator' {wba_operator!r} names no operator in agents/web_bot_auth.toml"
-        )
+        return f"'wba_operator' {wba_operator!r} names no operator in agents/web_bot_auth.toml"
     return ""
 
 

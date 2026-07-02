@@ -7,11 +7,28 @@ traversal/injection markers, and no browser-like sub-resource loading.
 
 from __future__ import annotations
 
-from ..dataload import load_list, load_shared_tuning, load_tuning
+from ..dataload import load_list, load_shared_tuning, load_tokens, load_tuning
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
 
-_SCANNER_UA = tuple(token.lower() for token in load_list("scanner_ua"))
+
+def _scanner_ua_tokens() -> tuple[str, ...]:
+    """UA substrings that name a scanning tool, from two sources kept distinct:
+
+    * ``signatures/scanner_ua.toml`` -- anonymous tool signatures (sqlmap, nmap,
+      ...) with no operator identity or origin to verify; and
+    * ``agents/vuln_scanner.toml`` -- named scanners whose ``ua_substring`` is
+      already recorded there to authenticate them against a published range.
+
+    Folding the latter in here means a named scanner's UA lives in exactly one
+    file (the one that also carries its ranges), not duplicated across both.
+    """
+    tokens = [token.lower() for token in load_list("scanner_ua")]
+    tokens += [ua.lower() for ua, _spec in load_tokens("vuln_scanner")]
+    return tuple(dict.fromkeys(tokens))  # de-duplicate, preserving order
+
+
+_SCANNER_UA = _scanner_ua_tokens()
 
 # Numeric knobs: this classifier's own in data/tuning/vuln_scanner.toml, the
 # 404-storm thresholds in data/tuning/shared.toml.

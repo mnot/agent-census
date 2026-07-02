@@ -1,0 +1,10 @@
+# Uptime / availability monitors that publish a fixed origin range, so a UA
+# claiming to be one can be authenticated against it under --verify-bots.
+#
+# Same contract as agents/vuln_scanner.toml: presence here does not change how a
+# monitor is classified (see classify/monitor.py) -- it only binds a declared
+# identity to a verifiable origin. No entries yet; add one as a monitor that
+# publishes its ranges is found.
+#
+# ua_substring is matched case-insensitively. Optional: ranges (inline CIDRs),
+# ranges_url (published feed, fetched + cached), domains (rDNS suffixes).

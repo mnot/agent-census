@@ -9,13 +9,30 @@ from __future__ import annotations
 import re
 from functools import lru_cache
 
-from ..dataload import load_list, load_tuning
+from ..dataload import load_list, load_tokens, load_tuning
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
 
-# Monitoring-service UA tokens live in data/signatures/monitor_uas.toml; numeric knobs in
-# data/tuning/monitor.toml.
-_MONITOR_UA = re.compile("|".join(re.escape(s) for s in load_list("monitor_uas")), re.I)
+
+def _monitor_ua_pattern() -> "re.Pattern[str]":
+    """UA substrings that name a monitoring service, from two sources kept distinct:
+
+    * ``signatures/monitor_uas.toml`` -- monitor UA tokens with no origin to
+      verify; and
+    * ``agents/monitor.toml`` -- named monitors whose ``ua_substring`` is recorded
+      there to authenticate them against a published range.
+
+    Folding the latter in means a named monitor's UA lives in exactly one file
+    (the one that also carries its ranges), not duplicated across both. Same
+    contract as classify/vuln_scanner.py's ``_scanner_ua_tokens``.
+    """
+    tokens = list(load_list("monitor_uas"))
+    tokens += [ua for ua, _spec in load_tokens("monitor")]
+    return re.compile("|".join(re.escape(s) for s in dict.fromkeys(tokens)), re.I)
+
+
+# Numeric knobs in data/tuning/monitor.toml.
+_MONITOR_UA = _monitor_ua_pattern()
 _TUNING_SCHEMA = {
     "ua_weight": "monitor_ua.weight",
     "few_urls_distinct_max": "few_urls.distinct_paths_max",

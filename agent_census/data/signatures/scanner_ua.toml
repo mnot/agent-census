@@ -1,11 +1,14 @@
 # User-Agent tokens that name a scanning / pentest / measurement tool.
 # Matched case-insensitively as a substring; a hit corroborates vuln_scanner.
+#
+# Anonymous tool signatures only. A *named* scanner that publishes an origin
+# range (e.g. Cortex Xpanse) goes in agents/vuln_scanner.toml instead -- its
+# ua_substring there is folded into this signal, so don't repeat it here.
 
 scanner_ua = [
     "sqlmap", "nmap", "nikto", "nuclei", "masscan", "wpscan", "zgrab",
-    "CensysInspect", "InternetMeasurement", "l9scan", "BlackVeil-Security-Scanner",
+    "l9scan", "BlackVeil-Security-Scanner",
     "SecurityScanner", "AliyunSecBot", "TLM-Audit-Scanner", "CMS-Checker",
-    "docs-cortex.paloaltonetworks",
     "acunetix", "nessus", "openvas", "netsparker", "qualysguard", "arachni",
     "wfuzz", "feroxbuster", "gobuster", "dirbuster", "commix", "wapiti",
     "whatweb", "joomscan", "droopescan", "xsstrike", "dotdotpwn",

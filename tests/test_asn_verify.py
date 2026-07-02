@@ -1,8 +1,12 @@
-"""The ASN verification tier: `asns` corroborates or impeaches a declared crawler.
+"""The ASN verification tier: `asns` combines with ranges/rDNS as an OR.
+
+An origin AS in the agent's ``asns`` confirms the identity (``asn_associated``)
+even when the IP fell outside the published ranges; only a hit that fails *both*
+channels is an impersonator, and an in-range ``VERIFIED`` still outranks all.
 
 The tier is exercised with a synthetic ``asns`` injected onto AhrefsBot's spec
-(via ``_declared_spec``) so the tests check the *feature*, not whichever ASNs the
-curated data files happen to list at the moment.
+(via ``_agent_spec``, the lookup the tier uses) so the tests check the *feature*,
+not whichever ASNs the curated data files happen to list at the moment.
 """
 
 from __future__ import annotations
@@ -27,7 +31,7 @@ _ASN_FMT = '%h %l %u %t "%r" %>s %b "%{Referer}i" "%{User-Agent}i" "%{MM_ASN}e"'
 @pytest.fixture(autouse=True)
 def _ahrefs_has_asns(monkeypatch: pytest.MonkeyPatch) -> None:
     """Pin a known ``asns`` onto AhrefsBot's spec, independent of the data files."""
-    real = pipeline._declared_spec
+    real = pipeline._agent_spec
 
     def fake(ua: str | None) -> tuple[str, object] | None:
         spec = real(ua)
@@ -36,7 +40,7 @@ def _ahrefs_has_asns(monkeypatch: pytest.MonkeyPatch) -> None:
             return token, dataclasses.replace(crawler, asns=_ASNS)
         return spec
 
-    monkeypatch.setattr(pipeline, "_declared_spec", fake)
+    monkeypatch.setattr(pipeline, "_agent_spec", fake)
 
 
 def _status(as_number: str | None, prior: BotVerification | None = None) -> str | None:
@@ -50,12 +54,18 @@ def test_asn_tier_corroborates_impeaches_and_abstains() -> None:
     assert _status(None) is None  # no AS in the log -> can't say (never impersonator)
 
 
-def test_dns_or_range_verdict_takes_precedence_over_asn() -> None:
+def test_range_and_asn_channels_combine_as_or() -> None:
     verified = BotVerification(VerificationStatus.VERIFIED)
-    impostor = BotVerification(VerificationStatus.IMPERSONATOR)
-    # A definitive network verdict wins even when the AS would say otherwise.
+    impostor = BotVerification(VerificationStatus.IMPERSONATOR)  # e.g. out-of-range
+    # An in-range VERIFIED is the strongest proof and stands, whatever the AS says.
     assert _status("99999", verified) == "verified"
-    assert _status("140577", impostor) == "impersonator"
+    assert _status("140577", verified) == "verified"
+    # OR: an in-list AS rescues an out-of-range hit -- confirmed, not forged.
+    assert _status("140577", impostor) == "asn_associated"
+    # But a hit that fails *both* channels stays an impersonator.
+    assert _status("99999", impostor) == "impersonator"
+    # And an out-of-range hit with no AS to check remains the network verdict.
+    assert _status(None, impostor) == "impersonator"
 
 
 def test_non_crawler_ua_is_untouched() -> None:

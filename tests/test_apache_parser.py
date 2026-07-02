@@ -138,6 +138,20 @@ def test_x_forwarded_for_chain_parsed() -> None:
     assert entry.forwarded_for == ("203.0.113.1", "70.41.3.18")
 
 
+def test_x_forwarded_for_entries_are_capped() -> None:
+    # A hostile XFF with thousands of entries must not retain a huge tuple; the
+    # leftmost (client) address is always kept.
+    from agent_census.parsing.apache_directives import _XFF_MAX_ENTRIES
+
+    fmt = '%h %t "%r" %>s %b "%{X-Forwarded-For}i"'
+    chain = "203.0.113.1, " + ", ".join(f"10.0.0.{i % 255}" for i in range(5000))
+    line = f'10.0.0.1 [10/Oct/2000:13:55:36 +0000] "GET / HTTP/1.1" 200 1 "{chain}"'
+    entry = _one(fmt, line).entry
+    assert entry is not None
+    assert len(entry.forwarded_for) <= _XFF_MAX_ENTRIES
+    assert entry.forwarded_for[0] == "203.0.113.1"
+
+
 def test_separate_method_path_query_directives() -> None:
     fmt = "%h %t %m %U%q %H %>s %b"
     line = "10.0.0.1 [10/Oct/2000:13:55:36 +0000] GET /search?x=1&y=2 HTTP/1.1 200 5"

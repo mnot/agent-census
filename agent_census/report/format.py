@@ -7,7 +7,8 @@ from datetime import datetime
 from functools import lru_cache
 
 from ..dataload import load_egress_networks
-from ..model import ChannelVerdict, ClientFeatures, ClientProfile, Kind
+from ..model import ChannelVerdict, ClientFeatures, ClientProfile, Kind, WbaStatus
+from ..wba import display_operator
 
 _KHTML_MARKER = "(khtml, like gecko)"
 # Layout-engine tokens: their presence in a trimmed preamble means the UA wore a
@@ -329,20 +330,30 @@ def full_ua(profile: ClientProfile) -> str | None:
 
 def agent_identity(profile: ClientProfile) -> str | None:
     """A known agent's own identity for a header line: its declared name, else
-    an rDNS-confirmed hostname. ``None`` otherwise -- in particular, the raw UA
-    substring a classifier matched on is deliberately never used here even as a
-    last resort: it is only a claim the client's own User-Agent header makes,
-    not a confirmed identity, and heading a row with it would read as more
-    certain than it is.
+    its Web Bot Auth operator, else an rDNS-confirmed hostname. ``None``
+    otherwise -- in particular, the raw UA substring a classifier matched on is
+    deliberately never used here even as a last resort: it is only a claim the
+    client's own User-Agent header makes, not a confirmed identity, and heading
+    a row with it would read as more certain than it is.
+
+    WBA sits ahead of rDNS: a verified signature is a cryptographic proof of
+    the operator (the impersonator gate in the combiner already treats it as
+    outranking the network channel), and ``display_operator`` yields a curated
+    name rather than a raw hostname.
 
     The rDNS check specifically -- not the merged verification status -- decides
-    the second tier: an agent verified by IP range alone (no declared domains)
+    the last tier: an agent verified by IP range alone (no declared domains)
     has its ``resolved_host`` set to the matched CIDR by :mod:`netverify`, which
     is a network, not a name, and would be a confusing "identity" to show.
     """
     cls = profile.classification
     if cls.agent_name:
         return cls.agent_name
+    wba = profile.wba
+    if wba is not None and wba.status is WbaStatus.VERIFIED:
+        operator = display_operator(wba)
+        if operator:
+            return operator
     verification = profile.verification
     if (
         verification is not None

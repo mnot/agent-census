@@ -193,11 +193,17 @@ def pattern_cell(
     window: Window = None,
 ) -> str:
     """The 'Request pattern' cell: the cadence sparkline over a caption naming why
-    the client landed in this kind. Below the volume floor, the caption alone.
+    the client landed in this kind. Below the volume floor, the caption alone -- and
+    when there's no extra fact to caption with (``evidence`` empty), nothing at all,
+    not a bare placeholder dash under the glyph.
 
     ``peak`` is the client table's shared maximum, so the glyph's height is
     comparable to every other row's (sqrt-scaled, to keep quiet rows legible)."""
-    cap = f"<div class='spark-cap'>{html.escape(truncate(evidence), quote=True)}</div>"
+    cap = (
+        f"<div class='spark-cap'>{html.escape(truncate(evidence), quote=True)}</div>"
+        if evidence
+        else ""
+    )
     if request_count >= _MIN_REQUESTS and any(buckets):
         return sparkline_svg(buckets, peak=peak, sqrt=True, window=window) + cap
     return cap

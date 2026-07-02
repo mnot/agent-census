@@ -117,7 +117,7 @@ def test_top_evidence_empty_when_only_identity_declaration() -> None:
     profile = _known_bot_profile(
         ("User-Agent declares 'Mastodon', a known social-preview / link-unfurl bot",)
     )
-    assert top_evidence(profile) == "–"
+    assert top_evidence(profile) == ""
 
 
 def _boilerplate_profile(evidence: tuple[str, ...]) -> ClientProfile:
@@ -136,7 +136,7 @@ def test_top_evidence_skips_boilerplate_lead_without_an_agent_name() -> None:
     # no declared identity to head the row with) but still flag evidence[0] as
     # boilerplate -- the skip must not depend on agent_name being set too.
     profile = _boilerplate_profile(("native-app networking stack in User-Agent (CFNetwork)",))
-    assert top_evidence(profile) == "–"
+    assert top_evidence(profile) == ""
 
 
 def test_top_evidence_boilerplate_lead_still_yields_to_real_evidence() -> None:

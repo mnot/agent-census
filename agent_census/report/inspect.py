@@ -320,7 +320,7 @@ _C_CONF = _Col("Conf.", True, lambda p: f"{p.classification.confidence:.0%}")
 _C_REQUESTS = _Col("Requests", True, lambda p: f"{p.features.request_count:,}")
 _C_BYTES = _Col("Bandwidth", True, lambda p: human_bytes(p.features.total_bytes))
 _C_TAGS = _Col("Tags", False, _tags_cell)
-_C_NETWORK = _Col("Network", False, lambda p: p.network or "–")
+_C_NETWORK = _Col("Network", False, lambda p: md_escape(p.network) if p.network else "–")
 _C_PROBE = _Col("Probe paths", True, _probe_cell)
 _C_TRAVERSAL = _Col("Traversal", True, lambda p: str(p.features.traversal_hits or "–"))
 _C_EVASION = _Col("Evasion", True, lambda p: str(p.features.evasion_hits or "–"))
@@ -341,6 +341,7 @@ _IDENTITY_COLS = [_C_IP, _C_UA, _C_KIND, _C_REQUESTS, _C_BYTES]
 _VULN_COLS = [_C_UA, _C_PROBE, _C_TRAVERSAL, _C_EVASION, _C_404, _C_REQUESTS]
 
 # Kinds whose story is crawl shape + robots politeness rather than raw identity.
+# (feed_reader is handled ahead of this set -- it gets its own feed-ratio columns.)
 _CRAWL_KINDS = {
     "crawler",
     "ai_crawler",
@@ -349,7 +350,6 @@ _CRAWL_KINDS = {
     "seo_marketing",
     "data_harvester",
     "scraper",
-    "feed_reader",
 }
 # Kinds where the question is whether the client is who its UA claims.
 _IDENTITY_KINDS = {"browser", "spoofed_browser", "impersonator", "app"}
@@ -379,7 +379,12 @@ def _tag_columns(tag: str) -> list[_Col]:
     if any(k in needle for k in ("probe", "traversal", "evasion", "404")):
         return _VULN_COLS
     # Any other tag: show the concrete evidence that earned it, per client.
-    return [_C_UA, _C_KIND, _Col(f"Why `{tag}`", False, _tag_why_cell(needle)), _C_REQUESTS]
+    return [
+        _C_UA,
+        _C_KIND,
+        _Col(f"Why `{md_escape(tag)}`", False, _tag_why_cell(needle)),
+        _C_REQUESTS,
+    ]
 
 
 def _brief_columns(

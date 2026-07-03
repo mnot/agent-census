@@ -764,3 +764,19 @@ def test_collect_entries_only_for_requested_keys() -> None:
     )
     assert set(collected) == {scanner.client_id}
     assert len(collected[scanner.client_id]) == scanner.features.request_count
+
+
+def test_vhost_prefers_host_then_falls_back_to_tls_sni() -> None:
+    # HTTP/2 requests often log %{Host}i as '-', with the authority only in the TLS
+    # SNI (%{SSL_TLS_SNI}e). The served vhost must still be found from SNI, so the
+    # site is detected; %v / Host take precedence when present.
+    parser = resolve("apache", {"format": '%h %t %{Host}i %{SSL_TLS_SNI}e "%r" %>s'})
+
+    def vhost(host: str, sni: str) -> str | None:
+        line = f'1.2.3.4 [10/Oct/2023:12:00:00 +0000] {host} {sni} "GET / HTTP/2.0" 200'
+        entry = next(parser.parse_lines([line])).entry
+        assert entry is not None
+        return pipeline._vhost_of(entry)
+
+    assert vhost("-", "sni.example.com") == "sni.example.com"  # Host '-', fall back to SNI
+    assert vhost("h.example.com", "sni.example.com") == "h.example.com"  # Host wins when present

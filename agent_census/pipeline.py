@@ -136,8 +136,16 @@ def _logged_asn(entry: LogEntry) -> str | None:
 
 
 def _vhost_of(entry: LogEntry) -> str | None:
-    """The virtual host a line was served for: the logged ``%v``, else the Host header."""
-    return entry.extra.get("server_name") or entry.host_header
+    """The virtual host a line was served for: the logged ``%v``, else the Host
+    header, else the TLS SNI (Apache mod_ssl's ``SSL_TLS_SNI`` env var, logged as
+    ``%{SSL_TLS_SNI}e`` -> ``extra['env:SSL_TLS_SNI']``). HTTP/2 requests commonly
+    log ``%{Host}i`` as ``-``, with the authority available only from SNI, so
+    without this fallback such logs have no detectable site."""
+    return (
+        entry.extra.get("server_name")
+        or entry.host_header
+        or entry.extra.get("env:SSL_TLS_SNI")
+    )
 
 
 def _excluded_by_vhost(entry: LogEntry, vhosts: Sequence[str] | None) -> bool:

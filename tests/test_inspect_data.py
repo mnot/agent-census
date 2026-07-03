@@ -169,6 +169,32 @@ def test_trace_offsets_rebase_for_assets_with_no_parent_page(tmp_path: Path) -> 
     assert [r["time"] for r in rows] == ["+0.0s", "+1.0s", "+13h40m"]
 
 
+def test_trace_no_referer_favicon_between_page_and_assets_keeps_nesting(tmp_path: Path) -> None:
+    # A page, then a no-Referer favicon (browsers commonly send none), then the
+    # page's referer-bearing assets. The favicon is a top-level asset -- it must NOT
+    # clear the page context: /style.css and /app.js still nest under /page and still
+    # measure their offset from the page, not from the favicon between them.
+    lines = [
+        '5.5.5.5 - - [10/Oct/2023:12:00:00 +0000] "GET /page HTTP/1.1" 200 500 "-" "b/1"',
+        '5.5.5.5 - - [10/Oct/2023:12:00:01 +0000] "GET /favicon.ico HTTP/1.1" 200 90 "-" "b/1"',
+        '5.5.5.5 - - [10/Oct/2023:12:00:03 +0000] "GET /style.css HTTP/1.1" 200 90 '
+        '"http://h/page" "b/1"',
+        '5.5.5.5 - - [10/Oct/2023:12:00:04 +0000] "GET /app.js HTTP/1.1" 200 90 '
+        '"http://h/page" "b/1"',
+    ]
+    log = tmp_path / "favi.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"), inspect_trace=20)
+    (profile,) = [p for p in result.profiles if p.client_id.ip == "5.5.5.5"]
+    rows = build_member_view(profile, limit=20)["trace"]["rows"]
+    # favicon is top-level (no page-matching Referer); the two asset requests nest.
+    assert [r["child"] for r in rows] == [False, False, True, True]
+    # /page +0s; favicon +1s from the page (previous top-level); /style.css +3s and
+    # /app.js +4s -- both from the page, NOT from the favicon logged between them.
+    assert [r["time"] for r in rows] == ["+0.0s", "+1.0s", "+3.0s", "+4.0s"]
+
+
 def test_trace_referer_shortens_same_site_only(tmp_path: Path) -> None:
     lines = [
         '8.8.8.8 - - [10/Oct/2023:12:00:00 +0000] "GET /a HTTP/1.1" 200 500 '

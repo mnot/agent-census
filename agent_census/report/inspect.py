@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from ..model import Classification, ClientProfile, Kind
 from ..pipeline import AnalysisResult
+from .aggregate import group_actors
 from .format import (
     client_label,
     count,
@@ -35,8 +36,9 @@ def select_profiles(
     client: str | None,
     kind: str | None,
     network: str | None = None,
+    actor: str | None = None,
 ) -> list[ClientProfile]:
-    """Pick the profiles to inspect by client substring, kind, and/or network.
+    """Pick the profiles to inspect by client substring, kind, network, and/or actor.
 
     The filters compose (AND), so ``kind`` + ``network`` drills into one cell of
     the kind x network cross-tab. ``network`` is a case-insensitive substring of
@@ -44,6 +46,11 @@ def select_profiles(
     ``residential``) -- matched before the report's display-time folding, so it can
     select a low-volume datacentre that the cross-tab collapses into its
     ``Other datacenters`` column rather than breaking out on its own.
+
+    ``actor`` is the exact IP that leads a display-time actor group -- the id the
+    HTML report copies from a grouped row's summary. It expands to every member of
+    that group, so the whole rotation an operator ran across many addresses can be
+    inspected as one, not one member at a time.
     """
     profiles = list(result.profiles)
     if kind is not None:
@@ -52,12 +59,32 @@ def select_profiles(
     if network is not None:
         needle = network.lower()
         profiles = [p for p in profiles if p.network and needle in p.network.lower()]
+    if actor is not None:
+        profiles = _actor_members(profiles, actor)
     if client is not None:
         needle = client.lower()
         profiles = [
             p for p in profiles if needle in p.client_id.display.lower() or p.client_id.ip == client
         ]
     return profiles
+
+
+def _actor_members(profiles: list[ClientProfile], lead_ip: str) -> list[ClientProfile]:
+    """Every member of the actor group(s) led by ``lead_ip``.
+
+    Reconstructs the same folding the HTML report shows under a disclosure triangle,
+    so an ``--actor`` id copied from a summary row expands back to exactly its
+    members. Grouping runs per primary kind, mirroring the report's per-kind
+    sections, so it holds even when ``--kind`` isn't also given."""
+    by_kind: dict[Kind, list[ClientProfile]] = {}
+    for profile in profiles:
+        by_kind.setdefault(profile.classification.primary, []).append(profile)
+    selected: list[ClientProfile] = []
+    for kind_profiles in by_kind.values():
+        for group in group_actors(kind_profiles):
+            if group.lead.client_id.ip == lead_ip:
+                selected.extend(group.members)
+    return selected
 
 
 def _identity_block(profile: ClientProfile) -> list[str]:

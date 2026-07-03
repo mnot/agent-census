@@ -19,10 +19,10 @@ from collections import Counter, deque
 from collections.abc import Callable, Sequence
 from datetime import datetime
 from typing import TypeVar
-from urllib.parse import urlsplit
 
 from . import uas
 from .dataload import load_list, load_request_signatures, load_vuln_paths
+from .hostforms import bare_host, referer_host, site_key
 from .model import ClientFeatures, LogEntry
 from .wba import SIGNATURE_INPUT_HEADER, WbaClaim, build_claim
 
@@ -101,30 +101,6 @@ def _referer_path(referer: str) -> str:
     if slash == -1:
         return "/"
     return after[slash:].split("?", 1)[0]
-
-
-def _referer_host(referer: str | None) -> str | None:
-    """The lowercased host of a Referer, or ``None`` for an absent/blank one."""
-    if not referer or referer == "-":
-        return None
-    return (urlsplit(referer).hostname or "").lower() or None
-
-
-def _bare_host(value: str | None) -> str | None:
-    """The lowercased hostname of a ``host[:port]`` value, port/brackets stripped --
-    for comparing a request's served host to a Referer host. ``None`` when blank."""
-    if not value:
-        return None
-    return (urlsplit("//" + value).hostname or "").lower() or None
-
-
-def _site_key(host: str | None) -> str | None:
-    """A same-site comparison key: a single leading ``www.`` dropped so ``www`` and
-    the apex read as one site. Only ``www.`` -- other subdomains are genuinely
-    different hosts. (Mirrors ``report.inspect_data._site_key``.)"""
-    if host and host.startswith("www."):
-        return host[4:] or host
-    return host
 
 
 def _served_host(entry: LogEntry) -> str | None:
@@ -484,12 +460,12 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
             # redirects (a pipeline gate), so count both directions and let the
             # classifier pick. Counted unconditionally here; needs a served host in the
             # log to establish same-site (absent -> skip).
-            ref_host = _referer_host(entry.referer)
-            served_host = _bare_host(_served_host(entry))
+            ref_host = referer_host(entry.referer)
+            served_host = bare_host(_served_host(entry))
             if (
                 ref_host is not None
                 and served_host is not None
-                and _site_key(ref_host) == _site_key(served_host)
+                and site_key(ref_host) == site_key(served_host)
                 and ref_host.startswith("www.") != served_host.startswith("www.")
             ):
                 if ref_host.startswith("www."):

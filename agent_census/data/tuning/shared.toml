@@ -59,10 +59,11 @@ min_hits = 5
 
 [redirect_gate]
 # Infer that the site 301s one host form to the other (www <-> apex) from observed
-# traffic rather than a hard-coded rule: over the whole log, the share of requests
-# served for a www.* host (and, separately, for a non-www host) that returned a 3xx.
-# When exactly one side is at/above `gate_3xx_ratio` (with at least `min_requests`
+# traffic rather than a hard-coded rule: within the dominant site's own traffic, the
+# share of its www.* requests (and, separately, its non-www requests) that returned a
+# 3xx. When exactly one side is at/above `gate_3xx_ratio` (with at least `min_requests`
 # requests to judge), that side is the redirect-only "shadow" and the impossible-
-# referer signal is armed for it. Used by the pipeline.
+# referer signal is armed for it. Scoped per site so a foreign vhost's redirects don't
+# arm it. Used by the pipeline.
 min_requests = 50
 gate_3xx_ratio = 0.9

@@ -187,6 +187,34 @@ def test_www_redirector_gate_holds_for_mid_stream_eviction(tmp_path: Path) -> No
     assert "impossible-referer" in profile.classification.tags  # type: ignore[attr-defined]
 
 
+def test_redirect_shadow_directions_and_suppression() -> None:
+    from agent_census.pipeline import _redirect_shadow
+
+    # bucket = [www_total, www_3xx, bare_total, bare_3xx]
+    def shadow(bucket: list[int]) -> str | None:
+        return _redirect_shadow({"s": bucket}, "s", min_requests=50, gate_ratio=0.9)
+
+    assert shadow([60, 60, 100, 0]) == "www"  # www redirect-only, apex serves content
+    assert shadow([100, 0, 60, 60]) == "apex"  # apex redirect-only, www serves content
+    assert shadow([60, 60, 60, 60]) is None  # both redirect-dominated -> suppressed
+    assert shadow([10, 10, 100, 0]) is None  # www below the min sample
+    assert shadow([100, 0, 100, 0]) is None  # neither redirect-dominated
+    assert _redirect_shadow({}, "missing", min_requests=50, gate_ratio=0.9) is None
+
+
+def test_redirect_shadow_is_scoped_per_site_key() -> None:
+    # A foreign non-www 301 farm must not pollute the analysed site's bare bucket:
+    # the gate reads only the dominant site's own www-vs-bare split.
+    from agent_census.pipeline import _redirect_shadow
+
+    site_redir = {
+        "a.com": [60, 60, 100, 0],  # analysed site: www 301s, apex serves content
+        "legacy.com": [0, 0, 500, 500],  # a foreign, heavily-redirecting non-www host
+    }
+    # a.com is judged on a.com alone -> www-shadow, not flipped to apex by legacy.com.
+    assert _redirect_shadow(site_redir, "a.com", min_requests=50, gate_ratio=0.9) == "www"
+
+
 def test_vhost_filter_keeps_any_of_several(tmp_path: Path) -> None:
     # Repeated --vhost is a union: a line is kept if it matches any term.
     rows = [

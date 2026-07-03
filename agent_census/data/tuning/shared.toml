@@ -47,15 +47,16 @@ ratio_min = 0.6
 distinct_paths_min = 15
 
 [impossible_referer]
-# A same-site cross-form Referer (the www form of an apex the request was served
-# for, or vice versa) is impossible once the site 301s one form to the other -- a
-# compliant browser is never *on* the redirect-only form to refer from. Gated on the
-# site actually redirecting one form to the other (see [redirect_gate]), this then
-# requires a browser UA, no feed activity, and the Referer on a real share of
-# requests (a lone hit could be a quirky proxy / extension). Used by the
-# impossible-referer tag and the combiner's browser -> spoofed_browser conversion.
-ratio_min = 0.5
-min_hits = 5
+# A same-site Referer naming the host form the site only ever redirects (never
+# renders) is impossible from a real browser. Gated on the site actually redirecting
+# one form to the other (see [redirect_gate]), this then requires a browser UA, no
+# feed activity, and the Referer on a real share of requests -- a lone hit could be a
+# quirky proxy / extension. Used by the impossible-referer tag and the combiner's
+# browser -> spoofed_browser conversion. Calibrated on live logs: the offending
+# clients are low-volume (so min_hits stays low), and a real browser essentially never
+# carries the redirect-only form on a fifth of its requests.
+ratio_min = 0.2
+min_hits = 2
 
 [redirect_gate]
 # Infer that the site 301s one host form to the other (www <-> apex) from observed

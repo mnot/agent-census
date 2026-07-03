@@ -903,7 +903,7 @@ def main(argv: Sequence[str] | None = None) -> int:  # pylint: disable=too-many-
         top.print_help()
         return 0
     # Per-command parsing so options can be freely intermixed with the log files
-    # (argparse's plain parse_args can't do that with an nargs="+" positional).
+    # (argparse's plain parse_args can't do that with a variadic positional).
     args = subcommands[raw[0]].parse_intermixed_args(raw[1:])
     args.command = "analyze" if raw[0] == "analyse" else raw[0]
     if getattr(args, "from_latest", False) and args.since is None:

@@ -337,6 +337,29 @@ def test_unrecognised_config_version_warns_and_is_ignored() -> None:
     assert store.defaults == {} and store.warning is not None
 
 
+def test_save_refuses_to_overwrite_an_unrecognised_config() -> None:
+    # A store that fell back to empty (unknown version) must never be written back:
+    # doing so would clobber a config this build simply didn't understand.
+    path = userconfig.config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    original = '{"version": 99, "defaults": {"identity": "ip"}, "sites": {"prod": {}}}'
+    path.write_text(original, encoding="utf-8")
+    store = userconfig.load()
+    store.defaults["identity"] = "ip_ua_subnet"  # a change that would otherwise persist
+    assert store.save() is False
+    assert path.read_text(encoding="utf-8") == original  # file left untouched
+
+
+def test_analyze_does_not_clobber_an_unrecognised_config() -> None:
+    path = userconfig.config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    original = '{"version": 99, "defaults": {"identity": "ip"}, "sites": {"prod": {}}}'
+    path.write_text(original, encoding="utf-8")
+    # A normal run that would persist a setting must leave the unknown file intact.
+    _apply_persisted_settings(_analyze_args([LOG, "--identity", "ip_ua_subnet"]))
+    assert path.read_text(encoding="utf-8") == original
+
+
 def test_config_flag_redirects_the_settings_file(tmp_path: Path) -> None:
     cfg = tmp_path / "custom.json"
     args = _analyze_args([LOG, "--config", str(cfg), "--identity", "ip_ua_subnet"])

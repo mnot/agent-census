@@ -716,18 +716,21 @@ def _parse_asns(text: str) -> list[int]:
 
 def _resolve_token(explicit: str | None, config: Path | None = None) -> str | None:
     """Token from --token (persisted), else env, else the saved config."""
+    store = userconfig.load(config)
+    if store.warning:
+        # An unrecognised config is ignored here too; warn, and (via save()'s own
+        # guard) never overwrite it with just the token.
+        print(f"warning: {store.warning}", file=sys.stderr)
     if explicit:
-        store = userconfig.load(config)
         store.defaults["cf_api_token"] = explicit
-        store.save()
-        print(f"saved API token to {store.path}", file=sys.stderr)
+        if store.save():
+            print(f"saved API token to {store.path}", file=sys.stderr)
         return explicit
-    saved = userconfig.load(config).defaults.get("cf_api_token")
-    return (
-        os.environ.get("CF_API_TOKEN")
-        or os.environ.get("CLOUDFLARE_API_TOKEN")
-        or (saved if isinstance(saved, str) else None)
-    )
+    env = os.environ.get("CF_API_TOKEN") or os.environ.get("CLOUDFLARE_API_TOKEN")
+    if env:
+        return env
+    saved = store.defaults.get("cf_api_token")
+    return saved if isinstance(saved, str) else None
 
 
 def run(

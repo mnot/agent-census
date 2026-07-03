@@ -113,8 +113,17 @@ class ConfigStore:
             return self.sites.setdefault(site, {})
         return self.defaults
 
-    def save(self) -> None:
-        """Write the settings back, ignoring write failures (a convenience, not state)."""
+    def save(self) -> bool:
+        """Write the settings back; return whether the file was written.
+
+        Refuses to write (and returns False) when ``warning`` is set: such a store
+        is the empty fallback for an on-disk file we couldn't parse -- a newer
+        ``version``, or a hand-edit -- and overwriting it would silently destroy
+        content this build didn't understand. Genuine write failures are likewise
+        swallowed (persistence is a convenience, not state) and reported as False.
+        """
+        if self.warning is not None:
+            return False
         doc: dict[str, object] = {"version": CONFIG_VERSION, "defaults": self.defaults}
         # Drop any site blocks that ended up empty so the file stays tidy.
         sites = {name: block for name, block in self.sites.items() if block}
@@ -133,7 +142,8 @@ class ConfigStore:
                 handle.write(payload)
             os.chmod(self.path, 0o600)
         except OSError:
-            pass
+            return False
+        return True
 
 
 def load(override: Path | None = None) -> ConfigStore:

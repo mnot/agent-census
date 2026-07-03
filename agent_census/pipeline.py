@@ -560,24 +560,33 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
     total = parsed = skipped = excluded = out_of_window = 0
     client_count = singleton_count = multi_ua_ips = declared_resident_count = 0
     host_counts: Counter[str] = Counter()  # served host -> line count, for the site label
-    # www-redirector gate: of requests served for a www.* host, how many 3xx'd. A high
-    # ratio means the site 301s www -> apex, which arms the impossible-referer spoof
-    # tell (see classify.tags). Evaluated live at each emit() (see _is_www_redirector)
-    # rather than once post-stream: emit() also runs mid-stream on the retired-cap
-    # overflow, so a one-shot post-loop value would leave those evictions ungated. The
-    # counters grow monotonically and a real redirector arms the gate within its first
-    # handful of www requests, so a mid-stream emit sees the same verdict as the end.
+    # Redirect-shadow gate: of requests served for a www.* host (and, separately, for a
+    # non-www host), how many 3xx'd. When one side is redirect-dominated it is the
+    # site's redirect-only "shadow" form (www 301s to apex, or apex 301s to www), which
+    # arms the impossible-referer spoof tell for that direction (see classify.tags).
     www_req_total = www_req_3xx = 0
+    bare_req_total = bare_req_3xx = 0
     _shared = load_shared_tuning()
-    _www_min = _shared["www_redirector_min_www_requests"]
-    _www_gate = _shared["www_redirector_gate_3xx_ratio"]
+    _redir_min = _shared["redirect_gate_min_requests"]
+    _redir_gate = _shared["redirect_gate_3xx_ratio"]
     latest_ts: float | None = None
     reasons: dict[str, int] = defaultdict(int)
     nonce_tracker = WbaNonceTracker()  # Web Bot Auth replay detection across the whole log
 
-    def _is_www_redirector() -> bool:
-        # The >= _www_min guard also protects the division (min is positive).
-        return www_req_total >= _www_min and www_req_3xx / www_req_total >= _www_gate
+    def _redirect_shadow() -> str | None:
+        # Which host form (if any) the site redirects away; content lives on the other.
+        # Evaluated live from the running counters -- emit() also runs mid-stream on the
+        # retired-cap overflow, so a one-shot post-loop value would leave those
+        # evictions ungated. The counters grow monotonically and a real redirector arms
+        # within its first handful of requests, so a mid-stream emit matches the end.
+        # The >= _redir_min guards also protect the divisions (min is positive).
+        www = www_req_total >= _redir_min and www_req_3xx / www_req_total >= _redir_gate
+        apex = bare_req_total >= _redir_min and bare_req_3xx / bare_req_total >= _redir_gate
+        if www and not apex:
+            return "www"
+        if apex and not www:
+            return "apex"
+        return None  # neither, or a redirect-everything site with no content host
 
     def emit(
         key: ClientId,
@@ -698,7 +707,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             wba=wba_result,
             datacenter=in_datacenter,
             aggregate=aggregate,
-            www_redirector=_is_www_redirector(),
+            redirect_shadow=_redirect_shadow(),
             unknown_threshold=unknown_threshold,
             keep_signals=keep_signals,
         )
@@ -844,10 +853,15 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         served = _vhost_of(entry)
         if served:
             host_counts[served] += 1
+            is_3xx = entry.status is not None and 300 <= entry.status < 400
             if served.lower().startswith("www."):
                 www_req_total += 1
-                if entry.status is not None and 300 <= entry.status < 400:
+                if is_3xx:
                     www_req_3xx += 1
+            else:
+                bare_req_total += 1
+                if is_3xx:
+                    bare_req_3xx += 1
         ip, ua = entry.remote_host, entry.user_agent
         # Track this signed request's nonce against its origin, for replay detection
         # over the whole log (done per entry, not per sampled claim, so a replay

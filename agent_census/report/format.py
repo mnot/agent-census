@@ -252,8 +252,9 @@ _TAG_HELP: dict[str, str] = {
     "of automation, not a human.",
     "forged-referer": "Sends a Referer equal to the requested URL — fabricated "
     "navigation, not something a real browser produces.",
-    "impossible-referer": "Carries a same-site www Referer on a site that redirects "
-    "www to the apex — a Referer no compliant browser can emit, so a browser costume.",
+    "impossible-referer": "Carries a same-site Referer naming the site's redirect-only "
+    "host form (www where the site redirects www→apex, or the bare apex where it "
+    "redirects apex→www) — a Referer no compliant browser can emit, so a browser costume.",
     "fetches-non-feeds": "A feed reader that also requested non-feed resources.",
     "high-rate": "Peak requests-per-minute well above this site's real browsers — a "
     "request rate no human-driven browser here reaches.",
@@ -469,7 +470,11 @@ def feature_rows(feats: ClientFeatures) -> list[tuple[str, str]]:
         ("static ratio", pct(feats.static_ratio)),
         ("referer-following", pct(feats.referer_following_ratio)),
         ("self-referer (fabricated)", pct(feats.self_referer_ratio)),
-        ("www-referer (impossible)", f"{feats.www_referer_hits} ({pct(feats.www_referer_ratio)})"),
+        (
+            "cross-form referer (www/apex)",
+            f"www {feats.www_referer_hits} ({pct(feats.www_referer_ratio)}); "
+            f"apex {feats.apex_referer_hits} ({pct(feats.apex_referer_ratio)})",
+        ),
         ("breadth", pct(feats.breadth_ratio)),
         ("methods", methods),
         (

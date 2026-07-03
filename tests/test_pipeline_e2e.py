@@ -127,6 +127,30 @@ def test_www_serving_content_leaves_gate_off(tmp_path: Path) -> None:
     assert "impossible-referer" not in profile.classification.tags  # type: ignore[attr-defined]
 
 
+def test_apex_redirector_gate_fires_impossible_referer(tmp_path: Path) -> None:
+    # The symmetric regime: the bare apex 301s to www (www is canonical). A Chrome
+    # client served for www that carries a bare-apex Referer becomes a spoofed_browser.
+    lines: list[str] = []
+    for i in range(60):  # the apex is redirect-only: 60 x 301
+        lines.append(
+            f'example.com:443 198.51.100.{i} - - '
+            f'[10/Oct/2023:12:00:{i % 60:02d} +0000] "GET /p{i} HTTP/1.1" 301 0 "-" "curl/8"'
+        )
+    for i, sec in enumerate([0, 4, 9, 11, 18, 26, 27, 40, 55, 58]):  # served www, apex Referer
+        lines.append(
+            f'www.example.com:443 203.0.113.5 - - '
+            f'[10/Oct/2023:12:05:{sec:02d} +0000] "GET /a{i} HTTP/1.1" 200 500 '
+            f'"https://example.com/" "{_CHROME}"'
+        )
+    log = tmp_path / "apexredir.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["vhost_combined"]})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
+    profile = _profile_for(result, "203.0.113.5")
+    assert profile.classification.primary is Kind.SPOOFED_BROWSER  # type: ignore[attr-defined]
+    assert "impossible-referer" in profile.classification.tags  # type: ignore[attr-defined]
+
+
 def test_www_redirector_gate_holds_for_mid_stream_eviction(tmp_path: Path) -> None:
     # A quiescent client flushed mid-stream by the retired-cap overflow (emit() runs
     # before end-of-stream) must still see the armed gate -- the gate is evaluated

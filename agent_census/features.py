@@ -290,7 +290,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         "as_number", "first_seen",
         "last_seen", "_has_prev", "_prev_top", "breadth_changes",
         "breadth_pairs", "ref_total", "ref_onsite", "self_referer_hits", "www_referer_hits",
-        "pages_total",
+        "apex_referer_hits", "pages_total",
         "pages_satisfied",
         "_pending_pages", "disallowed_hits", "disallowed_sample", "robots_fetched_first",
         "_content_seen", "feed_requests", "wba_claims",
@@ -332,6 +332,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         self.ref_onsite = 0
         self.self_referer_hits = 0
         self.www_referer_hits = 0
+        self.apex_referer_hits = 0
         self.pages_total = 0
         self.pages_satisfied = 0
         self.disallowed_hits = 0
@@ -477,19 +478,24 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
                 self.self_referer_hits += 1
             elif self.distinct_paths is not None and referer_path in self.distinct_paths:
                 self.ref_onsite += 1
-            # A same-site www Referer: the Referer host is the ``www.`` form of the
-            # host this request was served for. Counted unconditionally here; whether
-            # it is anomalous depends on the site being a www-redirector, a gate the
-            # pipeline applies later. Needs a served host in the log (absent -> skip).
+            # A cross-form same-site Referer: the Referer host and the served host are
+            # the two forms of one site (apex vs www.apex) but differ in the ``www.``
+            # prefix. Which form is "impossible" depends on which way the site
+            # redirects (a pipeline gate), so count both directions and let the
+            # classifier pick. Counted unconditionally here; needs a served host in the
+            # log to establish same-site (absent -> skip).
             ref_host = _referer_host(entry.referer)
-            served = _site_key(_bare_host(_served_host(entry)))
+            served_host = _bare_host(_served_host(entry))
             if (
                 ref_host is not None
-                and ref_host.startswith("www.")
-                and served is not None
-                and _site_key(ref_host) == served
+                and served_host is not None
+                and _site_key(ref_host) == _site_key(served_host)
+                and ref_host.startswith("www.") != served_host.startswith("www.")
             ):
-                self.www_referer_hits += 1
+                if ref_host.startswith("www."):
+                    self.www_referer_hits += 1  # served the apex, Referer names www
+                else:
+                    self.apex_referer_hits += 1  # served www, Referer names the bare apex
 
     def _track_breadth(self, path: str) -> None:
         top = _top_segment(path)
@@ -624,6 +630,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         self.ref_onsite += other.ref_onsite
         self.self_referer_hits += other.self_referer_hits
         self.www_referer_hits += other.www_referer_hits
+        self.apex_referer_hits += other.apex_referer_hits
         self.pages_total += other.pages_total
         self.pages_satisfied += other.pages_satisfied
         self.feed_requests += other.feed_requests
@@ -751,6 +758,8 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
             referer_count=self.ref_total,
             www_referer_hits=self.www_referer_hits,
             www_referer_ratio=_ratio(self.www_referer_hits, self.count),
+            apex_referer_hits=self.apex_referer_hits,
+            apex_referer_ratio=_ratio(self.apex_referer_hits, self.count),
             asset_coload_ratio=_ratio(self.pages_satisfied, self.pages_total),
             static_ratio=_ratio(self.static_count, self.count),
             page_count=self.pages_total,

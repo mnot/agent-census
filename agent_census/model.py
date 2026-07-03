@@ -170,13 +170,18 @@ class ClientFeatures:  # pylint: disable=too-many-instance-attributes
     referer_following_ratio: float = 0.0  # referer is a path this client fetched earlier
     self_referer_ratio: float = 0.0  # referer == the requested path (fabricated; browsers never do)
     referer_count: int = 0  # requests that carried a Referer (0 -> can't judge navigation)
-    # Requests carrying a same-site ``www.<apex>`` Referer. On a site that 301s
-    # www -> apex, a compliant browser can never be *on* a www page to refer from,
-    # so such a Referer is fabricated / replayed. Only meaningful once the site is
-    # known to be a www-redirector (a pipeline-level gate); the ratio is over all
-    # requests, so a threshold can require it on a real share of them.
+    # Cross-form same-site Referers: the Referer names the *other* form of the host
+    # the request was served for (apex vs www.apex). On a site that 301s one form to
+    # the other, a compliant browser can never be *on* the redirect-only form to refer
+    # from, so such a Referer is fabricated / replayed. Two directions, since either
+    # form can be the redirect-only one; the pipeline's redirect-shadow gate says which
+    # applies. ``www_referer_*`` is the Referer naming www (served the apex);
+    # ``apex_referer_*`` is the Referer naming the bare apex (served www). Ratios are
+    # over all requests, so a threshold can require the Referer on a real share of them.
     www_referer_hits: int = 0
     www_referer_ratio: float = 0.0
+    apex_referer_hits: int = 0
+    apex_referer_ratio: float = 0.0
 
     # asset co-loading (the browser fingerprint)
     asset_coload_ratio: float = 0.0  # HTML responses followed by sub-resource fetches

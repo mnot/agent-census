@@ -36,7 +36,7 @@ def classify_client(
     wba: WbaResult | None = None,
     datacenter: bool = False,
     aggregate: bool = False,
-    www_redirector: bool = False,
+    redirect_shadow: str | None = None,
     unknown_threshold: float = DEFAULT_UNKNOWN_THRESHOLD,
     keep_signals: bool = True,
 ) -> Classification:
@@ -45,8 +45,8 @@ def classify_client(
     ``aggregate`` marks a multi-client display fold (a privacy-relay / VPN row),
     suppressing the per-client cadence tags. ``wba`` is the Web Bot Auth verdict,
     the cryptographic-identity channel weighed alongside the network ``verification``.
-    ``www_redirector`` marks a site observed to 301 ``www`` to the apex, arming the
-    impossible-referer spoof tell.
+    ``redirect_shadow`` names the host form the site redirects away (``"www"`` or
+    ``"apex"``), arming the impossible-referer spoof tell for that direction.
     """
     signals = run_classifiers(features)
     return combine(
@@ -57,7 +57,7 @@ def classify_client(
         wba=wba,
         datacenter=datacenter,
         aggregate=aggregate,
-        www_redirector=www_redirector,
+        redirect_shadow=redirect_shadow,
         unknown_threshold=unknown_threshold,
         keep_signals=keep_signals,
     )

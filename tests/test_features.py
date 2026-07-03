@@ -57,9 +57,9 @@ def test_as_number_filled_from_later_line() -> None:
     assert feats.as_number == "16509"
 
 
-def _served(path: str, referer: str, **kw: object) -> object:
-    """A request served for example.com (via %v), with a Referer."""
-    extra = {"server_name": "example.com"}
+def _served(path: str, referer: str, *, host: str = "example.com", **kw: object) -> object:
+    """A request served for ``host`` (via %v), with a Referer."""
+    extra = {"server_name": host}
     return entry(path, referer=referer, extra=extra, **kw)  # type: ignore[arg-type]
 
 
@@ -73,6 +73,33 @@ def test_same_site_www_referer_counts() -> None:
     )
     assert feats.www_referer_hits == 2
     assert feats.www_referer_ratio == 1.0
+    assert feats.apex_referer_hits == 0
+
+
+def test_same_site_apex_referer_counts() -> None:
+    # The mirror: served for www.example.com, Referer names the bare apex.
+    feats = extract_features(
+        [
+            _served("/a", "https://example.com/a", host="www.example.com"),
+            _served("/b", "https://example.com/b", host="www.example.com", offset=1),
+        ]
+    )
+    assert feats.apex_referer_hits == 2
+    assert feats.apex_referer_ratio == 1.0
+    assert feats.www_referer_hits == 0
+
+
+def test_cross_form_referer_needs_differing_www_prefix() -> None:
+    # Same www-ness on both sides is ordinary same-host navigation, not the tell:
+    # served apex + apex Referer, and served www + www Referer, both count nothing.
+    feats = extract_features(
+        [
+            _served("/a", "https://example.com/x"),  # served apex, apex Referer
+            _served("/b", "https://www.example.com/y", host="www.example.com", offset=1),  # www/www
+        ]
+    )
+    assert feats.www_referer_hits == 0
+    assert feats.apex_referer_hits == 0
 
 
 def test_cross_site_and_apex_referers_do_not_count() -> None:

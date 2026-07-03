@@ -212,25 +212,40 @@ def looks_like_fake_browser(features: ClientFeatures, *, impossible_referer: boo
     )
 
 
-def looks_like_impossible_referer(features: ClientFeatures, www_redirector: bool) -> bool:
-    """A browser-shaped client carrying a same-site ``www.<site>`` Referer on a site
-    that 301s ``www`` to the apex -- a Referer a compliant browser can never produce
-    (after the redirect it is on the apex, so its sub-resource Referers are apex).
+def _impossible_referer_counts(
+    features: ClientFeatures, redirect_shadow: str | None
+) -> tuple[int, float]:
+    """The (hits, ratio) for the Referer form that names the site's redirect-only
+    host, or ``(0, 0.0)`` when the site redirects neither form."""
+    if redirect_shadow == "www":
+        return features.www_referer_hits, features.www_referer_ratio  # served apex, ref www
+    if redirect_shadow == "apex":
+        return features.apex_referer_hits, features.apex_referer_ratio  # served www, ref apex
+    return 0, 0.0
 
-    Gated on the site being a www-redirector (``www_redirector``, inferred from the
-    observed ``www`` 3xx-ratio in the pipeline), a browser-claiming UA, no feed
-    activity (feed pollers that hit ``www`` are already handled by ``feed_ratio``),
-    and the Referer on a real share of requests -- a lone hit could be a quirky
-    proxy or extension. A UA naming a known agent is identifying itself, not faking a
-    browser, so it is excluded.
+
+def looks_like_impossible_referer(features: ClientFeatures, redirect_shadow: str | None) -> bool:
+    """A browser-shaped client carrying a same-site Referer that names the site's
+    redirect-only host form -- a Referer a compliant browser can never produce, since
+    after the redirect it is on the *other* form (so its sub-resource Referers are that
+    other form, never the redirect-only one).
+
+    Symmetric: ``redirect_shadow`` is ``"www"`` when the site 301s ``www`` to the apex
+    (a www Referer is impossible) or ``"apex"`` when it 301s the apex to ``www`` (a
+    bare-apex Referer is impossible), inferred from the observed 3xx-ratios in the
+    pipeline. Also requires a browser-claiming UA, no feed activity (feed pollers are
+    already handled by ``feed_ratio``), and the Referer on a real share of requests --
+    a lone hit could be a quirky proxy or extension. A UA naming a known agent is
+    identifying itself, not faking a browser, so it is excluded.
     """
+    hits, ratio = _impossible_referer_counts(features, redirect_shadow)
     return (
-        www_redirector
+        redirect_shadow is not None
         and features.ua_looks_like_browser
         and not identifies_as_known_agent(features)
         and features.feed_requests == 0
-        and features.www_referer_ratio >= _S["impossible_referer_ratio_min"]
-        and features.www_referer_hits >= _S["impossible_referer_min_hits"]
+        and ratio >= _S["impossible_referer_ratio_min"]
+        and hits >= _S["impossible_referer_min_hits"]
     )
 
 
@@ -351,7 +366,7 @@ def _fingerprint_tags(features: ClientFeatures, aggregate: bool) -> dict[str, st
     return tags
 
 
-def _conduct_tags(features: ClientFeatures, www_redirector: bool) -> dict[str, str]:
+def _conduct_tags(features: ClientFeatures, redirect_shadow: str | None) -> dict[str, str]:
     """Noteworthy behaviour, flagged only when present (no negative pole)."""
     tags: dict[str, str] = {}
     # Hostile request shapes, split by what was actually seen. Probe-path hits are
@@ -413,11 +428,16 @@ def _conduct_tags(features: ClientFeatures, www_redirector: bool) -> dict[str, s
             f"Referer equals the requested URL on {features.self_referer_ratio:.0%} of requests "
             "— fabricated navigation"
         )
-    if looks_like_impossible_referer(features, www_redirector):
+    if looks_like_impossible_referer(features, redirect_shadow):
+        hits, ratio = _impossible_referer_counts(features, redirect_shadow)
+        form, note = (
+            ("www", "impossible once the site 301s www to the apex")
+            if redirect_shadow == "www"
+            else ("bare-apex", "impossible once the site 301s the apex to www")
+        )
         tags["impossible-referer"] = (
-            f"carried a same-site www Referer on {features.www_referer_ratio:.0%} of "
-            f"{features.request_count:,} requests ({features.www_referer_hits:,} of them) — "
-            "impossible once the site 301s www to the apex"
+            f"carried a same-site {form} Referer on {ratio:.0%} of "
+            f"{features.request_count:,} requests ({hits:,} of them) — {note}"
         )
     return tags
 
@@ -589,7 +609,7 @@ def derive_tag_evidence(
     *,
     datacenter: bool = False,
     aggregate: bool = False,
-    www_redirector: bool = False,
+    redirect_shadow: str | None = None,
 ) -> dict[str, str]:
     """The client's tags paired with the concrete measurement that earned each.
 
@@ -597,12 +617,13 @@ def derive_tag_evidence(
     keys) and inspect mode's per-tag rationale, so a tag and its evidence can never
     drift apart -- the line that decides a tag writes its reason.
 
-    ``www_redirector`` marks a site the pipeline observed to 301 ``www`` to the apex,
-    which arms the ``impossible-referer`` conduct tag (see :func:`_conduct_tags`).
+    ``redirect_shadow`` names the host form (``"www"`` / ``"apex"``) the pipeline
+    observed the site to 301 away, which arms the ``impossible-referer`` conduct tag
+    for that direction (see :func:`_conduct_tags`).
     """
     evidence: dict[str, str] = {}
     evidence.update(_fingerprint_tags(features, aggregate))
-    evidence.update(_conduct_tags(features, www_redirector))
+    evidence.update(_conduct_tags(features, redirect_shadow))
     evidence.update(_fact_tags(features, compliance, verification, datacenter))
     evidence.update(_wba_tag(wba))
     return evidence
@@ -616,7 +637,7 @@ def derive_tags(
     *,
     datacenter: bool = False,
     aggregate: bool = False,
-    www_redirector: bool = False,
+    redirect_shadow: str | None = None,
 ) -> set[str]:
     """The client's tags: a measured behavioural fingerprint, conduct flags, and facts.
 
@@ -631,6 +652,6 @@ def derive_tags(
             wba,
             datacenter=datacenter,
             aggregate=aggregate,
-            www_redirector=www_redirector,
+            redirect_shadow=redirect_shadow,
         )
     )

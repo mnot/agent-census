@@ -100,7 +100,7 @@ def combine(
     wba: WbaResult | None = None,
     datacenter: bool = False,
     aggregate: bool = False,
-    www_redirector: bool = False,
+    redirect_shadow: str | None = None,
     unknown_threshold: float = DEFAULT_UNKNOWN_THRESHOLD,
     keep_signals: bool = True,
 ) -> Classification:
@@ -142,13 +142,14 @@ def combine(
         wba,
         datacenter=datacenter,
         aggregate=aggregate,
-        www_redirector=www_redirector,
+        redirect_shadow=redirect_shadow,
     )
     tags = set(tag_ev)
-    # A same-site www Referer a compliant browser can't emit once www 301s to the
-    # apex -- a standalone fake-browser tell that reaches spoofed_browser on its own
-    # (residential included), independent of the datacenter-gated costume pattern.
-    impossible = looks_like_impossible_referer(features, www_redirector)
+    # A same-site Referer naming the site's redirect-only host form (www 301s to apex,
+    # or apex 301s to www) -- one a compliant browser can't emit, so a standalone
+    # fake-browser tell that reaches spoofed_browser on its own (residential included),
+    # independent of the datacenter-gated costume pattern.
+    impossible = looks_like_impossible_referer(features, redirect_shadow)
     stored = tuple(signals) if keep_signals else ()
     # Per-tag evidence is inspect-only detail, held on the same terms as signals.
     tag_evidence = tuple(tag_ev.items()) if keep_signals else ()
@@ -186,7 +187,8 @@ def combine(
             evidence=(
                 tag_ev.get(
                     "impossible-referer",
-                    "browser User-Agent carrying a www Referer impossible after a www→apex 301",
+                    "browser User-Agent carrying a Referer no real browser could emit after "
+                    "the site's www/apex redirect",
                 ),
             ),
             all_signals=stored,
@@ -252,7 +254,8 @@ def _below_threshold(
             Kind.SPOOFED_BROWSER,
             _T["fallback_spoofed_browser"],
             (
-                "browser User-Agent carrying a www Referer impossible after a www→apex 301"
+                "browser User-Agent carrying a Referer no real browser could emit after "
+                "the site's www/apex redirect"
                 if impossible
                 else "browser User-Agent from a datacenter IP, without browser behaviour"
             ),

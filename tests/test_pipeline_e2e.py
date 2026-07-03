@@ -127,6 +127,42 @@ def test_www_serving_content_leaves_gate_off(tmp_path: Path) -> None:
     assert "impossible-referer" not in profile.classification.tags  # type: ignore[attr-defined]
 
 
+def test_www_redirector_gate_holds_for_mid_stream_eviction(tmp_path: Path) -> None:
+    # A quiescent client flushed mid-stream by the retired-cap overflow (emit() runs
+    # before end-of-stream) must still see the armed gate -- the gate is evaluated
+    # live from the running counters, not once after the loop.
+    lines: list[str] = []
+    for i in range(60):  # arm the gate early: 60 www 301s in the first minute
+        lines.append(
+            f'www.example.com:443 198.51.100.{i} - - '
+            f'[10/Oct/2023:12:00:{i % 60:02d} +0000] "GET /p{i} HTTP/1.1" 301 0 "-" "curl/8"'
+        )
+    for i, sec in enumerate([0, 1, 2, 3, 4, 5]):  # the spoofed client, next minute
+        lines.append(
+            f'example.com:443 203.0.113.5 - - '
+            f'[10/Oct/2023:12:01:{sec:02d} +0000] "GET /a{i} HTTP/1.1" 200 500 '
+            f'"https://www.example.com/" "{_CHROME}"'
+        )
+    # A much-later request advances the clock so the spoofed client goes quiescent and
+    # is evicted; retired_cap=0 emits it immediately, mid-stream.
+    lines.append(
+        '8.8.8.8 8.8.8.8 - - [10/Oct/2023:13:00:00 +0000] "GET / HTTP/1.1" 200 100 "-" "curl/8"'
+    )
+    log = tmp_path / "midstream.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["vhost_combined"]})
+    result = pipeline.analyze(
+        log,
+        parser,
+        identity.get_strategy("ip_ua"),
+        quiescent_seconds=60.0,
+        retired_cap=0,
+    )
+    profile = _profile_for(result, "203.0.113.5")
+    assert profile.classification.primary is Kind.SPOOFED_BROWSER  # type: ignore[attr-defined]
+    assert "impossible-referer" in profile.classification.tags  # type: ignore[attr-defined]
+
+
 def test_vhost_filter_keeps_any_of_several(tmp_path: Path) -> None:
     # Repeated --vhost is a union: a line is kept if it matches any term.
     rows = [

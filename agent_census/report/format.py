@@ -469,6 +469,7 @@ def feature_rows(feats: ClientFeatures) -> list[tuple[str, str]]:
         ("static ratio", pct(feats.static_ratio)),
         ("referer-following", pct(feats.referer_following_ratio)),
         ("self-referer (fabricated)", pct(feats.self_referer_ratio)),
+        ("www-referer (impossible)", f"{feats.www_referer_hits} ({pct(feats.www_referer_ratio)})"),
         ("breadth", pct(feats.breadth_ratio)),
         ("methods", methods),
         (

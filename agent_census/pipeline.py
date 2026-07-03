@@ -560,15 +560,24 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
     total = parsed = skipped = excluded = out_of_window = 0
     client_count = singleton_count = multi_ua_ips = declared_resident_count = 0
     host_counts: Counter[str] = Counter()  # served host -> line count, for the site label
-    # Whole-log www-redirector gate: of requests served for a www.* host, how many
-    # 3xx'd. A high ratio means the site 301s www -> apex, which arms the
-    # impossible-referer spoof tell (see classify.tags). Computed after the stream,
-    # then passed into every classify_client call like the datacenter flag.
+    # www-redirector gate: of requests served for a www.* host, how many 3xx'd. A high
+    # ratio means the site 301s www -> apex, which arms the impossible-referer spoof
+    # tell (see classify.tags). Evaluated live at each emit() (see _is_www_redirector)
+    # rather than once post-stream: emit() also runs mid-stream on the retired-cap
+    # overflow, so a one-shot post-loop value would leave those evictions ungated. The
+    # counters grow monotonically and a real redirector arms the gate within its first
+    # handful of www requests, so a mid-stream emit sees the same verdict as the end.
     www_req_total = www_req_3xx = 0
-    www_redirector = False
+    _shared = load_shared_tuning()
+    _www_min = _shared["www_redirector_min_www_requests"]
+    _www_gate = _shared["www_redirector_gate_3xx_ratio"]
     latest_ts: float | None = None
     reasons: dict[str, int] = defaultdict(int)
     nonce_tracker = WbaNonceTracker()  # Web Bot Auth replay detection across the whole log
+
+    def _is_www_redirector() -> bool:
+        # The >= _www_min guard also protects the division (min is positive).
+        return www_req_total >= _www_min and www_req_3xx / www_req_total >= _www_gate
 
     def emit(
         key: ClientId,
@@ -689,7 +698,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             wba=wba_result,
             datacenter=in_datacenter,
             aggregate=aggregate,
-            www_redirector=www_redirector,
+            www_redirector=_is_www_redirector(),
             unknown_threshold=unknown_threshold,
             keep_signals=keep_signals,
         )
@@ -889,15 +898,6 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             if latest_ts is None or ts > latest_ts:
                 latest_ts = ts
             evict(latest_ts - quiescent_seconds)
-
-    # Decide whether the site 301s www -> apex, now that the whole log is seen. A
-    # high 3xx-ratio over enough www requests arms the impossible-referer tell; too
-    # few www requests (or a www host that serves content) leaves it off, so the tell
-    # never fires -- guarding sites where www is a genuine alias, not a redirector.
-    _tuning = load_shared_tuning()
-    www_redirector = www_req_total >= _tuning["www_redirector_min_www_requests"] and (
-        www_req_3xx / www_req_total >= _tuning["www_redirector_gate_3xx_ratio"]
-    )
 
     # DNS-verify declared crawlers (all resident) as one deduped, concurrent batch.
     verifications: dict[ClientId, BotVerification] = {}

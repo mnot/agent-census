@@ -146,6 +146,29 @@ def test_trace_offsets_reset_per_page_and_assets_nest(tmp_path: Path) -> None:
     assert [r["time"] for r in rows] == ["+0.0s", "+1.0s", "+5.0s", "+1.0s"]
 
 
+def test_trace_offsets_rebase_for_assets_with_no_parent_page(tmp_path: Path) -> None:
+    # A client that only ever fetches static assets (favicon/icon hits, no HTML
+    # navigation) has no "page" to re-base offsets on. Each such request is
+    # top-level (nests under nothing), so its offset is the gap since the previous
+    # request -- NOT cumulative from the first. Two icon hits a second apart, then a
+    # third long after: only the third shows the big gap.
+    lines = [
+        '9.9.9.9 - - [10/Oct/2023:12:00:00 +0000] "GET /favicon.ico HTTP/1.1" 404 40 "-" "b/1"',
+        '9.9.9.9 - - [10/Oct/2023:12:00:01 +0000] "GET /apple-touch-icon.png HTTP/1.1" '
+        '404 40 "-" "b/1"',
+        '9.9.9.9 - - [11/Oct/2023:01:40:01 +0000] "GET /favicon.ico HTTP/1.1" 404 40 "-" "b/1"',
+    ]
+    log = tmp_path / "assets.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"), inspect_trace=20)
+    (profile,) = [p for p in result.profiles if p.client_id.ip == "9.9.9.9"]
+    rows = build_member_view(profile, limit=20)["trace"]["rows"]
+    assert [r["child"] for r in rows] == [False, False, False]  # no page, so no nesting
+    # +0s; +1s from the previous icon; +13h40m from the previous -- not cumulative.
+    assert [r["time"] for r in rows] == ["+0.0s", "+1.0s", "+13h40m"]
+
+
 def test_trace_referer_shortens_same_site_only(tmp_path: Path) -> None:
     lines = [
         '8.8.8.8 - - [10/Oct/2023:12:00:00 +0000] "GET /a HTTP/1.1" 200 500 '

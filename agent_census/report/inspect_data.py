@@ -157,11 +157,12 @@ def _trace_view(
     # could come from different clients -- there, keep a flat list: offsets from the
     # first request, nothing nested.
     folded = bool(profile.member_ips) or profile.is_aggregate
-    # Each offset is measured from the current *page* -- the last non-asset request.
-    # So an asset reads as its delay after the page that pulled it, and a navigation
-    # as the gap since the previous page. ``base`` starts at the first request and
-    # resets at every page. (A static sub-resource whose Referer is the page above it
-    # nests under it; only assets nest, so a following navigation stays top-level.)
+    # Each offset is measured from the current top-level request. A navigation reads
+    # as the gap since the previous top-level request; a nested asset reads as its
+    # delay after the page that pulled it. ``base`` starts at the first request and
+    # re-bases at every top-level request -- a real page, or an asset that nests under
+    # no page (a bare favicon/icon fetch). A static sub-resource whose Referer is the
+    # page above it nests under that page (``child``) and keeps measuring from it.
     base = first_ts
     parent_path: str | None = None
     rows: list[dict[str, object]] = []
@@ -179,10 +180,17 @@ def _trace_view(
         )
         ts = entry.timestamp
         when = _rel_time(base, ts) if (ts is not None and base is not None) else "–"
-        if not folded and not is_asset:
-            parent_path = entry.path or None
+        if not folded and not child:
+            # A top-level request -- a page, or a bare asset hit that nests under no
+            # page (a favicon/icon fetch with no HTML navigation) -- is measured from
+            # the previous top-level and re-bases the offset for what follows. Only a
+            # real page can parent later assets; a lone asset parents nothing, so it
+            # clears the page context. (Reset on non-child, not merely non-asset:
+            # an all-assets client has no page, so keying off is_asset would never
+            # reset and every offset would read cumulatively from the first request.)
+            parent_path = (entry.path or None) if not is_asset else None
             if ts is not None:
-                base = ts  # following assets, and the next page's gap, measure from here
+                base = ts
         rows.append(
             {
                 "time": when,

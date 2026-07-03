@@ -157,12 +157,23 @@ def _trace_view(
     # could come from different clients -- there, keep a flat list: offsets from the
     # first request, nothing nested.
     folded = bool(profile.member_ips) or profile.is_aggregate
-    # Each offset is measured from the current *page* -- the last non-asset request.
-    # So an asset reads as its delay after the page that pulled it, and a navigation
-    # as the gap since the previous page. ``base`` starts at the first request and
-    # resets at every page. (A static sub-resource whose Referer is the page above it
-    # nests under it; only assets nest, so a following navigation stays top-level.)
+    # A nested asset reads as its delay after the page that pulled it; every other
+    # request is top-level and reads as the gap since the previous top-level request.
+    # Two references are tracked separately so a stray top-level asset can't corrupt
+    # the page nesting:
+    #   ``base``     -- the previous top-level request, for a top-level offset. It
+    #                   re-bases at every top-level request (a page, or a bare
+    #                   favicon/icon fetch that nests under no page). Keying this off
+    #                   non-child (not merely non-asset) is the fix for an all-assets
+    #                   client: with no page, is_asset would never re-base and every
+    #                   offset would read cumulatively from the first request.
+    #   ``page_ts``/``parent_path`` -- the last real page, for a child's offset and
+    #                   for asset nesting. ONLY a page updates these; a top-level
+    #                   asset leaves them intact, so a page's referer-bearing assets
+    #                   still nest and still measure from the page even when a
+    #                   no-Referer favicon was logged between them.
     base = first_ts
+    page_ts = first_ts
     parent_path: str | None = None
     rows: list[dict[str, object]] = []
     for entry in shown:
@@ -178,11 +189,15 @@ def _trace_view(
             and _referer_path(ref) == parent_path
         )
         ts = entry.timestamp
-        when = _rel_time(base, ts) if (ts is not None and base is not None) else "–"
-        if not folded and not is_asset:
-            parent_path = entry.path or None
+        origin = page_ts if child else base
+        when = _rel_time(origin, ts) if (ts is not None and origin is not None) else "–"
+        if not folded and not child:
             if ts is not None:
-                base = ts  # following assets, and the next page's gap, measure from here
+                base = ts  # this top-level request is the origin for the next one
+            if not is_asset:  # a real page: the parent/origin for later assets
+                parent_path = entry.path or None
+                if ts is not None:
+                    page_ts = ts
         rows.append(
             {
                 "time": when,

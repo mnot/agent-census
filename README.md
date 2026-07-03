@@ -75,6 +75,35 @@ agent-census analyze access.log -o census.html
 agent-census analyze access.log --md
 ```
 
+**Browsable per-client detail**: when an HTML report is written to a file (`-o`),
+each client is clickable — a click opens its full trace and classification
+rationale in-page, no separate `inspect` run needed. The per-client files are
+written to a directory named after the report (`census.html` →
+`census.inspect/`), which the report links to. This is on by default;
+`--no-inspect-data` skips it (and its per-client trace capture):
+
+```
+agent-census analyze access.log -o census.html
+# writes census.html and its sibling census.inspect/ directory
+agent-census analyze access.log -o census.html --no-inspect-data
+# just census.html, no per-client data
+```
+
+The report and its `<name>.inspect/` directory travel together — serve or move
+them as a pair. Because the directory is named after the report:
+
+* **Re-running the same report** (e.g. a cron job to `census.html`) overwrites
+  `census.inspect/`, pruning files for clients that no longer appear — so disk
+  use tracks the latest run, not the sum of all runs.
+* **Keeping history** needs nothing special: write to a dated name
+  (`census-2024-06-01.html`) and each run gets its own `…inspect/` directory,
+  leaving earlier ones untouched.
+* **Several reports in one folder** don't collide — each has its own directory.
+
+Serve the report over HTTP (the in-page view fetches the data files); a report
+opened as a local file, or one built with `--no-inspect-data`, still copies a
+client's id on click, as before.
+
 **Host header filtering**: `--vhost SUBSTRING` analyses only the lines served for a matching host:
 
 ```
@@ -158,6 +187,10 @@ agent-census inspect access.log --kind scraper --network aws
 
 `--network` matches a substring of the origin-network name and composes with
 `--kind`, so the two together select a single cell of the cross-tab.
+
+`inspect` emits Markdown. For the same detail browsable from the report itself,
+write the HTML report to a file (`-o`) and click a client (see `--inspect-data`
+above).
 
 *Most analyze options apply; see `agent-census inspect -h` for a full list of options.*
 

@@ -12,7 +12,7 @@ from agent_census.parsing import resolve
 from agent_census.pipeline import RESIDENTIAL_NETWORK
 from agent_census.parsing.apache import PRESETS
 from agent_census.model import Classification, ClientFeatures, ClientId, ClientProfile, Kind
-from agent_census.report import render_inspect_html, render_report_html, select_profiles
+from agent_census.report import render_report_html
 from agent_census.report.aggregate import KIND_CLUSTERS
 from agent_census.classify.relative import _METRIC_TAGS
 from agent_census.report.format import _TAG_HELP
@@ -110,33 +110,19 @@ def test_report_html_escapes_user_agent() -> None:
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html  # it is escaped
 
 
-def test_inspect_html_renders_selected() -> None:
+def test_report_html_inspect_mode_links_rows() -> None:
+    # With inspect=True the rows carry data-inspect (the viewer opens an in-page
+    # trace); without it they keep the click-to-copy id. The overlay itself is
+    # built on demand by the page script, so it isn't in the static markup.
     result = _run()
-    selected = select_profiles(result, client=None, kind="vuln_scanner")
-    html = render_inspect_html(selected)
-    assert "Client Inspection" in html
-    assert "Why this classification" in html
-    assert "Request trace" in html
-
-
-def test_inspect_html_empty_selection() -> None:
-    html = render_inspect_html([])
-    assert "No matching clients" in html
-
-
-def test_inspect_html_rolls_up_ua_rotating_ip(tmp_path: Path) -> None:
-    lines = [
-        f'2.2.2.2 - - [10/Oct/2023:12:0{i}:00 +0000] "GET / HTTP/1.1" 200 100 "-" "rot-{i}"'
-        for i in range(6)
-    ]
-    log = tmp_path / "rotation.log"
-    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    parser = resolve("apache", {"format": PRESETS["combined"]})
-    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
-    selected = select_profiles(result, client="2.2.2.2", kind=None)
-    html = render_inspect_html(selected)
-    assert "6 clients on one IP" in html
-    assert "Request trace" not in html  # rolled up, not full per-client cards
+    plain = render_report_html(result, source="x")
+    linked = render_report_html(result, source="x", inspect=True)
+    # Match real slug attributes, not the viewer script's own mention of the syntax.
+    assert re.search(r'data-inspect="[0-9a-f]{16}"', linked)
+    assert not re.search(r'data-inspect="[0-9a-f]{16}"', plain)
+    # A linked row drops its data-copy attribute -- exactly one handler fires.
+    assert 'data-copy="' in plain
+    assert 'data-copy="' not in linked
 
 
 def test_network_table_renders_with_providers(

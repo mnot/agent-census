@@ -10,7 +10,8 @@ from agent_census.model import (
     Kind,
 )
 from agent_census.pipeline import AnalysisResult, IdentityStats, SkipStats
-from agent_census.report import render_inspect, render_inspect_html, select_profiles
+from agent_census.report import render_inspect, select_profiles
+from agent_census.report.inspect_data import build_member_view
 
 
 def _profile(ip: str, kind: Kind, network: str) -> ClientProfile:
@@ -125,6 +126,10 @@ def test_inspect_shows_evidence_for_every_tag() -> None:
         assert line is not None, f"{tag} missing from inspect output"
         assert "—" in line and line.split("—", 1)[1].strip(), f"{tag} shown without evidence"
 
-    html = render_inspect_html([profile])
+    # The same evidence rides the JSON view-model the report overlay renders.
+    view = build_member_view(profile, limit=20)
+    chips = {t["chip"]: t["why"] for t in view["tags"]}
     for tag in profile.classification.tags:
-        assert f">{tag}</span>" in html  # rendered as a tag chip in the Tags section
+        chip = next((c for c in chips if f">{tag}</span>" in c), None)
+        assert chip is not None, f"{tag} missing from inspect data"
+        assert chips[chip], f"{tag} shown without evidence"

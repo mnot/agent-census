@@ -264,10 +264,19 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         # Inter-arrival timing, summarised in bounded memory (no per-request array).
         "_prev_ts", "_iat_count", "_iat_sum", "_iat_sumsq", "_iat_min",
         "_iat_buf", "_iat_hist", "_minute_counts",
+        # A bounded first-N sample of raw entries, kept only when an inspect trace
+        # is wanted (keep_trace > 0); otherwise None and free.
+        "_trace", "_trace_cap",
     )  # fmt: skip
 
-    def __init__(self, *, disallowed_check: DisallowedCheck | None = None) -> None:
+    def __init__(
+        self, *, disallowed_check: DisallowedCheck | None = None, keep_trace: int = 0
+    ) -> None:
         self._disallowed_check = disallowed_check
+        # First-N raw entries for an inspect trace. Capped at keep_trace, so peak
+        # memory stays bounded even across the whole run; None (no cost) when off.
+        self._trace_cap = keep_trace
+        self._trace: list[LogEntry] | None = [] if keep_trace else None
         self.count = 0
         self.total_bytes = 0
         self.count_404 = 0
@@ -323,6 +332,10 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
     def add(self, entry: LogEntry) -> None:
         path = entry.path
         self.count += 1
+        # Keep the first keep_trace entries verbatim for an inspect trace. Bounded,
+        # so it never grows past the cap however busy the client is.
+        if self._trace is not None and len(self._trace) < self._trace_cap:
+            self._trace.append(entry)
         # Clamp to 0: a malformed/adversarial bytes field could be negative, which
         # would silently corrupt total_bytes (and the mean/bandwidth built on it).
         self.total_bytes += max(entry.bytes_sent or 0, 0)
@@ -594,6 +607,10 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         self.distinct_paths = _merge_sets(self.distinct_paths, other.distinct_paths)
         self.vuln_sample = _merge_sample(self.vuln_sample, other.vuln_sample)
         self.disallowed_sample = _merge_sample(self.disallowed_sample, other.disallowed_sample)
+        if self._trace is not None and other._trace:  # pylint: disable=protected-access
+            room = self._trace_cap - len(self._trace)
+            if room > 0:
+                self._trace.extend(other._trace[:room])  # pylint: disable=protected-access
         self._merge_timing(other)
 
     def _merge_timing(self, other: FeatureAccumulator) -> None:
@@ -625,6 +642,14 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
             if self._iat_buf is None:
                 self._iat_buf = array("d")
             self._iat_buf.extend(other._iat_buf)
+
+    def trace(self) -> tuple[LogEntry, ...]:
+        """The bounded first-N sample kept for an inspect trace.
+
+        Empty unless this accumulator was built with ``keep_trace > 0``. The
+        renderer re-sorts by timestamp, so arrival order here is fine.
+        """
+        return tuple(self._trace) if self._trace is not None else ()
 
     def finalize(self, *, ua_count_for_ip: int = 1) -> ClientFeatures:
         if self.count == 0:

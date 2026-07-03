@@ -175,7 +175,7 @@ def test_html_collapsed_group_lists_members_in_a_disclosure() -> None:
     # copy-id span (data-copy on the span, so clicking the id copies but clicking the
     # rest of the row toggles).
     assert 'class="tri" aria-expanded="false"' in html
-    assert "▶</button><span class='idcopy' data-copy='9.9.9.1'" in html
+    assert "▶</button><span class='idcopy' data-copy=\"9.9.9.1\"" in html
     assert ">2 IPs" in html  # footprint inside the copy span
     assert "9.9.9.1" in html and "9.9.9.2" in html  # both members listed as rows
     assert "class='amem'" in html  # members are real table rows, not a sub-table
@@ -196,10 +196,10 @@ def test_html_collapsed_summary_copies_lead_id_for_inspect_actor() -> None:
         _profile("9.9.9.2", "bot/1", requests=4),
     ]
     html = html_section(Kind.SCRAPER, profiles, _rollup(clients=2, requests=12), top=5)
-    assert "class='idcopy' data-copy='9.9.9.1'" in html  # lead IP is the copy target
+    assert "class='idcopy' data-copy=\"9.9.9.1\"" in html  # lead IP is the copy target
     assert "inspect --actor" in html
     # Members inside the disclosure keep their own per-IP copy-id for `--client`.
-    assert "data-copy='9.9.9.2'" in html and "inspect --client" in html
+    assert 'data-copy="9.9.9.2"' in html and "inspect --client" in html
 
 
 def test_html_folded_member_ips_are_not_click_to_copy() -> None:
@@ -219,8 +219,8 @@ def test_html_folded_member_ips_are_not_click_to_copy() -> None:
     )
     html = html_section(Kind.AI_CRAWLER, [prof], _rollup(clients=1, requests=120), top=5)
     assert "5.188.0.1" in html  # the clustered IP is still listed
-    assert "data-copy='5.188.0.1'" not in html  # but not as a copy target
-    assert "class='idcopy' data-copy='Sberbank'" in html  # the summary is the copy id
+    assert 'data-copy="5.188.0.1"' not in html  # but not as a copy target
+    assert "class='idcopy' data-copy=\"Sberbank\"" in html  # the summary is the copy id
     assert "inspect --actor" in html
 
 

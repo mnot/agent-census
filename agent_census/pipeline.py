@@ -406,6 +406,7 @@ def _merge_verified(
     accumulators: dict[ClientId, FeatureAccumulator],
     tokens: dict[ClientId, str | None],
     verifications: dict[ClientId, BotVerification],
+    keep_trace: int = 0,
 ) -> dict[ClientId, tuple[str, ...]]:
     """Collapse all IPs of each DNS-verified bot into one entry keyed by its domain.
 
@@ -424,7 +425,7 @@ def _merge_verified(
         # verdicts represent the merged entry -- carried over rather than dropped, so
         # the operator entry still gets its dns-verified / ip-verified tag.
         representative = verifications[keys[0]]
-        merged = FeatureAccumulator()
+        merged = FeatureAccumulator(keep_trace=keep_trace)
         ips: list[str] = []
         for key in keys:
             merged.merge(accumulators.pop(key))
@@ -458,6 +459,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
     wba_verifier: WbaVerifier | None = None,
     unknown_threshold: float = DEFAULT_UNKNOWN_THRESHOLD,
     keep_signals: bool = True,
+    inspect_trace: int = 0,
     quiescent_seconds: float | None = None,
     retired_cap: int = DEFAULT_RETIRED_CAP,
     declared_resident_cap: int = DEFAULT_DECLARED_RESIDENT_CAP,
@@ -489,6 +491,11 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
     whole run. Declared crawlers are kept resident so their IPs can still be
     merged. ``keep_signals=False`` drops per-client classifier signals (only
     inspect reads them).
+
+    ``inspect_trace`` keeps a bounded first-N sample of each client's raw entries
+    on its profile (for the ``--inspect-dir`` per-client data files); 0 keeps
+    none, at no cost. Peak memory stays bounded: at most that many entries per
+    client, unlike :func:`collect_entries`, which holds a full trace.
 
     ``min_requests`` ignores any client below that many requests -- it is dropped
     at finalisation, so it appears in no rollup, cross-tab cell, detail row, or
@@ -695,7 +702,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             collector.observe(features)
         profile = ClientProfile(
             client_id=key,
-            entries=(),
+            entries=acc.trace(),
             features=features,
             classification=classification,
             compliance=compliance,
@@ -758,7 +765,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         if acc is None:
             token = uas.product_token(entry.user_agent) if robots is not None else None
             check = _disallowed_check(robots, token) if robots is not None else None
-            acc = FeatureAccumulator(disallowed_check=check)
+            acc = FeatureAccumulator(disallowed_check=check, keep_trace=inspect_trace)
             store[gkey] = acc
             token_store[gkey] = token
             members[gkey] = set()
@@ -783,7 +790,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             token = uas.product_token(entry.user_agent) if robots is not None else None
             tokens[key] = token
             check = _disallowed_check(robots, token) if robots is not None else None
-            acc = FeatureAccumulator(disallowed_check=check)
+            acc = FeatureAccumulator(disallowed_check=check, keep_trace=inspect_trace)
             if quiescent_seconds is not None and not declared:
                 evictable[key] = acc
             else:
@@ -880,7 +887,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             (key, acc.user_agent) for key, acc in resident.items() if verifier.needs(acc.user_agent)
         ]
         verifications = verifier.verify_all(candidates)
-        member_ips = _merge_verified(resident, tokens, verifications)
+        member_ips = _merge_verified(resident, tokens, verifications, keep_trace=inspect_trace)
 
     for key, acc in resident.items():
         emit(key, acc, verifications.get(key), member_ips.get(key, ()))

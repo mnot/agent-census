@@ -20,7 +20,6 @@ from typing import TextIO
 
 from .parsing.base import LogParser
 
-
 # A single logical line is read in pieces no larger than this. Real access-log
 # lines are at most a few kilobytes; the cap only ever bites on pathological
 # input -- notably a gzip decompression bomb, a small .gz that expands to one

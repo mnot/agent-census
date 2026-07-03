@@ -544,12 +544,14 @@ document.addEventListener('click', function (event) {
     // No standalone title: a single card's own header (kind badge, IP, UA) already
     // carries the identity, so a title would just repeat it. A multi-member group
     // gets one line of context, and each card is headed by its distinguishing IP.
+    // Describe the grouping factually (shared UA + tags) without asserting it's one
+    // operator/person -- a common User-Agent can just as easily be many clients.
     var many = data.count > 1;
     if (many) {
       var lead = h('p', 'inspect-lead');
       lead.appendChild(frag(data.kind_badge));
       lead.appendChild(document.createTextNode(
-        ' one actor across ' + data.count + ' addresses (same User-Agent)'));
+        ' ' + data.count + ' addresses grouped by an identical User-Agent and tags'));
       body.appendChild(lead);
     }
     data.members.forEach(function (m) { body.appendChild(card(m, many)); });

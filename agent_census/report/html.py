@@ -343,7 +343,8 @@ def _summary_table(result: AnalysisResult, patterns: dict[Kind, str], window: _W
         f"<h2>Summary by kind</h2>\n"
         f"<div class='tscroll'><table id='kindtab'>{head}{''.join(rows)}</table></div>\n"
         '<p class="hint">Click a kind to show only it; click a client below '
-        "to copy its id for <code>inspect --client</code>.</p>"
+        "to copy its id for <code>inspect --client</code>, or a grouped row's "
+        "identity for <code>inspect --actor</code>.</p>"
     )
 
 
@@ -431,6 +432,18 @@ def _disclosure(label: str) -> str:
     )
 
 
+def _summary_copy(inner: str, lead_ip: str) -> str:
+    """Wrap a grouped row's identity in an isolated click-to-copy target for
+    ``inspect --actor``. Only this span carries ``data-copy``, so the page script
+    copies on a click here but still toggles the disclosure for a click anywhere
+    else on the summary row (the triangle, the counts, the UA line). The copied id
+    is the group's lead IP, which ``--actor`` expands back to every member."""
+    return (
+        f"<span class='idcopy' data-copy='{_esc(lead_ip)}' "
+        f"title='Click to copy this id for: inspect --actor'>{inner}</span>"
+    )
+
+
 def _member_tr(
     profile: ClientProfile, flag: str = "", window: _Window = None, peak: int | None = None
 ) -> str:
@@ -450,10 +463,13 @@ def _member_tr(
 
 
 def _ip_member_tr(ip: str, flag: str = "") -> str:
-    """A clustered member IP as a row (address only; folded entries keep no per-IP stats)."""
+    """A clustered member IP as a row (address only; folded entries keep no per-IP stats).
+
+    Not click-to-copy: a fold merges its IPs into one profile, so an individual
+    member IP resolves to nothing under ``inspect --client``. The copyable id is on
+    the summary row instead (``inspect --actor``), which pulls the whole cluster."""
     return (
-        f"<tr class='amem'><td class='cid copy' data-copy='{_esc(ip)}' "
-        "title='Click to copy this id for: inspect --client'>"
+        f"<tr class='amem'><td class='cid'>"
         f"{flag}<span class='mono'>{_esc(ip)}</span></td>"
         "<td></td><td></td><td></td><td></td><td></td></tr>"
     )
@@ -500,11 +516,12 @@ def _folded_tbody(
     # demoted line rather than repeat it verbatim.
     prefix_html = f"<span class='mono'>{_esc(prefix)}</span>" if prefix != identity else ""
     net_line = f"{prefix_html}{org_html}<span class='muted'> · {count(len(members), 'IP')}</span>"
-    id_html = (
+    id_inner = (
         f"<span class='cid-id mono'>{_esc(identity)}</span><div class='cid-as'>{net_line}</div>"
         if identity
         else net_line
     )
+    id_html = _summary_copy(id_inner, profile.client_id.ip)
     summary = (
         f"<tr {row_attrs}><td class='cid'>{toggle}"
         f"{flag}{id_html}"
@@ -575,6 +592,7 @@ def _actor_tbody(
     # Otherwise the spread is the only identity we have, so it stays the
     # header line as before.
     identity = agent_identity(actor.lead)
+    lead_ip = actor.lead.client_id.ip
     row_attrs = "class='asum'"
     if filterable:
         haystack = " ".join(
@@ -595,11 +613,12 @@ def _actor_tbody(
     ua_title = f' title="{_esc(raw)}"' if raw else ""
     toggle = _disclosure(f"Show {count(len(actor.members), 'grouped client')}")
     net_line = f"{_esc(spread)}{asn_html}"
-    id_html = (
+    id_inner = (
         f"<span class='cid-id mono'>{_esc(identity)}</span><div class='cid-as'>{net_line}</div>"
         if identity
         else net_line
     )
+    id_html = _summary_copy(id_inner, lead_ip)
     summary = (
         f"<tr {row_attrs}>"
         f"<td class='cid'>{toggle}{flag}{id_html}"

@@ -54,6 +54,42 @@ def test_network_filter_matches_residential() -> None:
     assert [p.client_id.ip for p in sel] == ["b"]
 
 
+def _actor_profile(
+    ip: str, ua: str, kind: Kind = Kind.AI_CRAWLER, requests: int = 10
+) -> ClientProfile:
+    return ClientProfile(
+        client_id=ClientId(ip=ip, user_agent=ua),
+        entries=(),
+        features=ClientFeatures(request_count=requests, user_agent=ua),
+        classification=Classification(primary=kind, confidence=0.9, evidence=()),
+        network="Example",
+    )
+
+
+def test_actor_expands_to_every_group_member() -> None:
+    # The whole point of --actor: the lead IP copied from a grouped summary row
+    # resolves to every member of that group, not just the lead -- so an operator's
+    # rotation across many IPs inspects as one.
+    ua = "Mozilla/5.0 (compatible; GPTBot/1.1; +https://openai.com/gptbot)"
+    a, b, c = (_actor_profile(ip, ua) for ip in ("1.1.1.1", "2.2.2.2", "3.3.3.3"))
+    other = _actor_profile("9.9.9.9", "other/1")  # a different actor, must not leak in
+    result = _result(a, b, c, other)
+
+    sel = select_profiles(result, client=None, kind=None, actor="1.1.1.1")
+    assert sorted(p.client_id.ip for p in sel) == ["1.1.1.1", "2.2.2.2", "3.3.3.3"]
+
+
+def test_actor_handle_is_the_group_lead_only() -> None:
+    # Only the lead IP is a valid handle (it's the id the report copies); a non-lead
+    # member IP matches no group and selects nothing, rather than silently returning
+    # a partial set.
+    ua = "bot/1"
+    lead = _actor_profile("1.1.1.1", ua, requests=50)  # highest volume -> lead
+    member = _actor_profile("2.2.2.2", ua, requests=10)
+    result = _result(lead, member)
+    assert select_profiles(result, client=None, kind=None, actor="2.2.2.2") == []
+
+
 def _classified() -> ClientProfile:
     """A client whose features earn several tags, classified as inspect would see it."""
     from agent_census.classify import classify_client

@@ -95,6 +95,9 @@ examples:
 
   # one client by IP (or any substring of its display label), full trace
   agent-census inspect access.log --client 203.0.113.66 --full
+
+  # every member of a grouped row (the id copied from its report summary)
+  agent-census inspect access.log --actor 20.171.0.0/24
 """
 
 _WBA_CHECK_EXAMPLES = """\
@@ -456,6 +459,13 @@ def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argumen
     )
     inspect_sel.add_argument("--kind", metavar="KIND", help="inspect all clients of this kind")
     inspect_sel.add_argument(
+        "--actor",
+        metavar="ID",
+        help="inspect every member of the actor group led by this id -- an IP, "
+        "subnet, or operator label copied from a grouped row's summary in the "
+        "HTML report",
+    )
+    inspect_sel.add_argument(
         "--network",
         metavar="NET",
         help="inspect clients in this origin network (substring, e.g. aws / relay / "
@@ -733,7 +743,9 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
 
 def _inspect_text(ctx: _RunContext, args: argparse.Namespace) -> str:
     """Render inspect output, collecting raw entries only for the matched clients."""
-    selected = select_profiles(ctx.result, client=args.client, kind=args.kind, network=args.network)
+    selected = select_profiles(
+        ctx.result, client=args.client, kind=args.kind, network=args.network, actor=args.actor
+    )
     entries = collect_entries(
         args.logfiles,
         ctx.parser,

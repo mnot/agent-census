@@ -171,9 +171,12 @@ def test_html_collapsed_group_lists_members_in_a_disclosure() -> None:
     html = html_section(Kind.SCRAPER, profiles, _rollup(clients=2, requests=12), top=5)
     assert "tbody class='actor'" in html
     # The disclosure is a real button (focusable, Enter/Space-operable, with an
-    # accessible label); the footprint sits right after it in the summary row.
+    # accessible label); the footprint sits right after it, wrapped in the isolated
+    # copy-id span (data-copy on the span, so clicking the id copies but clicking the
+    # rest of the row toggles).
     assert 'class="tri" aria-expanded="false"' in html
-    assert "▶</button>2 IPs" in html
+    assert "▶</button><span class='idcopy' data-copy='9.9.9.1'" in html
+    assert ">2 IPs" in html  # footprint inside the copy span
     assert "9.9.9.1" in html and "9.9.9.2" in html  # both members listed as rows
     assert "class='amem'" in html  # members are real table rows, not a sub-table
     assert "Acme (AS64500)" in html  # member AS shown
@@ -181,6 +184,44 @@ def test_html_collapsed_group_lists_members_in_a_disclosure() -> None:
     # Members reuse the existing Requests column with their own counts.
     assert ">8<" in html and ">4<" in html
     assert "<table class='members'>" not in html  # no separate sub-table
+
+
+def test_html_collapsed_summary_copies_lead_id_for_inspect_actor() -> None:
+    # The grouped summary row is a toggle, so its copy-id is an isolated inline
+    # target (data-copy on a span, not the whole cell): it copies the lead IP for
+    # `inspect --actor`, which expands to every member. Clicking elsewhere on the
+    # row still toggles the disclosure.
+    profiles = [
+        _profile("9.9.9.1", "bot/1", requests=8),
+        _profile("9.9.9.2", "bot/1", requests=4),
+    ]
+    html = html_section(Kind.SCRAPER, profiles, _rollup(clients=2, requests=12), top=5)
+    assert "class='idcopy' data-copy='9.9.9.1'" in html  # lead IP is the copy target
+    assert "inspect --actor" in html
+    # Members inside the disclosure keep their own per-IP copy-id for `--client`.
+    assert "data-copy='9.9.9.2'" in html and "inspect --client" in html
+
+
+def test_html_folded_member_ips_are_not_click_to_copy() -> None:
+    # A fold merges its IPs into one profile, so an individual clustered IP resolves
+    # to nothing under inspect -- its row must not offer a misleading copy-id. The
+    # summary carries the copyable id (the lead prefix, for `inspect --actor`).
+    prof = ClientProfile(
+        client_id=ClientId(ip="Sberbank", user_agent=None),
+        entries=(),
+        features=ClientFeatures(request_count=120, total_bytes=5000, user_agent="Chrome/91.0"),
+        classification=Classification(
+            primary=Kind.AI_CRAWLER, confidence=0.6, evidence=("ASN",),
+            tags=frozenset({"asn-attributed"}),
+        ),
+        member_ips=("5.188.0.1", "5.188.7.2"),
+        network="Sberbank",
+    )
+    html = html_section(Kind.AI_CRAWLER, [prof], _rollup(clients=1, requests=120), top=5)
+    assert "5.188.0.1" in html  # the clustered IP is still listed
+    assert "data-copy='5.188.0.1'" not in html  # but not as a copy target
+    assert "class='idcopy' data-copy='Sberbank'" in html  # the summary is the copy id
+    assert "inspect --actor" in html
 
 
 def test_folded_single_entry_shows_ips_and_sample_ua() -> None:

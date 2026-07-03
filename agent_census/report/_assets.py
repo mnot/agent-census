@@ -240,6 +240,12 @@ td.cid { max-width: 26rem; }
 td.copy { cursor: pointer; }
 td.copy:hover { background: #8882; }
 td.copy.copied { background: #16a34a55; }
+/* The grouped-row summary is a toggle, so its click-to-copy id is an isolated
+   inline target rather than the whole cell: copies on click here, toggles the
+   disclosure everywhere else on the row. */
+.idcopy { cursor: pointer; border-radius: 4px; }
+.idcopy:hover { background: #8882; }
+.idcopy.copied { background: #16a34a55; }
 details { margin: .25rem 0 1rem; }
 summary { cursor: pointer; color: var(--muted); font-size: .9rem; padding: .25rem 0; }
 tr.asum { cursor: pointer; }

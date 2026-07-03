@@ -101,7 +101,8 @@ KIND_BLURB: dict[Kind, str] = {
     "DNS, IP range, or AS number doesn't match the crawler it names.",
     Kind.SCRAPER: "Content harvesters hitting pages cold, without following links.",
     Kind.VULN_SCANNER: "Clients probing for known-vulnerable paths and misconfigurations.",
-    Kind.SPOOFED_BROWSER: "Datacenter clients wearing a browser UA without browser behaviour.",
+    Kind.SPOOFED_BROWSER: "Clients wearing a browser UA without browser behaviour -- a "
+    "hosting origin, or a Referer no real browser could emit.",
     Kind.AUTOMATION: "Clearly automated clients (headless engine, no browser cache, or a "
     "library UA) whose specific purpose couldn't be identified.",
     Kind.SPAM_BOT: "Form/comment spam and submission-endpoint abuse (comment forms, login, "

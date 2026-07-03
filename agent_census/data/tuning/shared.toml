@@ -45,3 +45,22 @@ min_requests = 4
 # classifier and the 404-storm tag.
 ratio_min = 0.6
 distinct_paths_min = 15
+
+[impossible_referer]
+# A same-site https://www.<site> Referer is impossible once www 301s to the apex --
+# a compliant browser is never *on* a www page to refer from. Gated on the site
+# actually being a www-redirector (see [www_redirector]), this then requires a
+# browser UA, no feed activity, and the Referer on a real share of requests (a lone
+# hit could be a quirky proxy / extension). Used by the impossible-referer tag and
+# the combiner's browser -> spoofed_browser conversion.
+ratio_min = 0.5
+min_hits = 5
+
+[www_redirector]
+# Infer "this site 301s Host: www.<site> to the apex" from observed www traffic
+# rather than a hard-coded rule: over the whole log, the share of requests served
+# for a www.* host that returned a 3xx. At/above `gate_3xx_ratio` (with at least
+# `min_www_requests` www requests to judge) the site is a www-redirector, which
+# arms the impossible-referer signal. Used by the pipeline.
+min_www_requests = 50
+gate_3xx_ratio = 0.9

@@ -39,6 +39,7 @@ _SPOOF_TAGS = (
     "impossible-browser-ua",
     "ancient-browser-ua",
     "forged-referer",
+    "impossible-referer",
     "probe-paths",
     "traversal",
     "encoding-evasion",

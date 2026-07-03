@@ -19,6 +19,7 @@ from collections import Counter, deque
 from collections.abc import Callable, Sequence
 from datetime import datetime
 from typing import TypeVar
+from urllib.parse import urlsplit
 
 from . import uas
 from .dataload import load_list, load_request_signatures, load_vuln_paths
@@ -100,6 +101,37 @@ def _referer_path(referer: str) -> str:
     if slash == -1:
         return "/"
     return after[slash:].split("?", 1)[0]
+
+
+def _referer_host(referer: str | None) -> str | None:
+    """The lowercased host of a Referer, or ``None`` for an absent/blank one."""
+    if not referer or referer == "-":
+        return None
+    return (urlsplit(referer).hostname or "").lower() or None
+
+
+def _bare_host(value: str | None) -> str | None:
+    """The lowercased hostname of a ``host[:port]`` value, port/brackets stripped --
+    for comparing a request's served host to a Referer host. ``None`` when blank."""
+    if not value:
+        return None
+    return (urlsplit("//" + value).hostname or "").lower() or None
+
+
+def _site_key(host: str | None) -> str | None:
+    """A same-site comparison key: a single leading ``www.`` dropped so ``www`` and
+    the apex read as one site. Only ``www.`` -- other subdomains are genuinely
+    different hosts. (Mirrors ``report.inspect_data._site_key``.)"""
+    if host and host.startswith("www."):
+        return host[4:] or host
+    return host
+
+
+def _served_host(entry: LogEntry) -> str | None:
+    """The host a request was served for: the logged ``%v`` (server_name), else the
+    Host header. Mirrors ``pipeline._vhost_of`` but stays local to keep features
+    independent of the pipeline."""
+    return entry.extra.get("server_name") or entry.host_header
 
 
 def _top_segment(path: str) -> str:
@@ -257,7 +289,8 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         "methods", "distinct_paths", "static_count", "fetched_robots", "user_agent", "as_org",
         "as_number", "first_seen",
         "last_seen", "_has_prev", "_prev_top", "breadth_changes",
-        "breadth_pairs", "ref_total", "ref_onsite", "self_referer_hits", "pages_total",
+        "breadth_pairs", "ref_total", "ref_onsite", "self_referer_hits", "www_referer_hits",
+        "pages_total",
         "pages_satisfied",
         "_pending_pages", "disallowed_hits", "disallowed_sample", "robots_fetched_first",
         "_content_seen", "feed_requests", "wba_claims",
@@ -298,6 +331,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         self.ref_total = 0
         self.ref_onsite = 0
         self.self_referer_hits = 0
+        self.www_referer_hits = 0
         self.pages_total = 0
         self.pages_satisfied = 0
         self.disallowed_hits = 0
@@ -443,6 +477,19 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
                 self.self_referer_hits += 1
             elif self.distinct_paths is not None and referer_path in self.distinct_paths:
                 self.ref_onsite += 1
+            # A same-site www Referer: the Referer host is the ``www.`` form of the
+            # host this request was served for. Counted unconditionally here; whether
+            # it is anomalous depends on the site being a www-redirector, a gate the
+            # pipeline applies later. Needs a served host in the log (absent -> skip).
+            ref_host = _referer_host(entry.referer)
+            served = _site_key(_bare_host(_served_host(entry)))
+            if (
+                ref_host is not None
+                and ref_host.startswith("www.")
+                and served is not None
+                and _site_key(ref_host) == served
+            ):
+                self.www_referer_hits += 1
 
     def _track_breadth(self, path: str) -> None:
         top = _top_segment(path)
@@ -576,6 +623,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         self.ref_total += other.ref_total
         self.ref_onsite += other.ref_onsite
         self.self_referer_hits += other.self_referer_hits
+        self.www_referer_hits += other.www_referer_hits
         self.pages_total += other.pages_total
         self.pages_satisfied += other.pages_satisfied
         self.feed_requests += other.feed_requests
@@ -701,6 +749,8 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
             referer_following_ratio=_ratio(self.ref_onsite, self.ref_total),
             self_referer_ratio=_ratio(self.self_referer_hits, self.ref_total),
             referer_count=self.ref_total,
+            www_referer_hits=self.www_referer_hits,
+            www_referer_ratio=_ratio(self.www_referer_hits, self.count),
             asset_coload_ratio=_ratio(self.pages_satisfied, self.pages_total),
             static_ratio=_ratio(self.static_count, self.count),
             page_count=self.pages_total,

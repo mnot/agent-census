@@ -118,6 +118,7 @@ _TAG_TOKENS: dict[str, str] = {
     "probe-paths": "danger",
     "ancient-browser-ua": "danger",  # forged identity -> shared red terminal
     "forged-referer": "danger",
+    "impossible-referer": "danger",
     "traversal": "danger-deep",
     "encoding-evasion": "danger-deep",
     "impossible-browser-ua": "danger-deep",  # forged identity, deepest red

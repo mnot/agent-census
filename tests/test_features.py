@@ -57,6 +57,70 @@ def test_as_number_filled_from_later_line() -> None:
     assert feats.as_number == "16509"
 
 
+def _served(path: str, referer: str, **kw: object) -> object:
+    """A request served for example.com (via %v), with a Referer."""
+    extra = {"server_name": "example.com"}
+    return entry(path, referer=referer, extra=extra, **kw)  # type: ignore[arg-type]
+
+
+def test_same_site_www_referer_counts() -> None:
+    # A Referer that is the www. form of the host the request was served for.
+    feats = extract_features(
+        [
+            _served("/a", "https://www.example.com/a"),
+            _served("/b", "https://www.example.com/b", offset=1),
+        ]
+    )
+    assert feats.www_referer_hits == 2
+    assert feats.www_referer_ratio == 1.0
+
+
+def test_cross_site_and_apex_referers_do_not_count() -> None:
+    # A www Referer for a *different* site, and an apex (non-www) Referer for this
+    # site, are both ordinary -- only a same-site www Referer is the tell.
+    feats = extract_features(
+        [
+            _served("/a", "https://www.other.com/a"),  # cross-site www
+            _served("/b", "https://example.com/b", offset=1),  # apex, no www
+        ]
+    )
+    assert feats.www_referer_hits == 0
+    assert feats.www_referer_ratio == 0.0
+
+
+def test_www_referer_ratio_is_over_all_requests() -> None:
+    feats = extract_features(
+        [
+            _served("/a", "https://www.example.com/a"),
+            _served("/b", "https://example.com/b", offset=1),  # apex Referer
+            _served("/c", "https://example.com/c", offset=2),  # apex Referer
+        ]
+    )
+    assert feats.www_referer_hits == 1
+    assert feats.www_referer_ratio == pytest.approx(1 / 3)
+
+
+def test_www_referer_needs_a_served_host() -> None:
+    # No %v / Host header in the log -> the site can't be established, so a www
+    # Referer can't be judged same-site and is not counted.
+    feats = extract_features(
+        [entry("/a", referer="https://www.example.com/a")],
+    )
+    assert feats.www_referer_hits == 0
+
+
+def test_www_referer_hits_merge() -> None:
+    # Folding two IPs of one actor sums the www-Referer hits.
+    from agent_census.features import FeatureAccumulator
+
+    left = FeatureAccumulator()
+    left.add(_served("/a", "https://www.example.com/a"))  # type: ignore[arg-type]
+    right = FeatureAccumulator()
+    right.add(_served("/b", "https://www.example.com/b"))  # type: ignore[arg-type]
+    left.merge(right)
+    assert left.www_referer_hits == 2
+
+
 def test_volume_and_bandwidth() -> None:
     feats = extract_features(
         [entry("/a", bytes_sent=100), entry("/b", bytes_sent=300, offset=1)]

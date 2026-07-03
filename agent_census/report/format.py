@@ -107,6 +107,7 @@ _TAG_ORDER = {
             "uses-HEAD",
             "post-heavy",
             "forged-referer",
+            "impossible-referer",
             "datacenter",
             "asn-attributed",
             "wba-verified",
@@ -251,6 +252,8 @@ _TAG_HELP: dict[str, str] = {
     "of automation, not a human.",
     "forged-referer": "Sends a Referer equal to the requested URL — fabricated "
     "navigation, not something a real browser produces.",
+    "impossible-referer": "Carries a same-site www Referer on a site that redirects "
+    "www to the apex — a Referer no compliant browser can emit, so a browser costume.",
     "fetches-non-feeds": "A feed reader that also requested non-feed resources.",
     "high-rate": "Peak requests-per-minute well above this site's real browsers — a "
     "request rate no human-driven browser here reaches.",

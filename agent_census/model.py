@@ -170,6 +170,13 @@ class ClientFeatures:  # pylint: disable=too-many-instance-attributes
     referer_following_ratio: float = 0.0  # referer is a path this client fetched earlier
     self_referer_ratio: float = 0.0  # referer == the requested path (fabricated; browsers never do)
     referer_count: int = 0  # requests that carried a Referer (0 -> can't judge navigation)
+    # Requests carrying a same-site ``www.<apex>`` Referer. On a site that 301s
+    # www -> apex, a compliant browser can never be *on* a www page to refer from,
+    # so such a Referer is fabricated / replayed. Only meaningful once the site is
+    # known to be a www-redirector (a pipeline-level gate); the ratio is over all
+    # requests, so a threshold can require it on a real share of them.
+    www_referer_hits: int = 0
+    www_referer_ratio: float = 0.0
 
     # asset co-loading (the browser fingerprint)
     asset_coload_ratio: float = 0.0  # HTML responses followed by sub-resource fetches

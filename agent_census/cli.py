@@ -98,6 +98,12 @@ examples:
 
   # every member of a grouped row (the id copied from its report summary)
   agent-census inspect access.log --actor 20.171.0.0/24
+
+  # every client carrying a web-bot-auth tag (substring selects the whole family)
+  agent-census inspect access.log --tag wba
+
+  # one compact row per scanner, columns tuned to the attack shape
+  agent-census inspect access.log --kind vuln_scanner --brief
 """
 
 _WBA_CHECK_EXAMPLES = """\
@@ -492,9 +498,21 @@ def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argumen
         "residential; combine with --kind to drill into one cross-tab cell)",
     )
     inspect_sel.add_argument(
+        "--tag",
+        metavar="TAG",
+        help="inspect clients carrying this tag (substring, so a family prefix like "
+        "wba / robots selects the whole family, e.g. wba-verified + wba-expired)",
+    )
+    inspect_sel.add_argument(
         "--limit", type=int, default=20, metavar="N", help="trace rows per client (default: 20)"
     )
     inspect_sel.add_argument("--full", action="store_true", help="show every request in the trace")
+    inspect_sel.add_argument(
+        "--brief",
+        action="store_true",
+        help="one compact row per client instead of full blocks, with columns tuned "
+        "to the selector used (e.g. --kind vuln_scanner shows the attack shape)",
+    )
     return parser, sub_parsers
 
 
@@ -768,7 +786,12 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
 def _inspect_text(ctx: _RunContext, args: argparse.Namespace) -> str:
     """Render inspect output, collecting raw entries only for the matched clients."""
     selected = select_profiles(
-        ctx.result, client=args.client, kind=args.kind, network=args.network, actor=args.actor
+        ctx.result,
+        client=args.client,
+        kind=args.kind,
+        network=args.network,
+        actor=args.actor,
+        tag=args.tag,
     )
     entries = collect_entries(
         args.logfiles,
@@ -783,7 +806,16 @@ def _inspect_text(ctx: _RunContext, args: argparse.Namespace) -> str:
     selected = [dataclasses.replace(p, entries=entries.get(p.client_id, ())) for p in selected]
     # inspect is Markdown-only: the browsable HTML inspect view now lives in the
     # report itself (analyze --inspect-data), composed client-side from data files.
-    return render_inspect(selected, limit=args.limit, full=args.full)
+    return render_inspect(
+        selected,
+        limit=args.limit,
+        full=args.full,
+        brief=args.brief,
+        kind=args.kind,
+        tag=args.tag,
+        network=args.network,
+        actor=args.actor,
+    )
 
 
 def _source_label(args: argparse.Namespace) -> str:

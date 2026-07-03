@@ -32,10 +32,14 @@ defaults block, so older configs keep working. Any other shape (a newer
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from .errors import ConfigError
 
 CONFIG_VERSION = 2
 
@@ -178,3 +182,135 @@ def load(override: Path | None = None) -> ConfigStore:
         )
     # Legacy flat file: the whole object is the defaults block.
     return ConfigStore(defaults=_clean_block(data), path=path)
+
+
+def apply_persisted_settings(args: argparse.Namespace) -> None:
+    """Fill sticky options from the config when unset; persist any passed now.
+
+    Precedence is CLI argument, else the ``--site`` block, else the global
+    defaults. A value passed this run is remembered: per-site keys (log format,
+    identity, robots source, log files, vhost) under the named site when
+    ``--site`` is given, else -- for the preference-style keys -- in the defaults;
+    the API token and MaxMind paths are always global. Naming any robots source
+    this run (including ``--host``) suppresses a restored one so it can't
+    override. Raises ConfigError if, after resolution, no log files are available.
+    """
+    site = getattr(args, "site", None)
+    store = load(getattr(args, "config", None))
+    if store.warning:
+        print(f"warning: {store.warning}", file=sys.stderr)
+    cfg = store.effective(site)  # merged read-view: defaults overlaid with the site
+    scope = store.site_scope(site)  # per-site keys persist here (defaults if no --site)
+    gscope = store.defaults  # global keys always persist to the defaults block
+    updated = False
+
+    if args.log_format is not None:
+        scope["log_format"], updated = args.log_format, True
+        scope.pop("log_format_preset", None)
+    elif args.log_format_preset is not None:
+        scope["log_format_preset"], updated = args.log_format_preset, True
+        scope.pop("log_format", None)
+    elif cfg.get("log_format") is not None:
+        args.log_format = cfg["log_format"]
+    elif cfg.get("log_format_preset") is not None:
+        args.log_format_preset = cfg["log_format_preset"]
+
+    if args.identity is not None:
+        scope["identity"], updated = args.identity, True
+    elif cfg.get("identity") is not None:
+        args.identity = cfg["identity"]
+
+    passed_source = args.robots_file or args.robots_url or args.host
+    if args.robots_file is not None:
+        scope["robots_file"], updated = str(args.robots_file), True
+        scope.pop("robots_url", None)
+    elif args.robots_url is not None:
+        scope["robots_url"], updated = args.robots_url, True
+        scope.pop("robots_file", None)
+    if not passed_source:
+        if cfg.get("robots_file") is not None:
+            args.robots_file = Path(str(cfg["robots_file"]))
+        elif cfg.get("robots_url") is not None:
+            args.robots_url = cfg["robots_url"]
+
+    if _apply_site_list(args, cfg, scope, site, "logfiles", as_path=True):
+        updated = True
+    if _apply_site_list(args, cfg, scope, site, "vhost", as_path=False):
+        updated = True
+
+    if _apply_maxmind_settings(args, cfg, gscope):
+        updated = True
+
+    if updated:
+        store.save()
+    if args.identity is None:
+        args.identity = "ip_ua"  # the built-in default when nothing is set or saved
+
+    if not args.logfiles:
+        if site:
+            raise ConfigError(
+                f"site {site!r} has no saved log files; pass one or more LOGFILE paths"
+            )
+        raise ConfigError("no log files given; pass one or more LOGFILE paths, or --site NAME")
+
+
+def _apply_site_list(
+    args: argparse.Namespace,
+    cfg: dict[str, object],
+    scope: dict[str, object],
+    site: str | None,
+    attr: str,
+    *,
+    as_path: bool,
+) -> bool:
+    """Persist/restore a per-site list option (log files, vhost filters).
+
+    These describe *which data* a site is, so they only ever live under a site:
+    passing values with ``--site`` remembers them there; passing them without a
+    site uses them for this run but saves nothing (there is no site to attach them
+    to, and a global default here would silently filter every later run). An empty
+    value falls back to the site's saved list. Returns whether anything was saved.
+    """
+    passed = getattr(args, attr) or []
+    if passed:
+        if site:
+            scope[attr] = [str(item) for item in passed]
+            return True
+        return False
+    saved = cfg.get(attr)
+    if site and isinstance(saved, list):
+        setattr(args, attr, [Path(p) for p in saved] if as_path else list(saved))
+    return False
+
+
+def _apply_maxmind_settings(
+    args: argparse.Namespace, cfg: dict[str, object], gscope: dict[str, object]
+) -> bool:
+    """Reconcile the (always-global) MaxMind DB paths; return whether any were saved.
+
+    A source is either a directory (discovered) or explicit per-database paths;
+    an explicit path overrides the directory for its role. Passing --mm-db-dir this
+    run drops any restored explicit paths so the directory can take over cleanly,
+    but a path also passed this run still wins.
+    """
+    updated = False
+    passed_dir = args.mm_db_dir is not None
+    if passed_dir:
+        gscope["mm_db_dir"], updated = str(args.mm_db_dir), True
+        if args.mm_asn_db is None:
+            gscope.pop("mm_asn_db", None)
+        if args.mm_country_db is None:
+            gscope.pop("mm_country_db", None)
+    elif cfg.get("mm_db_dir") is not None:
+        args.mm_db_dir = Path(str(cfg["mm_db_dir"]))
+
+    if args.mm_asn_db is not None:
+        gscope["mm_asn_db"], updated = str(args.mm_asn_db), True
+    elif not passed_dir and cfg.get("mm_asn_db") is not None:
+        args.mm_asn_db = Path(str(cfg["mm_asn_db"]))
+
+    if args.mm_country_db is not None:
+        gscope["mm_country_db"], updated = str(args.mm_country_db), True
+    elif not passed_dir and cfg.get("mm_country_db") is not None:
+        args.mm_country_db = Path(str(cfg["mm_country_db"]))
+    return updated

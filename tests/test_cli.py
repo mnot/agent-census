@@ -7,7 +7,8 @@ from pathlib import Path
 import pytest
 
 from agent_census import userconfig
-from agent_census.cli import _apply_persisted_settings, _build_parser, main
+from agent_census.cli import _build_parser, main
+from agent_census.userconfig import apply_persisted_settings as _apply_persisted_settings
 
 DATA = Path(__file__).parent / "data"
 LOG = str(DATA / "sample_access.log")

@@ -5,16 +5,27 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from agent_census import identity, pipeline
 from agent_census.cli import main
+from agent_census.model import (
+    Classification,
+    ClientFeatures,
+    ClientId,
+    ClientProfile,
+    Kind,
+    LogEntry,
+)
 from agent_census.parsing import resolve
 from agent_census.parsing.apache import PRESETS
 from agent_census.report import render_report_html
 from agent_census.report.inspect_data import (
+    _infer_site_host,
+    _referer_display,
     build_group_view,
     build_member_view,
     rendered_groups,
@@ -62,12 +73,15 @@ def test_trace_total_is_the_true_count_not_the_sample() -> None:
     # A client with more requests than the cap: the view still reports the true
     # total, and shows only the sampled rows.
     result = _run(inspect_trace=2)
-    for group in rendered_groups(result.profiles, top=5):
-        for member in build_group_view(group, limit=2)["members"]:
-            trace = member["trace"]
-            assert trace["shown"] <= 2
-            assert trace["total"] >= trace["shown"]
-            assert trace["total"] == member["requests_n"]
+    traces = [
+        member["trace"]
+        for group in rendered_groups(result.profiles, top=5)
+        for member in build_group_view(group, limit=2)["members"]
+    ]
+    assert traces
+    assert all(t["shown"] <= 2 and t["total"] >= t["shown"] for t in traces)
+    # A busier-than-the-cap client proves total is the real count, not the 2 shown.
+    assert any(t["total"] > t["shown"] for t in traces)
 
 
 # -- view-model ------------------------------------------------------------
@@ -174,6 +188,62 @@ def test_writer_infers_site_host_to_shorten_referers(tmp_path: Path) -> None:
     assert all(r == "/home" for r in referers)  # inferred redbot.org -> path only
 
 
+def _entry(line: int, path: str, referer: str, sec: int) -> LogEntry:
+    return LogEntry(
+        line_no=line,
+        remote_host="1.1.1.1",
+        path=path,
+        method="GET",
+        status=200,
+        bytes_sent=100,
+        referer=referer,
+        timestamp=datetime(2023, 10, 10, 12, 0, sec, tzinfo=timezone.utc),
+    )
+
+
+def _profile(entries: tuple[LogEntry, ...], **kw: object) -> ClientProfile:
+    return ClientProfile(
+        client_id=ClientId(ip="host.example"),
+        entries=entries,
+        features=ClientFeatures(request_count=len(entries)),
+        classification=Classification(primary=Kind.SEARCH_ENGINE, confidence=0.9),
+        **kw,  # type: ignore[arg-type]
+    )
+
+
+def test_folded_entry_trace_does_not_nest_or_reset_across_ips() -> None:
+    # A page then a same-path-referer asset would nest for one client; but a folded
+    # entry (member_ips set) interleaves several IPs, so nesting/page-reset is
+    # suppressed -- otherwise an asset from one IP nests under another IP's page.
+    entries = (_entry(1, "/", "-", 0), _entry(2, "/s.css", "http://h/", 1))
+    assert [r["child"] for r in build_member_view(_profile(entries), limit=20)["trace"]["rows"]] == [
+        False,
+        True,
+    ]  # single client: the asset nests
+    folded = _profile(entries, member_ips=("1.1.1.1", "2.2.2.2"))
+    assert [r["child"] for r in build_member_view(folded, limit=20)["trace"]["rows"]] == [
+        False,
+        False,
+    ]  # folded: no cross-IP nesting
+
+
+def test_infer_site_host_requires_a_majority() -> None:
+    def prof(referers: list[str]) -> ClientProfile:
+        return _profile(tuple(_entry(i, "/p", r, i) for i, r in enumerate(referers)))
+
+    # A tie between two hosts crowns neither -- leave referers full.
+    assert _infer_site_host([prof(["http://a/", "http://b/"])]) is None
+    # A clear majority is taken as the site.
+    assert _infer_site_host([prof(["http://a/", "http://a/", "http://a/", "http://b/"])]) == "a"
+
+
+def test_referer_display_handles_ipv6_host() -> None:
+    # Same-site detection must strip the port from an IPv6-literal Host without
+    # tripping on the address's own colons.
+    assert _referer_display("http://[2001:db8::1]/p", "[2001:db8::1]:8080", None) == "/p"
+    assert _referer_display("https://off.example/x", "[2001:db8::1]:8080", None).startswith("http")
+
+
 # -- writer / drift guard --------------------------------------------------
 
 
@@ -191,7 +261,7 @@ def test_every_report_link_resolves_to_a_file(tmp_path: Path) -> None:
     # The drift guard: every data-inspect slug the report emits must have a file.
     result = _run()
     write_inspect_bundle(result.profiles, tmp_path, limit=20, top=5)
-    html = render_report_html(result, source="x", top=5, inspect=True)
+    html = render_report_html(result, source="x", top=5, inspect_dir="report.inspect")
     slugs = set(re.findall(r'data-inspect="([0-9a-f]{16})"', html))
     files = {p.stem for p in tmp_path.glob("*.json")}
     assert slugs

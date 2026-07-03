@@ -111,12 +111,12 @@ def test_report_html_escapes_user_agent() -> None:
 
 
 def test_report_html_inspect_mode_links_rows() -> None:
-    # With inspect=True the rows carry data-inspect (the viewer opens an in-page
+    # With inspect_dir set the rows carry data-inspect (the viewer opens an in-page
     # trace); without it they keep the click-to-copy id. The overlay itself is
     # built on demand by the page script, so it isn't in the static markup.
     result = _run()
     plain = render_report_html(result, source="x")
-    linked = render_report_html(result, source="x", inspect=True)
+    linked = render_report_html(result, source="x", inspect_dir="report.inspect")
     # Match real slug attributes, not the viewer script's own mention of the syntax.
     assert re.search(r'data-inspect="[0-9a-f]{16}"', linked)
     assert not re.search(r'data-inspect="[0-9a-f]{16}"', plain)

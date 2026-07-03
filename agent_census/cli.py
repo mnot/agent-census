@@ -144,7 +144,7 @@ def _duration(value: str) -> float:
     return seconds
 
 
-def _add_shared(parser: argparse.ArgumentParser) -> None:
+def _add_shared(parser: argparse.ArgumentParser, *, allow_md: bool = True) -> None:
     parser.add_argument(
         "logfiles",
         type=Path,
@@ -255,11 +255,14 @@ def _add_shared(parser: argparse.ArgumentParser) -> None:
     )
 
     out_group = parser.add_argument_group("output")
-    out_group.add_argument(
-        "--md",
-        action="store_true",
-        help="emit Markdown instead of the default self-contained HTML page",
-    )
+    if allow_md:
+        # analyze defaults to HTML and --md switches it to Markdown. inspect and
+        # calibrate are Markdown-only, so they don't take --md at all.
+        out_group.add_argument(
+            "--md",
+            action="store_true",
+            help="emit Markdown instead of the default self-contained HTML page",
+        )
     out_group.add_argument(
         "-o", "--output", type=Path, metavar="PATH", help="write output here instead of stdout"
     )
@@ -398,7 +401,7 @@ def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argumen
         epilog=_CALIBRATE_EXAMPLES,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    _add_shared(calibrate)
+    _add_shared(calibrate, allow_md=False)
     calibrate.add_argument(
         "--top",
         type=int,
@@ -414,7 +417,7 @@ def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argumen
         epilog=_INSPECT_EXAMPLES,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    _add_shared(inspect)
+    _add_shared(inspect, allow_md=False)
 
     audit = sub.add_parser(
         "audit",
@@ -861,7 +864,6 @@ def main(argv: Sequence[str] | None = None) -> int:  # pylint: disable=too-many-
                     elapsed=ctx.elapsed,
                     country_flags=ctx.country_flags,
                     breakout_min_share=args.breakout_min_pct / 100,
-                    inspect=_wants_inspect_data(args),
                     inspect_dir=(
                         f"{args.output.stem}.inspect" if _wants_inspect_data(args) else None
                     ),

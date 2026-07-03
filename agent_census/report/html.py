@@ -754,18 +754,18 @@ def render_report_html(
     elapsed: float | None = None,
     country_flags: CountryFlags | None = None,
     breakout_min_share: float = BREAKOUT_MIN_SHARE,
-    inspect: bool = False,
     inspect_dir: str | None = None,
 ) -> str:
     """Render the full analysis report as a standalone HTML page.
 
-    ``inspect`` links each client row to its per-client data file via a
-    ``data-inspect`` attribute, so the viewer script opens an in-page trace instead
-    of copying the id. ``inspect_dir`` is the relative directory those files live in
-    (named after the report, e.g. ``report.inspect``); the viewer fetches
-    ``<inspect_dir>/<slug>.json``. Only set these when
-    :func:`inspect_data.write_inspect_bundle` also runs, so every linked file exists.
+    ``inspect_dir`` turns on click-to-inspect: it is the relative directory the
+    per-client data files live in (named after the report, e.g. ``report.inspect``).
+    Each client row then carries a ``data-inspect`` slug and the viewer fetches
+    ``<inspect_dir>/<slug>.json``. One switch, so links and the fetch directory can't
+    disagree. Only set it when :func:`inspect_data.write_inspect_bundle` also runs,
+    so every linked file exists; leave it ``None`` for a plain copy-the-id report.
     """
+    inspect = inspect_dir is not None
     flags = country_flags or CountryFlags()
     groups = by_kind(result.profiles)
     matrix = network_matrix(
@@ -789,7 +789,7 @@ def render_report_html(
         # can't close the script element.
         (
             f"<script>window.__INSPECT_DIR__={_js(inspect_dir + '/')}</script>"
-            if inspect and inspect_dir
+            if inspect_dir
             else ""
         ),
         f"<h1>{_esc(heading)}</h1>",

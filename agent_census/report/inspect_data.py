@@ -26,7 +26,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from ..features import _is_static
+from ..features import _is_static, _referer_path
 from ..model import ClientProfile, Kind
 from ._htmlutil import esc as _esc
 from ._htmlutil import kind_badge as _kind_badge
@@ -38,7 +38,6 @@ from .format import (
     fmt_ts,
     human_bytes,
     human_duration,
-    kind_label,
     ordered_tags,
     tag_title,
 )
@@ -103,19 +102,20 @@ def _rel_time(base: datetime, ts: datetime) -> str:
     return f"+{hours}h{minutes:02d}m"
 
 
-def _referer_path(referer: str | None) -> str | None:
-    """The path part of a Referer, for matching a sub-resource to the page it came
-    from. ``None`` for an absent/blank referer."""
-    if not referer or referer == "-":
-        return None
-    return urlsplit(referer).path or None
-
-
 def _referer_host(referer: str | None) -> str | None:
     """The lowercased host of a Referer, or ``None`` for an absent/blank one."""
     if not referer or referer == "-":
         return None
     return (urlsplit(referer).hostname or "").lower() or None
+
+
+def _bare_host(value: str | None) -> str | None:
+    """The lowercased hostname of a ``host[:port]`` (or ``[ipv6]:port``) value, port
+    and brackets stripped -- for comparing a request's Host / the site to a referer
+    host. ``None`` when blank."""
+    if not value:
+        return None
+    return (urlsplit("//" + value).hostname or "").lower() or None
 
 
 def _referer_display(referer: str | None, host: str | None, site: str | None) -> str:
@@ -126,7 +126,7 @@ def _referer_display(referer: str | None, host: str | None, site: str | None) ->
     if not referer or referer == "-":
         return "–"
     ref_host = _referer_host(referer)
-    known = {h.split(":")[0].lower() for h in (host, site) if h}
+    known = {h for h in (_bare_host(host), _bare_host(site)) if h}
     if ref_host and ref_host in known:
         parts = urlsplit(referer)
         shown = parts.path or "/"
@@ -142,6 +142,12 @@ def _trace_view(
     entries = sorted(profile.entries, key=lambda e: (e.timestamp is None, e.timestamp or e.line_no))
     shown = entries[:limit]
     first_ts = next((e.timestamp for e in shown if e.timestamp is not None), None)
+    # Page-relative offsets and asset nesting only make sense for one client's own
+    # sequential requests. A folded entry (a verified-bot merge, an egress/subnet/ASN
+    # cluster) interleaves several IPs into one trace, so a "page" and its "assets"
+    # could come from different clients -- there, keep a flat list: offsets from the
+    # first request, nothing nested.
+    folded = bool(profile.member_ips) or profile.is_aggregate
     # Each offset is measured from the current *page* -- the last non-asset request.
     # So an asset reads as its delay after the page that pulled it, and a navigation
     # as the gap since the previous page. ``base`` starts at the first request and
@@ -153,10 +159,18 @@ def _trace_view(
     for entry in shown:
         request = (entry.path + ("?" + entry.query if entry.query else "")) or entry.raw_request
         is_asset = _is_static(entry.path)
-        child = bool(is_asset and parent_path and _referer_path(entry.referer) == parent_path)
+        ref = entry.referer
+        child = bool(
+            not folded
+            and is_asset
+            and parent_path
+            and ref
+            and ref != "-"
+            and _referer_path(ref) == parent_path
+        )
         ts = entry.timestamp
         when = _rel_time(base, ts) if (ts is not None and base is not None) else "–"
-        if not is_asset:
+        if not folded and not is_asset:
             parent_path = entry.path or None
             if ts is not None:
                 base = ts  # following assets, and the next page's gap, measure from here
@@ -193,13 +207,11 @@ def build_member_view(
     return {
         "label": client_label(profile),
         "kind_badge": _kind_badge(cls.primary),
-        "kind_label": kind_label(cls.primary),
         "confidence": f"{cls.confidence:.0%}",
         "ip": profile.client_id.ip,
         "network": profile.network,
         "user_agent": elide_ua(feats.user_agent, is_browser=cls.primary is Kind.BROWSER) or "–",
         "requests": f"{feats.request_count:,}",
-        "requests_n": feats.request_count,
         "bandwidth": human_bytes(feats.total_bytes),
         "span": human_duration(feats.duration_seconds),
         "seen": f"{fmt_ts(feats.first_seen)} → {fmt_ts(feats.last_seen)}",
@@ -224,7 +236,6 @@ def build_group_view(
     members = sorted(group.members, key=lambda p: p.features.request_count, reverse=True)
     return {
         "slug": group.slug,
-        "lead": client_label(group.lead),
         "kind_badge": _kind_badge(group.lead.classification.primary),
         "count": len(members),
         "members": [build_member_view(m, limit=limit, site=site) for m in members],
@@ -237,7 +248,11 @@ def _infer_site_host(profiles: Sequence[ClientProfile]) -> str | None:
 
     A site's own access log is dominated by same-site navigation, so the most
     common Referer host across the retained traces is almost always the site
-    itself. Off-site referrers (a search engine, a link elsewhere) are a minority.
+    itself. To avoid crowning an off-site host on a small or referral-heavy sample
+    (which would invert the shortening -- off-site referers shown as bare paths),
+    only accept a host that is an outright majority of the hosted referers; when no
+    host dominates, return ``None`` and leave referers full. For an authoritative
+    answer, log ``%v`` (server name) so ``result.site`` is set and this isn't used.
     """
     hosts: Counter[str] = Counter()
     for profile in profiles:
@@ -245,7 +260,10 @@ def _infer_site_host(profiles: Sequence[ClientProfile]) -> str | None:
             host = _referer_host(entry.referer)
             if host:
                 hosts[host] += 1
-    return hosts.most_common(1)[0][0] if hosts else None
+    if not hosts:
+        return None
+    top, count = hosts.most_common(1)[0]
+    return top if count * 2 > sum(hosts.values()) else None
 
 
 def rendered_groups(profiles: Sequence[ClientProfile], *, top: int) -> list[ActorGroup]:

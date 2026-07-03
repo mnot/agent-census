@@ -589,7 +589,8 @@ document.addEventListener('click', function (event) {
     body.innerHTML = '';
     body.appendChild(h('p', 'muted', 'Loading\\u2026'));
     show();
-    var dir = window.__INSPECT_DIR__ || 'inspect/';
+    var dir = window.__INSPECT_DIR__;
+    if (!dir) return;  // links are only emitted alongside the dir, so this is belt-and-braces
     fetch(dir + encodeURIComponent(slug) + '.json').then(function (r) {
       if (!r.ok) throw new Error(String(r.status));
       return r.json();

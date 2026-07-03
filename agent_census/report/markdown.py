@@ -225,8 +225,9 @@ def _kind_section(
     lines.append("")
     if any(a.collapsed or len(a.lead.member_ips) >= 2 for a in shown):
         lines.append(
-            f"_Rows showing “N IPs” fold many addresses into one actor; "
-            f"run `agent-census inspect --kind {kind.value}` for the per-IP/ASN list._"
+            f"_Rows showing “N IPs” fold many addresses that share a User-Agent and "
+            f"tags into one row; run `agent-census inspect --kind {kind.value}` for "
+            f"the per-IP/ASN list._"
         )
     lines.append(f"_Total bandwidth: {human_bytes(rollup.total_bytes)}_")
     lines.append("")

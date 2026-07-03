@@ -35,12 +35,12 @@ from .report import (
     country_flags,
     render_calibration,
     render_inspect,
-    render_inspect_html,
     render_report,
     render_report_html,
     select_profiles,
 )
 from .report.aggregate import KIND_CLUSTERS
+from .report.inspect_data import write_inspect_bundle
 from .robots import from_file, from_network
 from .robots.parser import RobotsRules
 from .robots.source import RobotsDoc, url_for_host
@@ -144,7 +144,7 @@ def _duration(value: str) -> float:
     return seconds
 
 
-def _add_shared(parser: argparse.ArgumentParser) -> None:
+def _add_shared(parser: argparse.ArgumentParser, *, allow_md: bool = True) -> None:
     parser.add_argument(
         "logfiles",
         type=Path,
@@ -255,11 +255,14 @@ def _add_shared(parser: argparse.ArgumentParser) -> None:
     )
 
     out_group = parser.add_argument_group("output")
-    out_group.add_argument(
-        "--md",
-        action="store_true",
-        help="emit Markdown instead of the default self-contained HTML page",
-    )
+    if allow_md:
+        # analyze defaults to HTML and --md switches it to Markdown. inspect and
+        # calibrate are Markdown-only, so they don't take --md at all.
+        out_group.add_argument(
+            "--md",
+            action="store_true",
+            help="emit Markdown instead of the default self-contained HTML page",
+        )
     out_group.add_argument(
         "-o", "--output", type=Path, metavar="PATH", help="write output here instead of stdout"
     )
@@ -369,6 +372,23 @@ def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argumen
         "its own (scrollable) column in the network table when it carries this %% of "
         "some single kind's traffic (default: 10)",
     )
+    analyze_out.add_argument(
+        "--inspect-data",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="when writing an HTML report to a file (-o), also write a per-client "
+        "inspect file into an inspect/ directory beside it, so clicking a client in "
+        "the report opens its full trace in-page. On by default; --no-inspect-data "
+        "skips it (and its per-client trace capture)",
+    )
+    analyze_out.add_argument(
+        "--inspect-limit",
+        type=int,
+        default=20,
+        metavar="N",
+        help="how many requests per client to sample into its inspect trace when "
+        "--inspect-data is on (default: 20); held in bounded memory during analysis",
+    )
 
     calibrate = sub.add_parser(
         "calibrate",
@@ -381,7 +401,7 @@ def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argumen
         epilog=_CALIBRATE_EXAMPLES,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    _add_shared(calibrate)
+    _add_shared(calibrate, allow_md=False)
     calibrate.add_argument(
         "--top",
         type=int,
@@ -397,7 +417,7 @@ def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argumen
         epilog=_INSPECT_EXAMPLES,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    _add_shared(inspect)
+    _add_shared(inspect, allow_md=False)
 
     audit = sub.add_parser(
         "audit",
@@ -675,6 +695,7 @@ def _maxmind_paths(args: argparse.Namespace) -> tuple[Path | None, Path | None]:
 def _run_pipeline(args: argparse.Namespace) -> _RunContext:
     parser = _build_log_parser(args)
     strategy = identity.get_strategy(args.identity)
+    inspect_data = _wants_inspect_data(args)  # analyze-only; on by default with -o
 
     robots_doc = _load_robots(args)
     rules = RobotsRules(robots_doc.text) if robots_doc is not None else None
@@ -703,7 +724,10 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
             verifier=verifier,
             wba_verifier=wba_verifier,
             unknown_threshold=args.unknown_threshold,
-            keep_signals=args.command in ("inspect", "calibrate"),
+            # --inspect-data needs the per-client signals and tag evidence its data
+            # files show, and a bounded raw-entry sample for each trace.
+            keep_signals=args.command in ("inspect", "calibrate") or inspect_data,
+            inspect_trace=args.inspect_limit if inspect_data else 0,
             quiescent_seconds=quiescent,
             max_per_kind=args.max_per_kind,
             min_requests=getattr(args, "min_requests", 1),  # analyze-only; others keep every client
@@ -757,14 +781,25 @@ def _inspect_text(ctx: _RunContext, args: argparse.Namespace) -> str:
         now=ctx.anchor_now,
     )
     selected = [dataclasses.replace(p, entries=entries.get(p.client_id, ())) for p in selected]
-    if args.md:
-        return render_inspect(selected, limit=args.limit, full=args.full)
-    return render_inspect_html(selected, limit=args.limit, full=args.full)
+    # inspect is Markdown-only: the browsable HTML inspect view now lives in the
+    # report itself (analyze --inspect-data), composed client-side from data files.
+    return render_inspect(selected, limit=args.limit, full=args.full)
 
 
 def _source_label(args: argparse.Namespace) -> str:
     # File names only -- the report shouldn't disclose where the logs live on disk.
     return ", ".join(Path(p).name for p in args.logfiles)
+
+
+def _wants_inspect_data(args: argparse.Namespace) -> bool:
+    """Whether to produce per-client inspect data for this run. On by default, but
+    only applicable to an HTML report written to a file: the data files sit beside
+    that file and the overlay is HTML, so Markdown or a stdout report gets none."""
+    return (
+        getattr(args, "inspect_data", False)
+        and getattr(args, "output", None) is not None
+        and not getattr(args, "md", False)
+    )
 
 
 def _emit(text: str, output: Path | None) -> None:
@@ -829,12 +864,29 @@ def main(argv: Sequence[str] | None = None) -> int:  # pylint: disable=too-many-
                     elapsed=ctx.elapsed,
                     country_flags=ctx.country_flags,
                     breakout_min_share=args.breakout_min_pct / 100,
+                    inspect_dir=(
+                        f"{args.output.stem}.inspect" if _wants_inspect_data(args) else None
+                    ),
                 )
         elif args.command == "calibrate":
             text = render_calibration(ctx.result, source=_source_label(args), top=args.top)
         else:
             text = _inspect_text(ctx, args)
         _emit(text, args.output)
+        if _wants_inspect_data(args):
+            # The report links each client to <report-stem>.inspect/<slug>.json --
+            # a directory named after the report so several reports can share a
+            # folder without colliding, and a re-run of the same report can prune
+            # its own stale files. Write those files there.
+            data_dir = args.output.parent / f"{args.output.stem}.inspect"
+            count = write_inspect_bundle(
+                ctx.result.profiles,
+                data_dir,
+                limit=args.inspect_limit,
+                top=args.top,
+                site=ctx.result.site,
+            )
+            print(f"wrote {count} inspect file(s) to {data_dir}", file=sys.stderr)
     except KeyboardInterrupt:
         print("\ninterrupted", file=sys.stderr)
         return 130

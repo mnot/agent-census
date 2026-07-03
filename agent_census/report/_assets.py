@@ -17,6 +17,9 @@ CSS = """
      blue reads under light text in dark mode. Set as an "R G B" triple so the
      table script can vary only the alpha. */
   --heat: 96 165 250;
+  /* Link ink for the click-to-inspect affordance: a blue that clears contrast as
+     text -- deeper on paper, lighter on dark (the inverse of --heat's fills). */
+  --ins-link: light-dark(#2563eb, #60a5fa);
 }
 @media (prefers-color-scheme: dark) { :root { --heat: 37 99 235; } }
 * { box-sizing: border-box; }
@@ -315,6 +318,55 @@ input.filter { display: block; flex: 1 1 14rem; max-width: 30rem; margin: 0;
   border-radius: 8px; padding: .6rem .9rem; box-shadow: 0 6px 20px #0004; }
 .tagkey-group h3 { margin: 0 0 .3rem; font-size: .8rem; font-weight: 600; color: var(--muted); }
 footer { margin-top: 3rem; color: var(--muted); font-size: .85rem; }
+
+/* Inspect overlay: an in-page per-client trace opened from a client row, present
+   only when the report was built with --inspect-dir. Its cards reuse the report's
+   .card / .meta / .evlist / table styling, so this adds just the shell. */
+#inspect-overlay[hidden] { display: none; }
+#inspect-overlay { position: fixed; inset: 0; z-index: 10; }
+.inspect-backdrop { position: absolute; inset: 0; background: #0007; }
+.inspect-panel { position: absolute; inset: 0; margin: auto; width: min(1200px, 95vw);
+  max-height: 92vh; display: flex; flex-direction: column; background: Canvas;
+  border: 1px solid #8886; border-radius: 12px; box-shadow: 0 10px 40px #0006; }
+.inspect-bar { display: flex; justify-content: flex-end; padding: .4rem .5rem;
+  border-bottom: 1px solid #8883; flex-shrink: 0; }
+.inspect-close { font-size: 1.1rem; line-height: 1; background: none; border: 0;
+  color: var(--muted); cursor: pointer; padding: .2rem .5rem; border-radius: 6px; }
+.inspect-close:hover { background: #8882; }
+.inspect-body { overflow: auto; padding: 0 1.2rem 1.2rem; }
+.inspect-lead { margin: .8rem 0 .2rem; color: var(--muted); }
+/* Tag list carries its own coloured chips as markers -- bullets would just add noise. */
+.inspect-tags { list-style: none; padding: 0; margin: .25rem 0 1rem; }
+.inspect-tags li { margin: .25rem 0; }
+/* Click-to-inspect affordance: in a report built with --inspect-data, a row's
+   identity opens the overlay, so it reads as a link (the copy affordance relied on
+   hover alone). Scoped to [data-inspect], so plain copy reports are unchanged. */
+td.cid[data-inspect] .cid-id,
+td.cid[data-inspect] > .mono:not(.cid-id):not(.cid-ua),
+.idcopy[data-inspect] {
+  color: var(--ins-link); text-decoration: underline; text-underline-offset: .12em;
+}
+.idcopy[data-inspect] .cid-as { color: var(--muted); text-decoration: none; }
+td.cid[data-inspect]:hover .cid-id,
+td.cid[data-inspect]:hover > .mono:not(.cid-id):not(.cid-ua),
+.idcopy[data-inspect]:hover { text-decoration-thickness: 2px; }
+.req-first { margin: .1rem 0 .5rem; font-size: .88rem; }
+/* A sub-resource nested under the page that loaded it. */
+tr.req-child td.req-path { padding-left: 1.5rem; }
+tr.req-child td.req-path::before { content: "\\21b3\\a0"; color: var(--muted); }
+/* Detail sections flow into as many ~24rem columns as fit (one when narrow), so
+   they sit side by side on a wide modal instead of stacking. Each stays whole. */
+.inspect-cols { columns: 24rem; column-gap: 2.2rem; margin: .6rem 0 .2rem; }
+.inspect-block { break-inside: avoid; -webkit-column-break-inside: avoid; margin: 0 0 1.1rem; }
+.inspect-block h3 { margin: 0 0 .35rem; font-size: .95rem; }
+.siglist { margin: .2rem 0; padding-left: 1.1rem; }
+.siglist > li { margin: .1rem 0; }
+/* Compact "key: value" facts -- the value follows the key, no wasted value column. */
+.inspect-facts { list-style: none; margin: 0; padding: 0; }
+.inspect-facts li { margin: .18rem 0; }
+.inspect-facts .fk { color: var(--muted); }
+.inspect-facts .fk::after { content: ": "; }
+body.inspect-open { overflow: hidden; }
 """.strip()
 
 # Click a client cell to copy its id (the value for `inspect --client`).
@@ -343,8 +395,233 @@ document.addEventListener('click', function (event) {
   }
 }, false);
 
+// Inspect overlay. Present only when the report was built with --inspect-data: a
+// row then carries data-inspect="<slug>" instead of data-copy, and a click fetches
+// inspect/<slug>.json and composes the per-client trace in-page. Plain text goes in
+// via textContent (safe); the few pre-rendered fragments (kind badge, tag chip)
+// come from the generator already escaped and go in via innerHTML.
+(function () {
+  var overlay = null, panel = null, body = null;
+
+  function h(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function frag(html) {  // a trusted, generator-escaped fragment
+    var span = document.createElement('span');
+    span.innerHTML = html;
+    return span;
+  }
+  function meta(label, node) {
+    var li = h('li');
+    if (label) li.appendChild(h('strong', null, label + ' '));
+    li.appendChild(typeof node === 'string' ? document.createTextNode(node) : node);
+    return li;
+  }
+  function block(title) {  // a titled section that flows in the responsive columns
+    var b = h('div', 'inspect-block');
+    b.appendChild(h('h3', null, title));
+    return b;
+  }
+  function fact(key, value) {  // one compact "key: value" line, no wasted column
+    var li = h('li');
+    li.appendChild(h('span', 'fk', key));
+    li.appendChild(h('span', 'fv', value));
+    return li;
+  }
+
+  function card(m, showHeading) {
+    var c = h('section', 'card');
+    // Only head a card when several members share the modal: the IP is what tells
+    // them apart (kind and UA are shared). A lone card needs no heading.
+    if (showHeading) c.appendChild(h('h2', 'mono', m.ip));
+    var ul = h('ul', 'meta');
+    var kind = h('li');
+    kind.appendChild(frag(m.kind_badge));
+    kind.appendChild(h('span', 'muted', ' confidence ' + m.confidence));
+    ul.appendChild(kind);
+    ul.appendChild(meta('IP:', h('code', null, m.ip)));
+    if (m.network) ul.appendChild(meta('Network:', m.network));
+    ul.appendChild(meta('User-Agent:', h('span', 'mono', m.user_agent)));
+    ul.appendChild(meta('Requests:', m.requests + ' \\u00b7 ' + m.bandwidth + ' \\u00b7 ' + m.span));
+    ul.appendChild(meta('Seen:', m.seen));
+    c.appendChild(ul);
+
+    // The narrow-friendly sections flow into a responsive column area: several
+    // columns on a wide modal, one when it's narrow. The wide request trace stays
+    // full width below.
+    var cols = h('div', 'inspect-cols');
+
+    var why = block('Why this classification');
+    if (m.signals.length) {
+      var sl = h('ul', 'siglist');
+      m.signals.forEach(function (s) {
+        var li = h('li', s.primary ? 'primary-sig' : null);
+        li.appendChild(frag(s.badge));
+        li.appendChild(h('span', 'muted', ' ' + s.confidence + ' \\u00b7 ' + s.classifier));
+        if (s.evidence.length) {
+          var ev = h('ul', 'evlist');
+          s.evidence.forEach(function (x) { ev.appendChild(h('li', null, x)); });
+          li.appendChild(ev);
+        }
+        sl.appendChild(li);
+      });
+      why.appendChild(sl);
+    } else {
+      why.appendChild(h('p', null, 'No classifier produced a signal \\u2014 left UNKNOWN.'));
+    }
+    cols.appendChild(why);
+
+    if (m.tags.length) {
+      var tb = block('Tags');
+      var tl = h('ul', 'inspect-tags');  // no bullets: the chips are the markers
+      m.tags.forEach(function (tg) {
+        var li = h('li');
+        li.appendChild(frag(tg.chip));
+        if (tg.why) li.appendChild(h('span', 'muted', ' ' + tg.why));
+        tl.appendChild(li);
+      });
+      tb.appendChild(tl);
+      cols.appendChild(tb);
+    }
+
+    if (m.compliance) {
+      var cp = m.compliance;
+      var rb = block('robots.txt');
+      var cl = h('ul', 'inspect-facts');
+      cl.appendChild(fact('Verdict', cp.verdict));
+      cl.appendChild(fact('Matched group', cp.matched_group));
+      cl.appendChild(fact('Disallowed requested', String(cp.disallowed_hits)));
+      cl.appendChild(fact('Fetched robots first', String(cp.fetched_robots_first)));
+      rb.appendChild(cl);
+      if (cp.sample && cp.sample.length) rb.appendChild(h('p', 'mono muted', 'e.g. ' + cp.sample.join(', ')));
+      cols.appendChild(rb);
+    }
+
+    var fb = block('Features');
+    var fl = h('ul', 'inspect-facts');
+    m.features.forEach(function (r) { fl.appendChild(fact(r[0], r[1])); });
+    fb.appendChild(fl);
+    cols.appendChild(fb);
+
+    c.appendChild(cols);
+
+    var trace = m.trace;
+    c.appendChild(h('h3', null, 'Request trace (' + trace.shown + ' of ' + trace.total + ')'));
+    // Absolute start once, so the per-row column can be narrow relative offsets.
+    var firstline = h('p', 'muted req-first');
+    firstline.appendChild(h('strong', null, 'First request: '));
+    firstline.appendChild(document.createTextNode(trace.first_time));
+    c.appendChild(firstline);
+    var wrap = h('div', 'tscroll'), tbl = h('table'), head = h('tr');
+    ['Offset', 'Method', 'Path', 'Status', 'Bytes', 'Referer'].forEach(function (x) {
+      head.appendChild(h('th', null, x));
+    });
+    tbl.appendChild(head);
+    trace.rows.forEach(function (r) {
+      // A sub-resource loaded by the page above it is indented under it.
+      var row = h('tr', r.child ? 'req-child' : null);
+      row.appendChild(h('td', null, r.time));
+      row.appendChild(h('td', null, r.method));
+      row.appendChild(h('td', 'mono req-path', r.path));
+      row.appendChild(h('td', null, r.status == null ? '\\u2013' : String(r.status)));
+      row.appendChild(h('td', null, r.bytes == null ? '\\u2013' : String(r.bytes)));
+      row.appendChild(h('td', 'mono', r.referer));
+      tbl.appendChild(row);
+    });
+    wrap.appendChild(tbl);
+    c.appendChild(wrap);
+    if (trace.total > trace.shown) {
+      c.appendChild(h('p', 'muted', '\\u2026' + (trace.total - trace.shown) + ' more (sampled trace)'));
+    }
+    return c;
+  }
+
+  function render(data) {
+    body.innerHTML = '';
+    // No standalone title: a single card's own header (kind badge, IP, UA) already
+    // carries the identity, so a title would just repeat it. A multi-member group
+    // gets one line of context, and each card is headed by its distinguishing IP.
+    // Describe the grouping factually (shared UA + tags) without asserting it's one
+    // operator/person -- a common User-Agent can just as easily be many clients.
+    var many = data.count > 1;
+    if (many) {
+      var lead = h('p', 'inspect-lead');
+      lead.appendChild(frag(data.kind_badge));
+      lead.appendChild(document.createTextNode(
+        ' ' + data.count + ' addresses grouped by an identical User-Agent and tags'));
+      body.appendChild(lead);
+    }
+    data.members.forEach(function (m) { body.appendChild(card(m, many)); });
+    body.scrollTop = 0;
+  }
+
+  function build() {
+    overlay = h('div');
+    overlay.id = 'inspect-overlay';
+    overlay.hidden = true;
+    var backdrop = h('div', 'inspect-backdrop');
+    panel = h('div', 'inspect-panel');
+    var bar = h('div', 'inspect-bar');
+    var close = h('button', 'inspect-close', '\\u2715');
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Close');
+    bar.appendChild(close);
+    body = h('div', 'inspect-body');
+    panel.appendChild(bar);
+    panel.appendChild(body);
+    overlay.appendChild(backdrop);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+    close.addEventListener('click', hide);
+    backdrop.addEventListener('click', hide);
+  }
+  function show() {
+    overlay.hidden = false;
+    document.body.classList.add('inspect-open');
+  }
+  function hide() {
+    if (overlay) overlay.hidden = true;
+    document.body.classList.remove('inspect-open');
+  }
+  function open(slug) {
+    if (!overlay) build();
+    body.innerHTML = '';
+    body.appendChild(h('p', 'muted', 'Loading\\u2026'));
+    show();
+    var dir = window.__INSPECT_DIR__;
+    if (!dir) return;  // links are only emitted alongside the dir, so this is belt-and-braces
+    fetch(dir + encodeURIComponent(slug) + '.json').then(function (r) {
+      if (!r.ok) throw new Error(String(r.status));
+      return r.json();
+    }).then(render).catch(function () {
+      body.innerHTML = '';
+      body.appendChild(h('p', 'muted', 'Could not load inspect data for this client.'));
+    });
+  }
+
+  document.addEventListener('click', function (event) {
+    var link = event.target.closest('[data-inspect]');
+    if (!link) return;
+    event.preventDefault();
+    open(link.getAttribute('data-inspect'));
+  }, false);
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Escape') return;
+    if (!overlay || overlay.hidden) return;
+    // Close the modal and stop here: Escape shouldn't also clear the report's
+    // active filter (a separate later handler) while the modal is up.
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    hide();
+  }, true);
+})();
+
 document.addEventListener('click', function (event) {
-  if (event.target.closest('[data-copy]')) return;  // a copy cell, not a toggle
+  // A copy cell or an inspect link, not a toggle -- their handlers own the click.
+  if (event.target.closest('[data-copy]') || event.target.closest('[data-inspect]')) return;
   var row = event.target.closest('tr.asum');
   if (!row) return;
   var body = row.parentNode;

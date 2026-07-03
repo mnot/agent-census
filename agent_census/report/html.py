@@ -8,6 +8,8 @@ external assets, no dependencies.
 
 from __future__ import annotations
 
+import json
+
 from .. import __version__
 from ..model import ClientProfile, Kind
 from ..pipeline import AnalysisResult, KindRollup
@@ -135,6 +137,12 @@ def tag_class(tag: str) -> str:
     """CSS class for a tag chip: the neutral ``tag`` plus its colour token, if any."""
     token = _TAG_TOKENS.get(tag)
     return f"tag tag--{token}" if token else "tag"
+
+
+def _js(value: str) -> str:
+    """A safe JS string literal for embedding in a ``<script>`` -- JSON-escaped, with
+    ``<`` neutralised so the value can't close the script element."""
+    return json.dumps(value).replace("<", "\\u003c")
 
 
 # One representative label per colour token, grouped the same way _TAG_TOKENS'
@@ -371,15 +379,25 @@ def _flag_html(entry: tuple[str, str] | None) -> str:
     return f'<span class="flag" title="{_esc(name)}">{emoji}</span> '
 
 
-def _client_cell(profile: ClientProfile, flag: str = "") -> str:
+def _id_target(copy_value: str, slug: str, copy_title: str) -> str:
+    """The data/title attributes for a row's click target. With a ``slug`` (report
+    built with ``inspect``), the row links to its inspect data file so the viewer
+    opens an in-page trace; without one, it keeps the click-to-copy id. One or the
+    other, never both, so exactly one page handler fires."""
+    if slug:
+        return f'data-inspect="{_esc(slug)}" title="Click to inspect this client"'
+    return f'data-copy="{_esc(copy_value)}" title="{_esc(copy_title)}"'
+
+
+def _client_cell(profile: ClientProfile, flag: str = "", slug: str = "") -> str:
     """Stacked identity cell: IP/network on top, AS org, then the UA (2-line clamp)."""
     prefix, org, ua = client_id_parts(profile)
     org_line = f'<div class="cid-as">{_esc(org)}</div>' if org else ""
     raw = full_ua(profile)
     ua_title = f' title="{_esc(raw)}"' if raw else ""
+    target = _id_target(profile.client_id.ip, slug, "Click to copy this id for: inspect --client")
     return (
-        f'<td class="cid copy" data-copy="{_esc(profile.client_id.ip)}" '
-        f'title="Click to copy this id for: inspect --client">'
+        f'<td class="cid copy" {target}>'
         f'<div class="mono cid-id">{flag}{_esc(prefix)}</div>'
         f"{org_line}"
         f'<div class="mono cid-ua"{ua_title}>{_esc(ua or "–")}</div></td>'
@@ -394,6 +412,7 @@ def _client_row(
     net_col: dict[str, int] | None = None,
     window: _Window = None,
     peak: int | None = None,
+    slug: str = "",
 ) -> str:
     cls = profile.classification
     pattern = _pattern_cell_for(profile, window, peak)
@@ -413,7 +432,7 @@ def _client_row(
             f' class="frow" data-filter="{_esc(haystack)}"{_netcol_attr([profile], net_col or {})}'
         )
     return (
-        f"<tr{attrs}>{_client_cell(profile, flag)}"
+        f"<tr{attrs}>{_client_cell(profile, flag, slug)}"
         f"<td class='num'>{profile.features.request_count:,}</td>"
         f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
         f"<td class='num'>{cls.confidence:.0%}</td>"
@@ -432,29 +451,33 @@ def _disclosure(label: str) -> str:
     )
 
 
-def _summary_copy(inner: str, lead_ip: str) -> str:
-    """Wrap a grouped row's identity in an isolated click-to-copy target for
-    ``inspect --actor``. Only this span carries ``data-copy``, so the page script
-    copies on a click here but still toggles the disclosure for a click anywhere
-    else on the summary row (the triangle, the counts, the UA line). The copied id
-    is the group's lead IP, which ``--actor`` expands back to every member."""
-    return (
-        f"<span class='idcopy' data-copy='{_esc(lead_ip)}' "
-        f"title='Click to copy this id for: inspect --actor'>{inner}</span>"
-    )
+def _summary_copy(inner: str, lead_ip: str, slug: str = "") -> str:
+    """Wrap a grouped row's identity in an isolated click target. Only this span
+    carries the id attribute, so the page script acts on a click here but still
+    toggles the disclosure for a click anywhere else on the summary row (the
+    triangle, the counts, the UA line). With a ``slug`` it opens the group's
+    inspect view; otherwise it copies the lead IP for ``inspect --actor``."""
+    target = _id_target(lead_ip, slug, "Click to copy this id for: inspect --actor")
+    return f"<span class='idcopy' {target}>{inner}</span>"
 
 
 def _member_tr(
-    profile: ClientProfile, flag: str = "", window: _Window = None, peak: int | None = None
+    profile: ClientProfile,
+    flag: str = "",
+    window: _Window = None,
+    peak: int | None = None,
+    slug: str = "",
 ) -> str:
     """A collapsed member as a real table row: IP/AS in Client, its own req/bytes,
-    and -- on the shared axis -- its own request-pattern sparkline."""
+    and -- on the shared axis -- its own request-pattern sparkline. With a ``slug``
+    a click opens the whole group's inspect view (the member is one of its cards);
+    otherwise it copies the member IP for ``inspect --client``."""
     prefix, _, _ = client_id_parts(profile)
     asn = as_display(profile.features.as_org, profile.features.as_number)
     asn_html = f" <span class='cid-as'>{_esc(asn)}</span>" if asn != "–" else ""
+    target = _id_target(profile.client_id.ip, slug, "Click to copy this id for: inspect --client")
     return (
-        f"<tr class='amem'><td class='cid copy' data-copy='{_esc(profile.client_id.ip)}' "
-        "title='Click to copy this id for: inspect --client'>"
+        f"<tr class='amem'><td class='cid copy' {target}>"
         f"{flag}<span class='mono'>{_esc(prefix)}</span>{asn_html}</td>"
         f"<td class='num'>{profile.features.request_count:,}</td>"
         f"<td class='num'>{human_bytes(profile.features.total_bytes)}</td>"
@@ -484,6 +507,7 @@ def _folded_tbody(
     net_col: dict[str, int] | None = None,
     window: _Window = None,
     peak: int | None = None,
+    slug: str = "",
 ) -> str:
     """A single entry that folded many IPs into one (an ASN operator, a verified
     bot, an egress/subnet cluster): a collapsible summary over its clustered IPs.
@@ -521,7 +545,7 @@ def _folded_tbody(
         if identity
         else net_line
     )
-    id_html = _summary_copy(id_inner, profile.client_id.ip)
+    id_html = _summary_copy(id_inner, profile.client_id.ip, slug)
     summary = (
         f"<tr {row_attrs}><td class='cid'>{toggle}"
         f"{flag}{id_html}"
@@ -545,6 +569,7 @@ def _actor_tbody(
     net_col: dict[str, int] | None = None,
     window: _Window = None,
     peak: int | None = None,
+    inspect: bool = False,
 ) -> str:
     """One actor as a ``<tbody>``: a lone client, or a collapsible summary + members.
 
@@ -556,6 +581,9 @@ def _actor_tbody(
     """
     cf = flags or CountryFlags()
     net_col = net_col or {}
+    # One slug for the whole group: every clickable element in this tbody opens the
+    # same per-group data file, which carries all its members' cards.
+    slug = actor.slug if inspect else ""
     flag = _flag_html(cf.for_actor(actor.lead.client_id))
     if not actor.collapsed:
         if len(actor.lead.member_ips) >= 2:
@@ -567,9 +595,16 @@ def _actor_tbody(
                 net_col=net_col,
                 window=window,
                 peak=peak,
+                slug=slug,
             )
         row = _client_row(
-            actor.lead, flag=flag, filterable=filterable, net_col=net_col, window=window, peak=peak
+            actor.lead,
+            flag=flag,
+            filterable=filterable,
+            net_col=net_col,
+            window=window,
+            peak=peak,
+            slug=slug,
         )
         return f"<tbody>{row}</tbody>"
     cls = actor.lead.classification
@@ -618,7 +653,7 @@ def _actor_tbody(
         if identity
         else net_line
     )
-    id_html = _summary_copy(id_inner, lead_ip)
+    id_html = _summary_copy(id_inner, lead_ip, slug)
     summary = (
         f"<tr {row_attrs}>"
         f"<td class='cid'>{toggle}{flag}{id_html}"
@@ -629,7 +664,8 @@ def _actor_tbody(
         f"<td>{_tags_html(tags)}</td><td class='reqpat'>{pattern}</td></tr>"
     )
     members = "".join(
-        _member_tr(m, _flag_html(cf.for_member(m.client_id)), window, peak) for m in actor.members
+        _member_tr(m, _flag_html(cf.for_member(m.client_id)), window, peak, slug)
+        for m in actor.members
     )
     return f"<tbody class='actor'>{summary}{members}</tbody>"
 
@@ -643,6 +679,7 @@ def _kind_section(
     net_col: dict[str, int] | None = None,
     window: _Window = None,
     peak: int | None = None,
+    inspect: bool = False,
 ) -> str:
     flags = flags or CountryFlags()
     net_col = net_col or {}
@@ -658,7 +695,15 @@ def _kind_section(
         "</div>",
     ]
     shown = "".join(
-        _actor_tbody(a, flags=flags, filterable=True, net_col=net_col, window=window, peak=peak)
+        _actor_tbody(
+            a,
+            flags=flags,
+            filterable=True,
+            net_col=net_col,
+            window=window,
+            peak=peak,
+            inspect=inspect,
+        )
         for a in actors[:top]
     )
     parts.append(
@@ -667,7 +712,15 @@ def _kind_section(
     extra = actors[top:_EXPAND_LIMIT]
     if extra:
         extra_rows = "".join(
-            _actor_tbody(a, flags=flags, filterable=True, net_col=net_col, window=window, peak=peak)
+            _actor_tbody(
+                a,
+                flags=flags,
+                filterable=True,
+                net_col=net_col,
+                window=window,
+                peak=peak,
+                inspect=inspect,
+            )
             for a in extra
         )
         parts.append(
@@ -701,8 +754,18 @@ def render_report_html(
     elapsed: float | None = None,
     country_flags: CountryFlags | None = None,
     breakout_min_share: float = BREAKOUT_MIN_SHARE,
+    inspect_dir: str | None = None,
 ) -> str:
-    """Render the full analysis report as a standalone HTML page."""
+    """Render the full analysis report as a standalone HTML page.
+
+    ``inspect_dir`` turns on click-to-inspect: it is the relative directory the
+    per-client data files live in (named after the report, e.g. ``report.inspect``).
+    Each client row then carries a ``data-inspect`` slug and the viewer fetches
+    ``<inspect_dir>/<slug>.json``. One switch, so links and the fetch directory can't
+    disagree. Only set it when :func:`inspect_data.write_inspect_bundle` also runs,
+    so every linked file exists; leave it ``None`` for a plain copy-the-id report.
+    """
+    inspect = inspect_dir is not None
     flags = country_flags or CountryFlags()
     groups = by_kind(result.profiles)
     matrix = network_matrix(
@@ -721,6 +784,14 @@ def render_report_html(
     spark_peak = _client_spark_peak(groups, window, max(top, _EXPAND_LIMIT))
     heading = "Agent Census" + (f" — {result.site}" if result.site else "")
     parts = [
+        # Tell the viewer which directory holds the per-client data files (named
+        # after this report). JS-string-escaped, with < neutralised so a filename
+        # can't close the script element.
+        (
+            f"<script>window.__INSPECT_DIR__={_js(inspect_dir + '/')}</script>"
+            if inspect_dir
+            else ""
+        ),
         f"<h1>{_esc(heading)}</h1>",
         _meta_list(result, source, robots_note, elapsed),
         _summary_table(result, _kind_sparklines(result.rollups, window, KIND_ORDER), window),
@@ -754,7 +825,15 @@ def render_report_html(
         if rollup and rollup.clients:
             parts.append(
                 _kind_section(
-                    kind, groups.get(kind, []), rollup, top, flags, net_col, window, spark_peak
+                    kind,
+                    groups.get(kind, []),
+                    rollup,
+                    top,
+                    flags,
+                    net_col,
+                    window,
+                    spark_peak,
+                    inspect=inspect,
                 )
             )
     return _page(heading, "\n".join(parts))

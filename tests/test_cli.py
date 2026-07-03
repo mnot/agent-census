@@ -105,7 +105,7 @@ def test_vhost_flag_filters_and_reports(tmp_path: Path) -> None:
 def test_inspect_by_kind(tmp_path: Path) -> None:
     out = tmp_path / "i.md"
     rc = main(
-        ["inspect", LOG, *OFFLINE, "--md", "--robots-file", ROBOTS, "--kind", "vuln_scanner",
+        ["inspect", LOG, *OFFLINE, "--robots-file", ROBOTS, "--kind", "vuln_scanner",
          "-o", str(out)]
     )
     assert rc == 0
@@ -120,7 +120,7 @@ def test_inspect_by_network_and_kind(tmp_path: Path) -> None:
     # vuln_scanner sits in the residential bucket; AWS should match nothing.
     hit = tmp_path / "hit.md"
     rc = main(
-        ["inspect", LOG, *OFFLINE, "--md", "--kind", "vuln_scanner", "--network", "residential",
+        ["inspect", LOG, *OFFLINE, "--kind", "vuln_scanner", "--network", "residential",
          "-o", str(hit)]
     )
     assert rc == 0
@@ -129,7 +129,7 @@ def test_inspect_by_network_and_kind(tmp_path: Path) -> None:
 
     miss = tmp_path / "miss.md"
     rc = main(
-        ["inspect", LOG, *OFFLINE, "--md", "--kind", "vuln_scanner", "--network", "aws",
+        ["inspect", LOG, *OFFLINE, "--kind", "vuln_scanner", "--network", "aws",
          "-o", str(miss)]
     )
     assert rc == 0

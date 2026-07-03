@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -141,6 +142,15 @@ class ActorGroup:
     @property
     def collapsed(self) -> bool:
         return len(self.members) > 1
+
+    @property
+    def slug(self) -> str:
+        """A stable, filesystem-safe id for this group, used to name its inspect
+        data file and to link a report row to it. Derived from the lead's identity
+        tuple, which is unique per group, so the report and the data writer agree."""
+        cid = self.lead.client_id
+        key = f"{cid.ip}|{cid.user_agent or ''}|{cid.subnet or ''}"
+        return hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
 
     @property
     def requests(self) -> int:

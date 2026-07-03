@@ -118,15 +118,24 @@ def _bare_host(value: str | None) -> str | None:
     return (urlsplit("//" + value).hostname or "").lower() or None
 
 
+def _site_key(host: str | None) -> str | None:
+    """A same-site comparison key: a single leading ``www.`` dropped so ``www`` and
+    the apex read as one site. Only ``www.`` -- other subdomains are genuinely
+    different hosts, and different registrable domains stay distinct."""
+    if host and host.startswith("www."):
+        return host[4:] or host
+    return host
+
+
 def _referer_display(referer: str | None, host: str | None, site: str | None) -> str:
     """A Referer for display: same-site referers drop the scheme and authority and
     show just the path, since the host repeats the client's own site. Off-site ones
     keep the full URL. Same-site means the referer host matches the request's Host
-    header or the analysed site's host."""
+    header or the analysed site's host, with ``www.`` and the apex treated as one."""
     if not referer or referer == "-":
         return "–"
-    ref_host = _referer_host(referer)
-    known = {h for h in (_bare_host(host), _bare_host(site)) if h}
+    ref_host = _site_key(_referer_host(referer))
+    known = {k for k in (_site_key(_bare_host(host)), _site_key(_bare_host(site))) if k}
     if ref_host and ref_host in known:
         parts = urlsplit(referer)
         shown = parts.path or "/"

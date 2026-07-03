@@ -244,6 +244,16 @@ def test_referer_display_handles_ipv6_host() -> None:
     assert _referer_display("https://off.example/x", "[2001:db8::1]:8080", None).startswith("http")
 
 
+def test_referer_display_treats_www_and_apex_as_same_site() -> None:
+    # www and apex are one site: a www referer on an apex host (and vice versa)
+    # shortens to a path.
+    assert _referer_display("http://www.redbot.org/robots.txt", "redbot.org", None) == "/robots.txt"
+    assert _referer_display("https://redbot.org/x", "www.redbot.org", None) == "/x"
+    # A different registrable domain -- or the log's other vhost -- stays full.
+    assert _referer_display("https://www.google.com/", "redbot.org", None).startswith("http")
+    assert _referer_display("http://httplint.com/", "redbot.org", None).startswith("http")
+
+
 # -- writer / drift guard --------------------------------------------------
 
 

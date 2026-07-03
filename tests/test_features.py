@@ -89,30 +89,52 @@ def test_same_site_apex_referer_counts() -> None:
     assert feats.www_referer_hits == 0
 
 
-def test_cross_form_referer_needs_differing_www_prefix() -> None:
-    # Same www-ness on both sides is ordinary same-host navigation, not the tell:
-    # served apex + apex Referer, and served www + www Referer, both count nothing.
+def test_www_referer_counts_even_when_served_by_www() -> None:
+    # URL-replaying automation hits the www host directly (served www) carrying a www
+    # Referer and eats the 301 -- still impossible (www never renders), so it counts as
+    # a www Referer regardless of the request's own host form.
     feats = extract_features(
         [
-            _served("/a", "https://example.com/x"),  # served apex, apex Referer
-            _served("/b", "https://www.example.com/y", host="www.example.com", offset=1),  # www/www
+            _served("/a", "https://www.example.com/a", host="www.example.com", status=301),
+            _served("/b", "https://www.example.com/b", host="www.example.com", offset=1, status=301),
         ]
     )
+    assert feats.www_referer_hits == 2
+    assert feats.apex_referer_hits == 0
+
+
+def test_referer_form_is_tallied_by_the_referer_not_the_served_host() -> None:
+    # The counter follows the Referer's form: an apex Referer tallies apex, a www
+    # Referer tallies www, whatever host the request itself was served for.
+    feats = extract_features(
+        [
+            _served("/a", "https://example.com/x"),  # apex Referer -> apex counter
+            _served("/b", "https://www.example.com/y", offset=1),  # www Referer -> www counter
+        ]
+    )
+    assert feats.apex_referer_hits == 1
+    assert feats.www_referer_hits == 1
+
+
+def test_cross_site_referer_is_not_counted() -> None:
+    # A Referer for a different registrable site is never a same-site tell.
+    feats = extract_features([_served("/a", "https://www.other.com/a")])
     assert feats.www_referer_hits == 0
     assert feats.apex_referer_hits == 0
 
 
-def test_cross_site_and_apex_referers_do_not_count() -> None:
-    # A www Referer for a *different* site, and an apex (non-www) Referer for this
-    # site, are both ordinary -- only a same-site www Referer is the tell.
+def test_cross_site_www_referer_is_not_a_www_hit() -> None:
+    # A www Referer for a *different* site is not a same-site www tell; a same-site
+    # apex Referer tallies on the apex side, not the www side.
     feats = extract_features(
         [
-            _served("/a", "https://www.other.com/a"),  # cross-site www
-            _served("/b", "https://example.com/b", offset=1),  # apex, no www
+            _served("/a", "https://www.other.com/a"),  # cross-site www -> neither
+            _served("/b", "https://example.com/b", offset=1),  # same-site apex -> apex side
         ]
     )
     assert feats.www_referer_hits == 0
     assert feats.www_referer_ratio == 0.0
+    assert feats.apex_referer_hits == 1
 
 
 def test_www_referer_ratio_is_over_all_requests() -> None:

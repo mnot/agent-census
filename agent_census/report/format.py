@@ -471,7 +471,7 @@ def feature_rows(feats: ClientFeatures) -> list[tuple[str, str]]:
         ("referer-following", pct(feats.referer_following_ratio)),
         ("self-referer (fabricated)", pct(feats.self_referer_ratio)),
         (
-            "cross-form referer (www/apex)",
+            "same-site referer (www/apex)",
             f"www {feats.www_referer_hits} ({pct(feats.www_referer_ratio)}); "
             f"apex {feats.apex_referer_hits} ({pct(feats.apex_referer_ratio)})",
         ),

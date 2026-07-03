@@ -454,24 +454,26 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
                 self.self_referer_hits += 1
             elif self.distinct_paths is not None and referer_path in self.distinct_paths:
                 self.ref_onsite += 1
-            # A cross-form same-site Referer: the Referer host and the served host are
-            # the two forms of one site (apex vs www.apex) but differ in the ``www.``
-            # prefix. Which form is "impossible" depends on which way the site
-            # redirects (a pipeline gate), so count both directions and let the
-            # classifier pick. Counted unconditionally here; needs a served host in the
-            # log to establish same-site (absent -> skip).
+            # A same-site Referer, tallied by the Referer's own host form (www vs bare
+            # apex). A Referer naming a form the site only ever redirects (never
+            # renders) is impossible from a real browser -- whether the request itself
+            # went to the apex or to that redirect-only form directly (URL-replaying
+            # automation hits the www host and just eats the 301, carrying a www
+            # Referer). Which form is redirect-only is a pipeline gate, so tally both
+            # and let the classifier read the matching one; the other is ordinary
+            # same-site navigation, never consulted for that site. Anchored to the same
+            # registrable site as the served host -- needs a served host in the log.
             ref_host = referer_host(entry.referer)
             served_host = bare_host(_served_host(entry))
             if (
                 ref_host is not None
                 and served_host is not None
                 and site_key(ref_host) == site_key(served_host)
-                and ref_host.startswith("www.") != served_host.startswith("www.")
             ):
                 if ref_host.startswith("www."):
-                    self.www_referer_hits += 1  # served the apex, Referer names www
+                    self.www_referer_hits += 1
                 else:
-                    self.apex_referer_hits += 1  # served www, Referer names the bare apex
+                    self.apex_referer_hits += 1
 
     def _track_breadth(self, path: str) -> None:
         top = _top_segment(path)

@@ -25,6 +25,7 @@ import time
 import urllib.parse
 from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import Path
 
 from . import USER_AGENT, userconfig
 from .dataload import load_egress_networks, load_range_sources
@@ -713,18 +714,19 @@ def _parse_asns(text: str) -> list[int]:
     return out
 
 
-def _resolve_token(explicit: str | None) -> str | None:
+def _resolve_token(explicit: str | None, config: Path | None = None) -> str | None:
     """Token from --token (persisted), else env, else the saved config."""
     if explicit:
-        cfg = userconfig.load()
-        cfg["cf_api_token"] = explicit
-        userconfig.save(cfg)
-        print(f"saved API token to {userconfig.config_path()}", file=sys.stderr)
+        store = userconfig.load(config)
+        store.defaults["cf_api_token"] = explicit
+        store.save()
+        print(f"saved API token to {store.path}", file=sys.stderr)
         return explicit
+    saved = userconfig.load(config).defaults.get("cf_api_token")
     return (
         os.environ.get("CF_API_TOKEN")
         or os.environ.get("CLOUDFLARE_API_TOKEN")
-        or userconfig.load().get("cf_api_token")
+        or (saved if isinstance(saved, str) else None)
     )
 
 
@@ -735,9 +737,10 @@ def run(
     no_peeringdb: bool,
     refresh: bool = False,
     verbose: bool = False,
+    config: Path | None = None,
 ) -> int:
     """Entry point for the ``agent-census audit`` subcommand."""
-    resolved = _resolve_token(token)
+    resolved = _resolve_token(token, config)
     if not resolved:
         print(
             "error: a Cloudflare Radar API token is required (--token or $CF_API_TOKEN).\n"

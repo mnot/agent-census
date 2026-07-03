@@ -169,7 +169,39 @@ Some options are sticky, so you needn't retype them. `--log-format` /
 saved to `~/.config/agent-census/config.json` and reused when a later run omits
 them; the MaxMind database paths (`--mm-asn-db` / `--mm-country-db` / `--mm-db-dir`)
 are remembered the same way, as noted with their own options above. Passing one
-updates the saved value.
+updates the saved value. Use `--config PATH` to read and write a different
+settings file (handy for a checked-in, per-project config).
+
+**Per-site settings.** If you analyse more than one site, `--site NAME` keeps
+their settings apart. Each site remembers its own log files, `--vhost` filter,
+log format, identity, and robots source, so after seeding a site you can analyse
+it by name alone:
+
+```sh
+# seed the site: its settings, log files, and vhost filter are saved under "blog"
+agent-census analyze /var/log/access.log* --site blog \
+    --vhost blog.example --robots-file /srv/blog/robots.txt
+
+# later runs need only the name
+agent-census analyze --site blog
+```
+
+A site's settings override the global defaults; anything passed on the command
+line overrides the site (and is remembered under it). Resolution is
+**command line → site → defaults**.
+
+What goes per-site vs. global follows what a setting *describes*:
+
+- **Per-site** — settings that describe the site's data: which log files are it,
+  which `--vhost` lines are it, how they're formatted, and its robots policy.
+- **Global** — settings that describe this machine or account: the Cloudflare API
+  token and the MaxMind database paths. These are the same whatever site you look
+  at, so they always live in the defaults.
+
+The preference-style keys (log format, identity, robots source) can also be set
+*without* `--site` to give a global baseline that any site inherits until it
+sets its own. The "which data" keys (log files, `--vhost`) only ever attach to a
+site — a global default there would silently filter unrelated runs.
 
 
 

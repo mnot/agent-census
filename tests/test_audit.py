@@ -145,7 +145,7 @@ def test_resolve_token_persists_explicit_and_reads_back(monkeypatch: pytest.Monk
     monkeypatch.delenv("CLOUDFLARE_API_TOKEN", raising=False)
     assert _resolve_token(None) is None  # nothing saved yet
     assert _resolve_token("cfat_secret") == "cfat_secret"  # explicit token is persisted
-    assert userconfig.load()["cf_api_token"] == "cfat_secret"
+    assert userconfig.load().defaults["cf_api_token"] == "cfat_secret"
     assert _resolve_token(None) == "cfat_secret"  # read back from config
 
 

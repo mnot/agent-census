@@ -153,7 +153,7 @@ def _analyze_args(argv: list[str]):
 def test_settings_persist_then_restore() -> None:
     first = _analyze_args([LOG, "--identity", "ip_ua_subnet", "--log-format-preset", "combined"])
     _apply_persisted_settings(first)
-    assert userconfig.load() == {"identity": "ip_ua_subnet", "log_format_preset": "combined"}
+    assert userconfig.load().defaults == {"identity": "ip_ua_subnet", "log_format_preset": "combined"}
 
     # A later run that omits them inherits the saved values.
     later = _analyze_args([LOG])
@@ -167,14 +167,14 @@ def test_passing_a_setting_overrides_and_updates() -> None:
     overridden = _analyze_args([LOG, "--identity", "ip"])
     _apply_persisted_settings(overridden)
     assert overridden.identity == "ip"
-    assert userconfig.load()["identity"] == "ip"
+    assert userconfig.load().defaults["identity"] == "ip"
 
 
 def test_format_alternatives_supersede_each_other() -> None:
     _apply_persisted_settings(_analyze_args([LOG, "--log-format-preset", "combined"]))
-    assert "log_format_preset" in userconfig.load()
+    assert "log_format_preset" in userconfig.load().defaults
     _apply_persisted_settings(_analyze_args([LOG, "--log-format", "%h %t"]))
-    cfg = userconfig.load()
+    cfg = userconfig.load().defaults
     assert cfg.get("log_format") == "%h %t" and "log_format_preset" not in cfg
 
 
@@ -183,24 +183,167 @@ def test_save_writes_owner_only_permissions() -> None:
     # readable, and must not pass through a looser mode on the way there.
     import stat
 
-    userconfig.save({"cf_api_token": "cfat_secret"})
+    store = userconfig.load()
+    store.defaults["cf_api_token"] = "cfat_secret"
+    store.save()
     mode = stat.S_IMODE(userconfig.config_path().stat().st_mode)
     assert mode == 0o600
 
 
 def test_load_tolerates_a_non_object_config() -> None:
     # A hand-edited config that is valid JSON but not an object (here, a list)
-    # must fall back to defaults, not crash the whole CLI on .items().
+    # must fall back to defaults (with a warning), not crash the whole CLI.
     path = userconfig.config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text('["not", "a", "dict"]', encoding="utf-8")
-    assert userconfig.load() == {}
+    store = userconfig.load()
+    assert store.defaults == {} and store.sites == {} and store.warning is not None
 
 
 def test_identity_defaults_to_ip_ua_when_unset() -> None:
     args = _analyze_args([LOG])
     _apply_persisted_settings(args)
     assert args.identity == "ip_ua"  # built-in default, nothing saved
+
+
+def test_site_settings_persist_under_the_site() -> None:
+    # A setting passed with --site is remembered under that site, not the defaults.
+    first = _analyze_args([LOG, "--site", "blog", "--identity", "ip_ua_subnet"])
+    _apply_persisted_settings(first)
+    store = userconfig.load()
+    assert store.sites["blog"]["identity"] == "ip_ua_subnet"
+    assert store.defaults == {}  # nothing leaked into the global scope
+
+    # A later --site run inherits it; a run without the site does not.
+    later = _analyze_args([LOG, "--site", "blog"])
+    _apply_persisted_settings(later)
+    assert later.identity == "ip_ua_subnet"
+    plain = _analyze_args([LOG])
+    _apply_persisted_settings(plain)
+    assert plain.identity == "ip_ua"  # falls back to the built-in default
+
+
+def test_site_overrides_defaults_and_cli_overrides_site() -> None:
+    _apply_persisted_settings(_analyze_args([LOG, "--identity", "ip"]))  # global default
+    _apply_persisted_settings(_analyze_args([LOG, "--site", "blog", "--identity", "ip_ua_subnet"]))
+
+    # A --site run with nothing passed: the site value wins over the global default.
+    inherited = _analyze_args([LOG, "--site", "blog"])
+    _apply_persisted_settings(inherited)
+    assert inherited.identity == "ip_ua_subnet"
+
+    # A value passed this run beats the stored site value.
+    overridden = _analyze_args([LOG, "--site", "blog", "--identity", "ip_ua"])
+    _apply_persisted_settings(overridden)
+    assert overridden.identity == "ip_ua"
+
+
+def test_site_supersedes_default_across_the_format_alternatives() -> None:
+    # The default names one member of the format pair; the site names the other.
+    _apply_persisted_settings(_analyze_args([LOG, "--log-format", "%h %t"]))
+    _apply_persisted_settings(_analyze_args([LOG, "--site", "blog", "--log-format-preset", "combined"]))
+    resolved = _analyze_args([LOG, "--site", "blog"])
+    _apply_persisted_settings(resolved)
+    # The site's preset wins; the default's log_format is masked, not blended in.
+    assert resolved.log_format_preset == "combined"
+    assert resolved.log_format is None
+
+
+def test_site_logfiles_are_saved_and_restored(tmp_path: Path) -> None:
+    log = tmp_path / "site.log"
+    log.write_text(Path(LOG).read_text(encoding="utf-8"), encoding="utf-8")
+
+    # Passing paths with --site remembers them under the site.
+    first = _analyze_args([str(log), "--site", "blog"])
+    _apply_persisted_settings(first)
+    assert userconfig.load().sites["blog"]["logfiles"] == [str(log)]
+
+    # A later --site run with no paths pulls them from config.
+    later = _analyze_args(["--site", "blog"])
+    _apply_persisted_settings(later)
+    assert later.logfiles == [log]
+
+
+def test_site_vhost_is_saved_and_restored() -> None:
+    # A vhost filter passed with --site is remembered and re-applied by name.
+    first = _analyze_args([LOG, "--site", "blog", "--vhost", "a.example", "--vhost", "b.example"])
+    _apply_persisted_settings(first)
+    assert userconfig.load().sites["blog"]["vhost"] == ["a.example", "b.example"]
+
+    later = _analyze_args(["--site", "blog"])
+    _apply_persisted_settings(later)
+    assert later.vhost == ["a.example", "b.example"]
+
+
+def test_vhost_without_a_site_is_not_persisted() -> None:
+    # vhost describes which data is a site; with no site there is nowhere sensible
+    # to keep it, so it is used for the run but not remembered.
+    _apply_persisted_settings(_analyze_args([LOG, "--vhost", "a.example"]))
+    assert userconfig.load().defaults == {}
+
+
+def test_default_is_a_baseline_a_site_overrides() -> None:
+    # A preference set without --site is a global baseline; a site inherits it
+    # until it sets its own, and other sites keep inheriting the baseline.
+    _apply_persisted_settings(_analyze_args([LOG, "--identity", "ip_ua_subnet"]))  # baseline
+    _apply_persisted_settings(_analyze_args([LOG, "--site", "blog", "--identity", "ip"]))  # override
+
+    blog = _analyze_args([LOG, "--site", "blog"])
+    _apply_persisted_settings(blog)
+    assert blog.identity == "ip"  # the site's own value
+    other = _analyze_args([LOG, "--site", "wiki"])
+    _apply_persisted_settings(other)
+    assert other.identity == "ip_ua_subnet"  # still the baseline
+    store = userconfig.load()
+    assert store.defaults["identity"] == "ip_ua_subnet"  # baseline untouched by the override
+
+
+def test_site_run_with_no_logfiles_works_end_to_end(tmp_path: Path) -> None:
+    log = tmp_path / "site.log"
+    log.write_text(Path(LOG).read_text(encoding="utf-8"), encoding="utf-8")
+    out = tmp_path / "r.md"
+    # Seed the site with its log file...
+    assert main(["analyze", str(log), "--site", "blog", *OFFLINE, "--md", "-o", str(out)]) == 0
+    # ...then analyse it by name alone.
+    out2 = tmp_path / "r2.md"
+    assert main(["analyze", "--site", "blog", *OFFLINE, "--md", "-o", str(out2)]) == 0
+    assert "parsed" in out2.read_text(encoding="utf-8")
+
+
+def test_no_logfiles_and_no_site_is_a_config_error(tmp_path: Path) -> None:
+    rc = main(["analyze", *OFFLINE, "--md", "-o", str(tmp_path / "x.md")])
+    assert rc == 2
+
+
+def test_unknown_site_with_no_logfiles_is_a_config_error(tmp_path: Path) -> None:
+    rc = main(["analyze", "--site", "ghost", *OFFLINE, "--md", "-o", str(tmp_path / "x.md")])
+    assert rc == 2
+
+
+def test_legacy_flat_config_is_read_as_defaults() -> None:
+    # A pre-versioning flat file must keep working, read as the defaults block.
+    path = userconfig.config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"identity": "ip_ua_subnet"}', encoding="utf-8")
+    store = userconfig.load()
+    assert store.defaults == {"identity": "ip_ua_subnet"} and store.warning is None
+
+
+def test_unrecognised_config_version_warns_and_is_ignored() -> None:
+    path = userconfig.config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"version": 99, "defaults": {"identity": "ip"}}', encoding="utf-8")
+    store = userconfig.load()
+    assert store.defaults == {} and store.warning is not None
+
+
+def test_config_flag_redirects_the_settings_file(tmp_path: Path) -> None:
+    cfg = tmp_path / "custom.json"
+    args = _analyze_args([LOG, "--config", str(cfg), "--identity", "ip_ua_subnet"])
+    _apply_persisted_settings(args)
+    assert cfg.exists()  # written to the override location
+    assert userconfig.load(cfg).defaults["identity"] == "ip_ua_subnet"
+    assert not userconfig.config_path().exists()  # the default location is untouched
 
 
 def test_report_shows_filenames_not_full_paths(tmp_path: Path) -> None:

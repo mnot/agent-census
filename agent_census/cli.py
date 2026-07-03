@@ -15,7 +15,7 @@ from pathlib import Path
 from . import __version__, identity, iprange, pipeline, userconfig
 from .audit import run as run_audit
 from .classify import DEFAULT_UNKNOWN_THRESHOLD
-from .errors import AgentCensusError
+from .errors import AgentCensusError, ConfigError
 from .identity import ClientKeyStrategy
 from .maxmind import (
     AsnResolver,
@@ -148,9 +148,24 @@ def _add_shared(parser: argparse.ArgumentParser, *, allow_md: bool = True) -> No
     parser.add_argument(
         "logfiles",
         type=Path,
-        nargs="+",
+        nargs="*",
         metavar="LOGFILE",
-        help="one or more access logs (plain or .gz); multiple files are pooled",
+        help="one or more access logs (plain or .gz); multiple files are pooled. "
+        "Optional when --site names a site with saved log files",
+    )
+    parser.add_argument(
+        "--site",
+        metavar="NAME",
+        help="select a saved site: its per-site settings (log files, vhost, "
+        "format, identity, robots source) override the global defaults, and any "
+        "option or LOGFILE passed now is remembered under NAME for next time",
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        metavar="PATH",
+        help="read and write persisted settings here instead of the default "
+        "~/.config/agent-census/config.json",
     )
 
     # Sticky options (log format, identity, robots source) default to None so an
@@ -451,6 +466,13 @@ def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argumen
         action="store_true",
         help="also list every entry with its details, not just the concerns",
     )
+    audit.add_argument(
+        "--config",
+        type=Path,
+        metavar="PATH",
+        help="read and write the saved API token here instead of the default "
+        "~/.config/agent-census/config.json",
+    )
 
     wba_check = sub.add_parser(
         "wba-check",
@@ -539,73 +561,135 @@ class _RunContext:
 
 
 def _apply_persisted_settings(args: argparse.Namespace) -> None:
-    """Fill sticky options from ``~/.config`` when unset; persist any passed now.
+    """Fill sticky options from the config when unset; persist any passed now.
 
-    Sticky options: the log format (``--log-format`` / ``--log-format-preset``,
-    one supersedes the other), ``--identity``, and the robots source
-    (``--robots-file`` / ``--robots-url``). Naming any robots source this run
-    (including ``--host``) suppresses a restored one so it can't override.
+    Precedence is CLI argument, else the ``--site`` block, else the global
+    defaults. A value passed this run is remembered: per-site keys (log format,
+    identity, robots source, log files, vhost) under the named site when
+    ``--site`` is given, else -- for the preference-style keys -- in the defaults;
+    the API token and MaxMind paths are always global. Naming any robots source
+    this run (including ``--host``) suppresses a restored one so it can't
+    override. Raises ConfigError if, after resolution, no log files are available.
     """
-    cfg = userconfig.load()
+    site = getattr(args, "site", None)
+    store = userconfig.load(getattr(args, "config", None))
+    if store.warning:
+        print(f"warning: {store.warning}", file=sys.stderr)
+    cfg = store.effective(site)  # merged read-view: defaults overlaid with the site
+    scope = store.site_scope(site)  # per-site keys persist here (defaults if no --site)
+    gscope = store.defaults  # global keys always persist to the defaults block
     updated = False
 
     if args.log_format is not None:
-        cfg["log_format"], updated = args.log_format, True
-        cfg.pop("log_format_preset", None)
+        scope["log_format"], updated = args.log_format, True
+        scope.pop("log_format_preset", None)
     elif args.log_format_preset is not None:
-        cfg["log_format_preset"], updated = args.log_format_preset, True
-        cfg.pop("log_format", None)
-    elif "log_format" in cfg:
+        scope["log_format_preset"], updated = args.log_format_preset, True
+        scope.pop("log_format", None)
+    elif cfg.get("log_format") is not None:
         args.log_format = cfg["log_format"]
-    elif "log_format_preset" in cfg:
+    elif cfg.get("log_format_preset") is not None:
         args.log_format_preset = cfg["log_format_preset"]
 
     if args.identity is not None:
-        cfg["identity"], updated = args.identity, True
-    elif "identity" in cfg:
+        scope["identity"], updated = args.identity, True
+    elif cfg.get("identity") is not None:
         args.identity = cfg["identity"]
 
     passed_source = args.robots_file or args.robots_url or args.host
     if args.robots_file is not None:
-        cfg["robots_file"], updated = str(args.robots_file), True
-        cfg.pop("robots_url", None)
+        scope["robots_file"], updated = str(args.robots_file), True
+        scope.pop("robots_url", None)
     elif args.robots_url is not None:
-        cfg["robots_url"], updated = args.robots_url, True
-        cfg.pop("robots_file", None)
+        scope["robots_url"], updated = args.robots_url, True
+        scope.pop("robots_file", None)
     if not passed_source:
-        if "robots_file" in cfg:
-            args.robots_file = Path(cfg["robots_file"])
-        elif "robots_url" in cfg:
+        if cfg.get("robots_file") is not None:
+            args.robots_file = Path(str(cfg["robots_file"]))
+        elif cfg.get("robots_url") is not None:
             args.robots_url = cfg["robots_url"]
 
-    # A MaxMind source is either a directory (discovered) or explicit per-database paths;
-    # an explicit path overrides the directory for its role. Passing --mm-db-dir this run
-    # drops any restored explicit paths so the directory can take over cleanly, but a
-    # path also passed this run still wins.
-    passed_dir = args.mm_db_dir is not None
-    if passed_dir:
-        cfg["mm_db_dir"], updated = str(args.mm_db_dir), True
-        if args.mm_asn_db is None:
-            cfg.pop("mm_asn_db", None)
-        if args.mm_country_db is None:
-            cfg.pop("mm_country_db", None)
-    elif "mm_db_dir" in cfg:
-        args.mm_db_dir = Path(cfg["mm_db_dir"])
+    if _apply_site_list(args, cfg, scope, site, "logfiles", as_path=True):
+        updated = True
+    if _apply_site_list(args, cfg, scope, site, "vhost", as_path=False):
+        updated = True
 
-    if args.mm_asn_db is not None:
-        cfg["mm_asn_db"], updated = str(args.mm_asn_db), True
-    elif not passed_dir and "mm_asn_db" in cfg:
-        args.mm_asn_db = Path(cfg["mm_asn_db"])
-
-    if args.mm_country_db is not None:
-        cfg["mm_country_db"], updated = str(args.mm_country_db), True
-    elif not passed_dir and "mm_country_db" in cfg:
-        args.mm_country_db = Path(cfg["mm_country_db"])
+    if _apply_maxmind_settings(args, cfg, gscope):
+        updated = True
 
     if updated:
-        userconfig.save(cfg)
+        store.save()
     if args.identity is None:
         args.identity = "ip_ua"  # the built-in default when nothing is set or saved
+
+    if not args.logfiles:
+        if site:
+            raise ConfigError(
+                f"site {site!r} has no saved log files; pass one or more LOGFILE paths"
+            )
+        raise ConfigError("no log files given; pass one or more LOGFILE paths, or --site NAME")
+
+
+def _apply_site_list(
+    args: argparse.Namespace,
+    cfg: dict[str, object],
+    scope: dict[str, object],
+    site: str | None,
+    attr: str,
+    *,
+    as_path: bool,
+) -> bool:
+    """Persist/restore a per-site list option (log files, vhost filters).
+
+    These describe *which data* a site is, so they only ever live under a site:
+    passing values with ``--site`` remembers them there; passing them without a
+    site uses them for this run but saves nothing (there is no site to attach them
+    to, and a global default here would silently filter every later run). An empty
+    value falls back to the site's saved list. Returns whether anything was saved.
+    """
+    passed = getattr(args, attr) or []
+    if passed:
+        if site:
+            scope[attr] = [str(item) for item in passed]
+            return True
+        return False
+    saved = cfg.get(attr)
+    if site and isinstance(saved, list):
+        setattr(args, attr, [Path(p) for p in saved] if as_path else list(saved))
+    return False
+
+
+def _apply_maxmind_settings(
+    args: argparse.Namespace, cfg: dict[str, object], gscope: dict[str, object]
+) -> bool:
+    """Reconcile the (always-global) MaxMind DB paths; return whether any were saved.
+
+    A source is either a directory (discovered) or explicit per-database paths;
+    an explicit path overrides the directory for its role. Passing --mm-db-dir this
+    run drops any restored explicit paths so the directory can take over cleanly,
+    but a path also passed this run still wins.
+    """
+    updated = False
+    passed_dir = args.mm_db_dir is not None
+    if passed_dir:
+        gscope["mm_db_dir"], updated = str(args.mm_db_dir), True
+        if args.mm_asn_db is None:
+            gscope.pop("mm_asn_db", None)
+        if args.mm_country_db is None:
+            gscope.pop("mm_country_db", None)
+    elif cfg.get("mm_db_dir") is not None:
+        args.mm_db_dir = Path(str(cfg["mm_db_dir"]))
+
+    if args.mm_asn_db is not None:
+        gscope["mm_asn_db"], updated = str(args.mm_asn_db), True
+    elif not passed_dir and cfg.get("mm_asn_db") is not None:
+        args.mm_asn_db = Path(str(cfg["mm_asn_db"]))
+
+    if args.mm_country_db is not None:
+        gscope["mm_country_db"], updated = str(args.mm_country_db), True
+    elif not passed_dir and cfg.get("mm_country_db") is not None:
+        args.mm_country_db = Path(str(cfg["mm_country_db"]))
+    return updated
 
 
 _MAXMIND_SKEW_DAYS = 90  # warn if the DB was built this far outside the log's span
@@ -833,6 +917,7 @@ def main(argv: Sequence[str] | None = None) -> int:  # pylint: disable=too-many-
                 no_peeringdb=args.no_peeringdb,
                 refresh=args.refresh,
                 verbose=args.verbose,
+                config=args.config,
             )
         if args.command == "wba-check":
             return run_wba_check(args.host)

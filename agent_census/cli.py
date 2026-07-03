@@ -460,9 +460,10 @@ def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argumen
     inspect_sel.add_argument("--kind", metavar="KIND", help="inspect all clients of this kind")
     inspect_sel.add_argument(
         "--actor",
-        metavar="IP",
-        help="inspect every member of the actor group led by this IP (the id copied "
-        "from a grouped row's summary in the HTML report)",
+        metavar="ID",
+        help="inspect every member of the actor group led by this id -- an IP, "
+        "subnet, or operator label copied from a grouped row's summary in the "
+        "HTML report",
     )
     inspect_sel.add_argument(
         "--network",

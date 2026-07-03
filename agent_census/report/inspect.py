@@ -47,10 +47,11 @@ def select_profiles(
     select a low-volume datacentre that the cross-tab collapses into its
     ``Other datacenters`` column rather than breaking out on its own.
 
-    ``actor`` is the exact IP that leads a display-time actor group -- the id the
-    HTML report copies from a grouped row's summary. It expands to every member of
-    that group, so the whole rotation an operator ran across many addresses can be
-    inspected as one, not one member at a time.
+    ``actor`` is the exact id that leads a display-time actor group -- an IP,
+    subnet, or operator label, the id the HTML report copies from a grouped row's
+    summary. It expands to every member of that group, so the whole rotation an
+    operator ran across many addresses can be inspected as one, not one member at
+    a time.
     """
     profiles = list(result.profiles)
     if kind is not None:
@@ -69,8 +70,9 @@ def select_profiles(
     return profiles
 
 
-def _actor_members(profiles: list[ClientProfile], lead_ip: str) -> list[ClientProfile]:
-    """Every member of the actor group(s) led by ``lead_ip``.
+def _actor_members(profiles: list[ClientProfile], lead_id: str) -> list[ClientProfile]:
+    """Every member of the actor group(s) led by ``lead_id`` (an IP, subnet, or
+    operator label -- whatever the lead's ``client_id.ip`` holds).
 
     Reconstructs the same folding the HTML report shows under a disclosure triangle,
     so an ``--actor`` id copied from a summary row expands back to exactly its
@@ -82,7 +84,7 @@ def _actor_members(profiles: list[ClientProfile], lead_ip: str) -> list[ClientPr
     selected: list[ClientProfile] = []
     for kind_profiles in by_kind.values():
         for group in group_actors(kind_profiles):
-            if group.lead.client_id.ip == lead_ip:
+            if group.lead.client_id.ip == lead_id:
                 selected.extend(group.members)
     return selected
 

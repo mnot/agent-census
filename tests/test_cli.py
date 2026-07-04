@@ -147,8 +147,16 @@ def test_config_error_returns_2(tmp_path: Path) -> None:
 
 
 def _analyze_args(argv: list[str]):
+    return _verb_args("analyze", argv)
+
+
+def _verb_args(verb: str, argv: list[str]):
+    # main() sets args.command after per-subcommand parsing; mirror that here so the
+    # namespace matches what apply_persisted_settings sees at runtime.
     _, subcommands = _build_parser()
-    return subcommands["analyze"].parse_intermixed_args(argv)
+    args = subcommands[verb].parse_intermixed_args(argv)
+    args.command = verb
+    return args
 
 
 def test_settings_persist_then_restore() -> None:
@@ -265,6 +273,34 @@ def test_site_logfiles_are_saved_and_restored(tmp_path: Path) -> None:
     assert later.logfiles == [log]
 
 
+def test_missing_saved_logfile_is_skipped_not_fatal(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A saved log that has since rotated away shouldn't abort the run: it's skipped
+    # with a note, and the logs still present are analysed.
+    good = tmp_path / "a.log"
+    good.write_text("x\n", encoding="utf-8")
+    gone = tmp_path / "gone.log"  # seeded but never created on disk
+    _apply_persisted_settings(_analyze_args([str(good), str(gone), "--site", "blog"]))
+    capsys.readouterr()  # discard seeding output
+
+    later = _analyze_args(["--site", "blog"])
+    _apply_persisted_settings(later)
+    assert later.logfiles == [good]
+    err = capsys.readouterr().err
+    assert "gone.log" in err and "skipping" in err
+
+
+def test_all_saved_logfiles_missing_reports_clearly(tmp_path: Path) -> None:
+    from agent_census.errors import ConfigError
+
+    gone = tmp_path / "gone.log"  # seeded but never created
+    _apply_persisted_settings(_analyze_args([str(gone), "--site", "blog"]))
+    later = _analyze_args(["--site", "blog"])
+    with pytest.raises(ConfigError, match="present anymore"):
+        _apply_persisted_settings(later)
+
+
 def test_site_vhost_is_saved_and_restored() -> None:
     # A vhost filter passed with --site is remembered and re-applied by name.
     first = _analyze_args([LOG, "--site", "blog", "--vhost", "a.example", "--vhost", "b.example"])
@@ -274,6 +310,47 @@ def test_site_vhost_is_saved_and_restored() -> None:
     later = _analyze_args(["--site", "blog"])
     _apply_persisted_settings(later)
     assert later.vhost == ["a.example", "b.example"]
+
+
+def test_site_output_is_saved_and_restored(tmp_path: Path) -> None:
+    # An output path passed with --site is remembered under that site's verb key
+    # and re-applied by name on a later run of the same verb.
+    dest = tmp_path / "blog.html"
+    first = _analyze_args([LOG, "--site", "blog", "-o", str(dest)])
+    _apply_persisted_settings(first)
+    assert userconfig.load().sites["blog"]["analyze_output"] == str(dest)
+
+    later = _analyze_args([LOG, "--site", "blog"])
+    _apply_persisted_settings(later)
+    assert later.output == dest
+
+
+def test_site_output_is_per_verb(tmp_path: Path) -> None:
+    # analyze and inspect keep separate destinations; neither leaks into the other.
+    a_dest = tmp_path / "census.html"
+    i_dest = tmp_path / "why.md"
+    _apply_persisted_settings(_analyze_args([LOG, "--site", "blog", "-o", str(a_dest)]))
+    _apply_persisted_settings(_verb_args("inspect", [LOG, "--site", "blog", "-o", str(i_dest)]))
+
+    block = userconfig.load().sites["blog"]
+    assert block["analyze_output"] == str(a_dest)
+    assert block["inspect_output"] == str(i_dest)
+
+    # A bare inspect --site run restores only the inspect destination.
+    later = _verb_args("inspect", [LOG, "--site", "blog"])
+    _apply_persisted_settings(later)
+    assert later.output == i_dest
+
+
+def test_output_without_a_site_is_not_persisted(tmp_path: Path) -> None:
+    # Like vhost/logfiles, an output path only attaches to a named site: with no
+    # --site it is used for the run but never saved, so a later bare run stays on
+    # stdout (output is None) and can't silently overwrite the file.
+    _apply_persisted_settings(_analyze_args([LOG, "-o", str(tmp_path / "one.html")]))
+    assert userconfig.load().defaults == {}
+    later = _analyze_args([LOG])
+    _apply_persisted_settings(later)
+    assert later.output is None
 
 
 def test_vhost_without_a_site_is_not_persisted() -> None:

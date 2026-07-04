@@ -26,8 +26,9 @@ library. The on-disk shape (version 2)::
      "sites": {"mysite": { ...per-site keys... }}}
 
 A legacy flat file (a bare object of keys, no ``version``) is read as the
-defaults block, so older configs keep working. Any other shape (a newer
-``version``, or non-object JSON) is reported once and treated as empty.
+defaults block, so older configs keep working, and is rewritten in the current
+shape on the next run. Any other shape (a newer ``version``, or non-object JSON)
+is reported once and treated as empty.
 """
 
 from __future__ import annotations
@@ -98,6 +99,9 @@ class ConfigStore:
     # A human-readable note if the on-disk file had an unrecognised shape; the
     # CLI surfaces it once so a hand-edit or a newer format isn't silent.
     warning: str | None = None
+    # True when read from a pre-versioning flat file; the CLI rewrites it in the
+    # current shape on the next run so the file doesn't stay legacy indefinitely.
+    legacy: bool = False
 
     def effective(self, site: str | None) -> dict[str, object]:
         """Merged read-view for ``site``: defaults overlaid with the site's block."""
@@ -181,7 +185,7 @@ def load(override: Path | None = None) -> ConfigStore:
             path=path,
         )
     # Legacy flat file: the whole object is the defaults block.
-    return ConfigStore(defaults=_clean_block(data), path=path)
+    return ConfigStore(defaults=_clean_block(data), path=path, legacy=True)
 
 
 def apply_persisted_settings(args: argparse.Namespace) -> None:
@@ -241,8 +245,11 @@ def apply_persisted_settings(args: argparse.Namespace) -> None:
     if _apply_maxmind_settings(args, cfg, gscope):
         updated = True
 
-    if updated:
-        store.save()
+    # Persist any change; also rewrite a legacy flat file in the current shape,
+    # once, even when nothing changed this run (save() no-ops on an unreadable one).
+    if updated or store.legacy:
+        if store.save() and store.legacy:
+            print("note: upgraded the saved config to the current format", file=sys.stderr)
     if args.identity is None:
         args.identity = "ip_ua"  # the built-in default when nothing is set or saved
 

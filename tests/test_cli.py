@@ -328,6 +328,30 @@ def test_legacy_flat_config_is_read_as_defaults() -> None:
     path.write_text('{"identity": "ip_ua_subnet"}', encoding="utf-8")
     store = userconfig.load()
     assert store.defaults == {"identity": "ip_ua_subnet"} and store.warning is None
+    assert store.legacy is True
+
+
+def test_legacy_flat_config_is_upgraded_on_the_next_run(capsys: pytest.CaptureFixture[str]) -> None:
+    import json
+
+    path = userconfig.config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"identity": "ip_ua_subnet"}', encoding="utf-8")
+
+    # A plain run (nothing passed) still honours the saved value...
+    args = _analyze_args([LOG])
+    _apply_persisted_settings(args)
+    assert args.identity == "ip_ua_subnet"
+    assert "upgraded the saved config" in capsys.readouterr().err
+
+    # ...and the file on disk is now the versioned shape, converted losslessly.
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["version"] == 2 and data["defaults"]["identity"] == "ip_ua_subnet"
+
+    # The upgrade is one-time: a later load no longer sees it as legacy.
+    assert userconfig.load().legacy is False
+    _apply_persisted_settings(_analyze_args([LOG]))
+    assert "upgraded the saved config" not in capsys.readouterr().err
 
 
 def test_unrecognised_config_version_warns_and_is_ignored() -> None:

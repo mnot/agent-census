@@ -145,7 +145,7 @@ def test_resolve_token_persists_explicit_and_reads_back(monkeypatch: pytest.Monk
     monkeypatch.delenv("CLOUDFLARE_API_TOKEN", raising=False)
     assert _resolve_token(None) is None  # nothing saved yet
     assert _resolve_token("cfat_secret") == "cfat_secret"  # explicit token is persisted
-    assert userconfig.load()["cf_api_token"] == "cfat_secret"
+    assert userconfig.load().defaults["cf_api_token"] == "cfat_secret"
     assert _resolve_token(None) == "cfat_secret"  # read back from config
 
 
@@ -153,6 +153,21 @@ def test_resolve_token_env_beats_saved(monkeypatch: pytest.MonkeyPatch) -> None:
     _resolve_token("cfat_saved")
     monkeypatch.setenv("CF_API_TOKEN", "cfat_env")
     assert _resolve_token(None) == "cfat_env"  # env wins over the saved token
+
+
+def test_resolve_token_does_not_clobber_an_unrecognised_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # An explicit token is used for the run but must not overwrite a config this
+    # build can't parse (here a newer version) -- that would drop the real token.
+    monkeypatch.delenv("CF_API_TOKEN", raising=False)
+    monkeypatch.delenv("CLOUDFLARE_API_TOKEN", raising=False)
+    path = userconfig.config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    original = '{"version": 99, "defaults": {"cf_api_token": "keep"}}'
+    path.write_text(original, encoding="utf-8")
+    assert _resolve_token("newtok") == "newtok"  # used this run
+    assert path.read_text(encoding="utf-8") == original  # not persisted over the unknown file
 
 
 def test_concerns_categorises_by_type() -> None:

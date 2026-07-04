@@ -154,13 +154,28 @@ def _add_shared(parser: argparse.ArgumentParser, *, allow_md: bool = True) -> No
     parser.add_argument(
         "logfiles",
         type=Path,
-        nargs="+",
+        nargs="*",
         metavar="LOGFILE",
-        help="one or more access logs (plain or .gz); multiple files are pooled",
+        help="one or more access logs (plain or .gz); multiple files are pooled. "
+        "Optional when --site names a site with saved log files",
+    )
+    parser.add_argument(
+        "--site",
+        metavar="NAME",
+        help="select a saved site: its per-site settings (log files, vhost, "
+        "format, identity, robots source) override the global defaults, and any "
+        "option or LOGFILE passed now is remembered under NAME for next time",
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        metavar="PATH",
+        help="read and write persisted settings here instead of the default "
+        "~/.config/agent-census/config.json",
     )
 
     # Sticky options (log format, identity, robots source) default to None so an
-    # unset one falls back to ~/.config; see _apply_persisted_settings.
+    # unset one falls back to ~/.config; see userconfig.apply_persisted_settings.
     fmt_group = parser.add_argument_group("input format")
     fmt = fmt_group.add_mutually_exclusive_group()
     fmt.add_argument(
@@ -457,6 +472,13 @@ def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argumen
         action="store_true",
         help="also list every entry with its details, not just the concerns",
     )
+    audit.add_argument(
+        "--config",
+        type=Path,
+        metavar="PATH",
+        help="read and write the saved API token here instead of the default "
+        "~/.config/agent-census/config.json",
+    )
 
     wba_check = sub.add_parser(
         "wba-check",
@@ -554,76 +576,6 @@ class _RunContext:
     # The wall-clock anchor the analysis used for --since, so inspect's re-read
     # windows against the same instant rather than drifting by a few seconds.
     anchor_now: float
-
-
-def _apply_persisted_settings(args: argparse.Namespace) -> None:
-    """Fill sticky options from ``~/.config`` when unset; persist any passed now.
-
-    Sticky options: the log format (``--log-format`` / ``--log-format-preset``,
-    one supersedes the other), ``--identity``, and the robots source
-    (``--robots-file`` / ``--robots-url``). Naming any robots source this run
-    (including ``--host``) suppresses a restored one so it can't override.
-    """
-    cfg = userconfig.load()
-    updated = False
-
-    if args.log_format is not None:
-        cfg["log_format"], updated = args.log_format, True
-        cfg.pop("log_format_preset", None)
-    elif args.log_format_preset is not None:
-        cfg["log_format_preset"], updated = args.log_format_preset, True
-        cfg.pop("log_format", None)
-    elif "log_format" in cfg:
-        args.log_format = cfg["log_format"]
-    elif "log_format_preset" in cfg:
-        args.log_format_preset = cfg["log_format_preset"]
-
-    if args.identity is not None:
-        cfg["identity"], updated = args.identity, True
-    elif "identity" in cfg:
-        args.identity = cfg["identity"]
-
-    passed_source = args.robots_file or args.robots_url or args.host
-    if args.robots_file is not None:
-        cfg["robots_file"], updated = str(args.robots_file), True
-        cfg.pop("robots_url", None)
-    elif args.robots_url is not None:
-        cfg["robots_url"], updated = args.robots_url, True
-        cfg.pop("robots_file", None)
-    if not passed_source:
-        if "robots_file" in cfg:
-            args.robots_file = Path(cfg["robots_file"])
-        elif "robots_url" in cfg:
-            args.robots_url = cfg["robots_url"]
-
-    # A MaxMind source is either a directory (discovered) or explicit per-database paths;
-    # an explicit path overrides the directory for its role. Passing --mm-db-dir this run
-    # drops any restored explicit paths so the directory can take over cleanly, but a
-    # path also passed this run still wins.
-    passed_dir = args.mm_db_dir is not None
-    if passed_dir:
-        cfg["mm_db_dir"], updated = str(args.mm_db_dir), True
-        if args.mm_asn_db is None:
-            cfg.pop("mm_asn_db", None)
-        if args.mm_country_db is None:
-            cfg.pop("mm_country_db", None)
-    elif "mm_db_dir" in cfg:
-        args.mm_db_dir = Path(cfg["mm_db_dir"])
-
-    if args.mm_asn_db is not None:
-        cfg["mm_asn_db"], updated = str(args.mm_asn_db), True
-    elif not passed_dir and "mm_asn_db" in cfg:
-        args.mm_asn_db = Path(cfg["mm_asn_db"])
-
-    if args.mm_country_db is not None:
-        cfg["mm_country_db"], updated = str(args.mm_country_db), True
-    elif not passed_dir and "mm_country_db" in cfg:
-        args.mm_country_db = Path(cfg["mm_country_db"])
-
-    if updated:
-        userconfig.save(cfg)
-    if args.identity is None:
-        args.identity = "ip_ua"  # the built-in default when nothing is set or saved
 
 
 _MAXMIND_SKEW_DAYS = 90  # warn if the DB was built this far outside the log's span
@@ -851,7 +803,7 @@ def main(argv: Sequence[str] | None = None) -> int:  # pylint: disable=too-many-
         top.print_help()
         return 0
     # Per-command parsing so options can be freely intermixed with the log files
-    # (argparse's plain parse_args can't do that with an nargs="+" positional).
+    # (argparse's plain parse_args can't do that with a variadic positional).
     args = subcommands[raw[0]].parse_intermixed_args(raw[1:])
     args.command = "analyze" if raw[0] == "analyse" else raw[0]
     if getattr(args, "from_latest", False) and args.since is None:
@@ -865,10 +817,11 @@ def main(argv: Sequence[str] | None = None) -> int:  # pylint: disable=too-many-
                 no_peeringdb=args.no_peeringdb,
                 refresh=args.refresh,
                 verbose=args.verbose,
+                config=args.config,
             )
         if args.command == "wba-check":
             return run_wba_check(args.host)
-        _apply_persisted_settings(args)
+        userconfig.apply_persisted_settings(args)
         if args.command == "calibrate":
             args.max_per_kind = 0  # the digest needs every client, not the top-N tail
         ctx = _run_pipeline(args)

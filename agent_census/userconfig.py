@@ -13,10 +13,15 @@ The split follows what a setting *describes*. A setting that describes the
 site's data -- where its logs live, which vhost lines are it, how they're
 formatted, its robots policy -- is per-site. A setting that describes this
 machine or account -- the API token, the MaxMind database paths -- is always
-global. (Per-run options like the time window or output path aren't persisted at
-all.) The preference-style per-site keys (log format, identity, robots source)
-may also sit in ``defaults`` as a baseline a site inherits until it overrides;
-the "which data" keys (log files, vhost) only ever live under a site.
+global. (Per-run options like the time window aren't persisted at all.) The
+preference-style per-site keys (log format, identity, robots source) may also sit
+in ``defaults`` as a baseline a site inherits until it overrides; the "which
+data" keys (log files, vhost) only ever live under a site.
+
+The output path (``-o``) is a middle case: it is remembered per verb
+(``<verb>_output``) but only ever under a named site, never in ``defaults`` -- so
+a site can carry a default destination for its report, while a bare run stays on
+stdout and can't silently overwrite a file it wasn't told to write.
 
 JSON, not TOML, so it can be both read and written with only the standard
 library. The on-disk shape (version 2)::
@@ -46,11 +51,17 @@ CONFIG_VERSION = 2
 
 # Sticky string keys that a per-site block may override.
 SITE_STR_KEYS = ("log_format", "log_format_preset", "identity", "robots_file", "robots_url")
+# Per-verb output paths (``<verb>_output``). Site-only, like the list keys below:
+# a saved destination is only remembered/restored when a site is named, so a bare
+# run without ``--site`` still writes to stdout and never silently overwrites a
+# file. One key per verb that takes ``-o`` (see cli._add_shared), so an inspect
+# dump and an analyze report don't share -- or clobber -- a destination.
+SITE_OUTPUT_KEYS = ("analyze_output", "inspect_output", "calibrate_output")
 # Sticky string keys that are machine-level and always live in the defaults block.
 GLOBAL_STR_KEYS = ("cf_api_token", "mm_asn_db", "mm_country_db", "mm_db_dir")
 # All persisted string keys (the union). cf_api_token is a secret, so the file is
 # written 0600 (see ConfigStore.save()).
-PERSISTED = SITE_STR_KEYS + GLOBAL_STR_KEYS
+PERSISTED = SITE_STR_KEYS + SITE_OUTPUT_KEYS + GLOBAL_STR_KEYS
 # Sticky list-valued keys (per-site only): the log files to analyse for a site,
 # and the vhost filter terms that pick its lines out of a shared log.
 SITE_LIST_KEYS = ("logfiles", "vhost")
@@ -242,6 +253,9 @@ def apply_persisted_settings(args: argparse.Namespace) -> None:
     if _apply_site_list(args, cfg, scope, site, "vhost", as_path=False):
         updated = True
 
+    if _apply_site_output(args, cfg, scope, site):
+        updated = True
+
     if _apply_maxmind_settings(args, cfg, gscope):
         updated = True
 
@@ -255,6 +269,12 @@ def apply_persisted_settings(args: argparse.Namespace) -> None:
 
     if not args.logfiles:
         if site:
+            saved = cfg.get("logfiles")
+            if isinstance(saved, list) and saved:
+                raise ConfigError(
+                    f"site {site!r}: none of its saved log files are present anymore; "
+                    "pass one or more LOGFILE paths"
+                )
             raise ConfigError(
                 f"site {site!r} has no saved log files; pass one or more LOGFILE paths"
             )
@@ -277,6 +297,14 @@ def _apply_site_list(
     site uses them for this run but saves nothing (there is no site to attach them
     to, and a global default here would silently filter every later run). An empty
     value falls back to the site's saved list. Returns whether anything was saved.
+
+    A restored *log-file* list is filtered to the files that still exist, with a
+    note for any that have gone (rotated away since the site was seeded): a stale
+    entry shouldn't abort a run over the logs that are present. The list isn't
+    rewritten -- an absence may be transient (an unmounted volume, a relative path
+    run from elsewhere) -- so we skip for this run without forgetting the config.
+    Files passed on the command line are not filtered: a typo there should still
+    surface as an error downstream.
     """
     passed = getattr(args, attr) or []
     if passed:
@@ -286,7 +314,46 @@ def _apply_site_list(
         return False
     saved = cfg.get(attr)
     if site and isinstance(saved, list):
-        setattr(args, attr, [Path(p) for p in saved] if as_path else list(saved))
+        if as_path:
+            present = [p for p in saved if Path(p).exists()]
+            for gone in saved:
+                if gone not in present:
+                    print(
+                        f"note: site {site!r} log {gone!r} is no longer present, skipping",
+                        file=sys.stderr,
+                    )
+            setattr(args, attr, [Path(p) for p in present])
+        else:
+            setattr(args, attr, list(saved))
+    return False
+
+
+def _apply_site_output(
+    args: argparse.Namespace,
+    cfg: dict[str, object],
+    scope: dict[str, object],
+    site: str | None,
+) -> bool:
+    """Persist/restore the per-verb output path (``<verb>_output``), site-only.
+
+    Like the log-file list, an output destination only attaches to a named site:
+    passing ``-o`` with ``--site`` remembers it under that site's verb key; a bare
+    run (no ``--site``) uses it once but saves nothing, so it can never become a
+    default that silently redirects -- or overwrites -- on a later run. Verbs
+    without ``-o`` (audit, wba-check) have no ``output`` attribute and are skipped.
+    Returns whether anything was saved.
+    """
+    if not hasattr(args, "output"):
+        return False
+    key = f"{args.command}_output"
+    if args.output is not None:
+        if site:
+            scope[key] = str(args.output)
+            return True
+        return False
+    saved = cfg.get(key)
+    if site and isinstance(saved, str):
+        args.output = Path(saved)
     return False
 
 

@@ -163,8 +163,9 @@ def _add_shared(parser: argparse.ArgumentParser, *, allow_md: bool = True) -> No
         "--site",
         metavar="NAME",
         help="select a saved site: its per-site settings (log files, vhost, "
-        "format, identity, robots source) override the global defaults, and any "
-        "option or LOGFILE passed now is remembered under NAME for next time",
+        "format, identity, robots source, output path) override the global "
+        "defaults, and any option or LOGFILE passed now is remembered under NAME "
+        "for next time",
     )
     parser.add_argument(
         "--config",

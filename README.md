@@ -174,8 +174,8 @@ settings file (handy for a checked-in, per-project config).
 
 **Per-site settings.** If you analyse more than one site, `--site NAME` keeps
 their settings apart. Each site remembers its own log files, `--vhost` filter,
-log format, identity, and robots source, so after seeding a site you can analyse
-it by name alone:
+log format, identity, robots source, and output path (`-o`, kept separately per
+command), so after seeding a site you can analyse it by name alone:
 
 ```sh
 # seed the site: its settings, log files, and vhost filter are saved under "blog"
@@ -193,7 +193,9 @@ line overrides the site (and is remembered under it). Resolution is
 What goes per-site vs. global follows what a setting *describes*:
 
 - **Per-site** — settings that describe the site's data: which log files are it,
-  which `--vhost` lines are it, how they're formatted, and its robots policy.
+  which `--vhost` lines are it, how they're formatted, and its robots policy. A
+  saved log file that has since rotated away is skipped with a note rather than
+  failing the run, so a site's list can name rotated logs that come and go.
 - **Global** — settings that describe this machine or account: the Cloudflare API
   token and the MaxMind database paths. These are the same whatever site you look
   at, so they always live in the defaults.
@@ -201,7 +203,10 @@ What goes per-site vs. global follows what a setting *describes*:
 The preference-style keys (log format, identity, robots source) can also be set
 *without* `--site` to give a global baseline that any site inherits until it
 sets its own. The "which data" keys (log files, `--vhost`) only ever attach to a
-site — a global default there would silently filter unrelated runs.
+site — a global default there would silently filter unrelated runs. The output
+path (`-o`) is the same: it's remembered only under a named site (and per
+command, so `analyze` and `inspect` don't share a destination), so a run without
+`--site` still writes to stdout and never silently overwrites a file.
 
 
 

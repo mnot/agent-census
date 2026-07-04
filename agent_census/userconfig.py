@@ -199,6 +199,43 @@ def load(override: Path | None = None) -> ConfigStore:
     return ConfigStore(defaults=_clean_block(data), path=path, legacy=True)
 
 
+# Human labels for persisted keys, used in the "remembered ..." note. The
+# alternatives (log_format/_preset, robots_file/_url) share a label, and the
+# per-verb output keys all read as "output path" -- only one verb runs per call.
+_PERSIST_LABELS = {
+    "log_format": "log format",
+    "log_format_preset": "log format",
+    "identity": "identity",
+    "robots_file": "robots source",
+    "robots_url": "robots source",
+    "logfiles": "log files",
+    "vhost": "vhost filter",
+    "analyze_output": "output path",
+    "inspect_output": "output path",
+    "calibrate_output": "output path",
+    "mm_db_dir": "MaxMind database dir",
+    "mm_asn_db": "MaxMind ASN database",
+    "mm_country_db": "MaxMind country database",
+}
+# Report order, so the note reads the same way run to run.
+_PERSIST_ORDER = tuple(_PERSIST_LABELS)
+
+
+def _persisted_labels(before: dict[str, object], after: dict[str, object]) -> list[str]:
+    """Distinct human labels for keys newly set or changed between two config blocks.
+
+    A key set to the value it already held is not a change and isn't reported, so
+    the note names only what actually moved this run. Shared labels are de-duped.
+    """
+    labels: list[str] = []
+    for key in _PERSIST_ORDER:
+        if key in after and after[key] != before.get(key):
+            label = _PERSIST_LABELS[key]
+            if label not in labels:
+                labels.append(label)
+    return labels
+
+
 def apply_persisted_settings(args: argparse.Namespace) -> None:
     """Fill sticky options from the config when unset; persist any passed now.
 
@@ -209,6 +246,11 @@ def apply_persisted_settings(args: argparse.Namespace) -> None:
     the API token and MaxMind paths are always global. Naming any robots source
     this run (including ``--host``) suppresses a restored one so it can't
     override. Raises ConfigError if, after resolution, no log files are available.
+
+    When a value is actually stored, a ``note:`` line goes to stderr naming what
+    was remembered and its scope -- ``for site 'NAME'`` or ``globally`` -- so a
+    sticky setting is never saved silently. A run that touches both scopes emits
+    one line for each.
     """
     site = getattr(args, "site", None)
     store = load(getattr(args, "config", None))
@@ -217,6 +259,11 @@ def apply_persisted_settings(args: argparse.Namespace) -> None:
     cfg = store.effective(site)  # merged read-view: defaults overlaid with the site
     scope = store.site_scope(site)  # per-site keys persist here (defaults if no --site)
     gscope = store.defaults  # global keys always persist to the defaults block
+    # Snapshots to diff against after the writes, so the note names what changed.
+    # Without --site, scope *is* defaults, so every change lands in one block and
+    # reads as global; with --site the site block and defaults are distinct.
+    before_site = dict(scope) if site else {}
+    before_defaults = dict(store.defaults)
     updated = False
 
     if args.log_format is not None:
@@ -262,8 +309,15 @@ def apply_persisted_settings(args: argparse.Namespace) -> None:
     # Persist any change; also rewrite a legacy flat file in the current shape,
     # once, even when nothing changed this run (save() no-ops on an unreadable one).
     if updated or store.legacy:
-        if store.save() and store.legacy:
-            print("note: upgraded the saved config to the current format", file=sys.stderr)
+        if store.save():
+            if store.legacy:
+                print("note: upgraded the saved config to the current format", file=sys.stderr)
+            # One line per scope touched (two only when a run stores both), naming
+            # what was remembered and where, so a sticky value is never saved mutely.
+            if site and (labels := _persisted_labels(before_site, scope)):
+                print(f"note: remembered {', '.join(labels)} for site {site!r}", file=sys.stderr)
+            if labels := _persisted_labels(before_defaults, store.defaults):
+                print(f"note: remembered {', '.join(labels)} globally", file=sys.stderr)
     if args.identity is None:
         args.identity = "ip_ua"  # the built-in default when nothing is set or saved
 

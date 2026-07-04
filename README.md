@@ -169,8 +169,13 @@ Some options are sticky, so you needn't retype them. `--log-format` /
 saved to `~/.config/agent-census/config.json` and reused when a later run omits
 them; the MaxMind database paths (`--mm-asn-db` / `--mm-country-db` / `--mm-db-dir`)
 are remembered the same way, as noted with their own options above. Passing one
-updates the saved value. Use `--config PATH` to read and write a different
-settings file (handy for a checked-in, per-project config).
+updates the saved value, and a run prints a `note:` naming what it saved and its
+scope. Use `--config PATH` to read and write a different settings file (handy for
+a checked-in, per-project config).
+
+`--no-persist` keeps a run from writing anything: saved settings (and a
+`--site`) are still read and applied, but nothing is stored — for one-off runs,
+scripts and CI, or trying a setting without disturbing the saved config.
 
 **Per-site settings.** If you analyse more than one site, `--site NAME` keeps
 their settings apart. Each site remembers its own log files, `--vhost` filter,

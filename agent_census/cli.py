@@ -174,6 +174,12 @@ def _add_shared(parser: argparse.ArgumentParser, *, allow_md: bool = True) -> No
         help="read and write persisted settings here instead of the default "
         "~/.config/agent-census/config.json",
     )
+    parser.add_argument(
+        "--no-persist",
+        action="store_true",
+        help="use saved settings for this run but don't update them -- for one-off "
+        "runs, CI, or trying a setting without changing the saved config",
+    )
 
     # Sticky options (log format, identity, robots source) default to None so an
     # unset one falls back to ~/.config; see userconfig.apply_persisted_settings.

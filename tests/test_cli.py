@@ -273,6 +273,62 @@ def test_site_logfiles_are_saved_and_restored(tmp_path: Path) -> None:
     assert later.logfiles == [log]
 
 
+def test_persist_note_names_global_scope(capsys: pytest.CaptureFixture[str]) -> None:
+    # A value stored without --site is a global baseline: one line, "globally".
+    _apply_persisted_settings(_analyze_args([LOG, "--identity", "ip_ua_subnet"]))
+    lines = [ln for ln in capsys.readouterr().err.splitlines() if "remembered" in ln]
+    assert lines == ["note: remembered identity globally"]
+
+
+def test_persist_note_names_site_scope(capsys: pytest.CaptureFixture[str]) -> None:
+    # Values stored with --site name the site: one line, no "globally". Passing the
+    # LOG under a site remembers it too, so both it and identity are reported.
+    _apply_persisted_settings(_analyze_args([LOG, "--site", "blog", "--identity", "ip"]))
+    lines = [ln for ln in capsys.readouterr().err.splitlines() if "remembered" in ln]
+    assert lines == ["note: remembered identity, log files for site 'blog'"]
+
+
+def test_persist_note_splits_mixed_scopes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A run that stores per-site keys and a (always-global) MaxMind path gets two
+    # lines -- one per scope, site first.
+    args = _analyze_args(
+        [LOG, "--site", "blog", "--identity", "ip", "--mm-db-dir", str(tmp_path)]
+    )
+    _apply_persisted_settings(args)
+    lines = [ln for ln in capsys.readouterr().err.splitlines() if "remembered" in ln]
+    assert lines == [
+        "note: remembered identity, log files for site 'blog'",
+        "note: remembered MaxMind database dir globally",
+    ]
+
+
+def test_persist_note_is_silent_when_nothing_changes(capsys: pytest.CaptureFixture[str]) -> None:
+    # Re-passing a value it already holds isn't a change, so nothing is announced.
+    _apply_persisted_settings(_analyze_args([LOG, "--identity", "ip"]))
+    capsys.readouterr()  # discard the first (genuine) note
+    _apply_persisted_settings(_analyze_args([LOG, "--identity", "ip"]))
+    assert "remembered" not in capsys.readouterr().err
+
+
+def test_no_persist_reads_but_does_not_write(capsys: pytest.CaptureFixture[str]) -> None:
+    # --no-persist saves nothing (config stays empty) and emits no "remembered" note.
+    _apply_persisted_settings(_analyze_args([LOG, "--identity", "ip_ua_subnet", "--no-persist"]))
+    assert userconfig.load().defaults == {}
+    assert "remembered" not in capsys.readouterr().err
+
+
+def test_no_persist_still_honours_saved_settings() -> None:
+    # A --no-persist run still reads the saved config: the site's values apply, and
+    # a value passed alongside is used for the run but not written back.
+    _apply_persisted_settings(_analyze_args([LOG, "--site", "blog", "--identity", "ip"]))
+    later = _analyze_args([LOG, "--site", "blog", "--identity", "ip_ua_subnet", "--no-persist"])
+    _apply_persisted_settings(later)
+    assert later.identity == "ip_ua_subnet"  # the passed value drives this run
+    assert userconfig.load().sites["blog"]["identity"] == "ip"  # but nothing was saved
+
+
 def test_missing_saved_logfile_is_skipped_not_fatal(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

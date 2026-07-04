@@ -312,6 +312,23 @@ def test_persist_note_is_silent_when_nothing_changes(capsys: pytest.CaptureFixtu
     assert "remembered" not in capsys.readouterr().err
 
 
+def test_no_persist_reads_but_does_not_write(capsys: pytest.CaptureFixture[str]) -> None:
+    # --no-persist saves nothing (config stays empty) and emits no "remembered" note.
+    _apply_persisted_settings(_analyze_args([LOG, "--identity", "ip_ua_subnet", "--no-persist"]))
+    assert userconfig.load().defaults == {}
+    assert "remembered" not in capsys.readouterr().err
+
+
+def test_no_persist_still_honours_saved_settings() -> None:
+    # A --no-persist run still reads the saved config: the site's values apply, and
+    # a value passed alongside is used for the run but not written back.
+    _apply_persisted_settings(_analyze_args([LOG, "--site", "blog", "--identity", "ip"]))
+    later = _analyze_args([LOG, "--site", "blog", "--identity", "ip_ua_subnet", "--no-persist"])
+    _apply_persisted_settings(later)
+    assert later.identity == "ip_ua_subnet"  # the passed value drives this run
+    assert userconfig.load().sites["blog"]["identity"] == "ip"  # but nothing was saved
+
+
 def test_missing_saved_logfile_is_skipped_not_fatal(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

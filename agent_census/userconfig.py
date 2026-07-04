@@ -251,6 +251,10 @@ def apply_persisted_settings(args: argparse.Namespace) -> None:
     was remembered and its scope -- ``for site 'NAME'`` or ``globally`` -- so a
     sticky setting is never saved silently. A run that touches both scopes emits
     one line for each.
+
+    ``--no-persist`` (``args.no_persist``) suppresses all writing for the run:
+    settings are still read and resolved as usual, but nothing is saved and no
+    ``note:`` is emitted -- for one-off runs, CI, or checked-in ``--config`` files.
     """
     site = getattr(args, "site", None)
     store = load(getattr(args, "config", None))
@@ -308,7 +312,9 @@ def apply_persisted_settings(args: argparse.Namespace) -> None:
 
     # Persist any change; also rewrite a legacy flat file in the current shape,
     # once, even when nothing changed this run (save() no-ops on an unreadable one).
-    if updated or store.legacy:
+    # --no-persist suppresses every write (including the legacy rewrite): the read
+    # and resolution above still apply, so saved settings are honoured for the run.
+    if not getattr(args, "no_persist", False) and (updated or store.legacy):
         if store.save():
             if store.legacy:
                 print("note: upgraded the saved config to the current format", file=sys.stderr)

@@ -286,8 +286,9 @@ def _fingerprint_tags(features: ClientFeatures, aggregate: bool) -> dict[str, st
             )
 
     # Sub-resource loading: a browser pulls a page's CSS/JS/images. Only judgeable
-    # when the client actually fetched HTML pages.
-    if features.page_count > 0:
+    # once the client fetched enough HTML pages for the co-load share to be a signal
+    # rather than a coin flip (one page is only ever 0% or 100%).
+    if features.page_count >= _S["browser_coload_min_pages"]:
         ratio = features.asset_coload_ratio
         if ratio > BROWSER_COLOAD_MIN:
             tags["loads-assets"] = (

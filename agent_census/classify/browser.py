@@ -72,10 +72,19 @@ class BrowserClassifier(Classifier):
         # stale (but not ancient) version is a mild nudge, not a disqualifier.
         disqualified = False
 
-        if features.asset_coload_ratio > _S["browser_coload_min"]:
+        # The co-load ratio is the strongest single tell, so it must not fire off a
+        # denominator too small to mean anything: with one HTML page fetched, the
+        # ratio is only ever 0% or 100%, and a feed reader (or anyone) whose user
+        # incidentally loads a single page would score a full-weight "100% co-load".
+        # Require enough pages that the share is actual evidence, not a coin flip.
+        if (
+            features.page_count >= _S["browser_coload_min_pages"]
+            and features.asset_coload_ratio > _S["browser_coload_min"]
+        ):
             confidence += _T["asset_coload_weight"]
             evidence.append(
-                f"{features.asset_coload_ratio:.0%} of pages followed by sub-resource loads"
+                f"{features.asset_coload_ratio:.0%} of {features.page_count:,} pages "
+                "followed by sub-resource loads"
             )
 
         if features.ua_looks_like_browser:

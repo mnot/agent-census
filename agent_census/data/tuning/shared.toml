@@ -16,6 +16,7 @@ unknown_threshold = 0.45
 # scraper, and the reference-browser predicate that calibrates the relative tags.
 coload_ratio_min = 0.4   # at/above this share of pages co-load sub-resources: browser-like
 no_coload_max = 0.1      # below this: essentially no sub-resource co-loading
+coload_min_pages = 3     # too few HTML pages to read the co-load ratio as evidence (1 page => 0% or 100%, no signal)
 follow_ratio_min = 0.3   # at/above this share follow on-site links: browser-like
 no_follow_max = 0.1      # below this: hits URLs cold, no on-site link-following
 

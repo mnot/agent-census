@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from .. import uas
 from ..dataload import load_shared_tuning, load_tuning
+from ..errors import ConfigError
 from ..model import ClassifyContext, ClientFeatures, Kind, Signal
 from .base import Classifier
 from .tags import identifies_as_known_agent, looks_like_impossible_referer
@@ -41,6 +42,18 @@ _TUNING_SCHEMA = {
 }
 _T = load_tuning("spoofed_browser", _TUNING_SCHEMA)
 _S = load_shared_tuning()
+
+# The combiner drops the BROWSER vote whenever a SPOOFED_BROWSER signal is present -- safe
+# only because a firing spoof signal always clears the unknown bar, so it becomes a real
+# primary rather than leaving the client in _below_threshold with its browser vote already
+# gone. That invariant is `score.threshold >= unknown_threshold`; enforce it at load rather
+# than trust a prose comment (mirrors browser.py's disqualified-ceiling check). The two knobs
+# live in different files, so a later bump to unknown_threshold can't silently break it.
+if _T["threshold"] < _S["unknown_threshold"]:
+    raise ConfigError(
+        "tuning/spoofed_browser.toml: score.threshold must be >= shared unknown_threshold "
+        f"({_T['threshold']} < {_S['unknown_threshold']})"
+    )
 
 
 class SpoofedBrowserClassifier(Classifier):
@@ -118,7 +131,7 @@ class SpoofedBrowserClassifier(Classifier):
         # cache-disabled or privacy human who still loads assets out of the net. The active
         # tells above are untouched, so a co-loading URL-replayer is still caught by its
         # impossible / forged Referer.
-        if features.asset_coload_ratio <= _S["browser_coload_min"]:
+        if features.asset_coload_ratio < _S["browser_coload_min"]:
             if features.page_count > 0 and features.asset_coload_ratio == 0.0:
                 tell(
                     _T["w_no_coload"],

@@ -19,8 +19,10 @@
 # log (agent-census calibrate), not just the tests, before changing these.
 
 [score]
-threshold = 0.45      # fire at/above this. Set to the shared unknown threshold so a
-                      # firing spoof signal clears the bar as a normal primary.
+threshold = 0.45      # fire at/above this. MUST be >= shared unknown_threshold (enforced at
+                      # load in classify/spoofed_browser.py): a firing spoof signal has to
+                      # clear the bar so it becomes a real primary, because the combiner drops
+                      # the browser vote as soon as a spoof signal is present.
 confidence_cap = 0.9  # emitted confidence = min(score, confidence_cap)
 
 [gate]

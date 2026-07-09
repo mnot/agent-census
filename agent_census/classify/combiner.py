@@ -20,7 +20,12 @@ from ..model import (
     Signal,
     WbaResult,
 )
-from .tags import derive_tag_evidence, impersonation, looks_like_fake_browser
+from .tags import (
+    derive_tag_evidence,
+    impersonation,
+    looks_like_fake_browser,
+    looks_like_impossible_referer,
+)
 
 # Numeric knobs: this module's own in data/tuning/combiner.toml, the unknown
 # threshold in data/tuning/shared.toml.
@@ -95,6 +100,7 @@ def combine(
     wba: WbaResult | None = None,
     datacenter: bool = False,
     aggregate: bool = False,
+    redirect_shadow: str | None = None,
     unknown_threshold: float = DEFAULT_UNKNOWN_THRESHOLD,
     keep_signals: bool = True,
 ) -> Classification:
@@ -130,9 +136,20 @@ def combine(
         )
 
     tag_ev = derive_tag_evidence(
-        features, compliance, verification, wba, datacenter=datacenter, aggregate=aggregate
+        features,
+        compliance,
+        verification,
+        wba,
+        datacenter=datacenter,
+        aggregate=aggregate,
+        redirect_shadow=redirect_shadow,
     )
     tags = set(tag_ev)
+    # A same-site Referer naming the site's redirect-only host form (www 301s to apex,
+    # or apex 301s to www) -- one a compliant browser can't emit, so a standalone
+    # fake-browser tell that reaches spoofed_browser on its own (residential included),
+    # independent of the datacenter-gated costume pattern.
+    impossible = looks_like_impossible_referer(features, redirect_shadow)
     stored = tuple(signals) if keep_signals else ()
     # Per-tag evidence is inspect-only detail, held on the same terms as signals.
     tag_evidence = tuple(tag_ev.items()) if keep_signals else ()
@@ -154,10 +171,29 @@ def combine(
 
     if not by_label or max(by_label.values()) < unknown_threshold:
         return _below_threshold(
-            features, tags, tag_evidence, tuple(signals), stored, datacenter, by_label
+            features, tags, tag_evidence, tuple(signals), stored, datacenter, impossible, by_label
         )
 
     primary = _pick(by_label)
+    # A client whose winning verdict is browser but which carries the impossible-www-
+    # Referer tell is a browser costume, not a browser: convert it to spoofed_browser.
+    # Guarded on browser being the top label so a stronger non-browser signal still
+    # wins (the tell itself already excludes known agents and feed readers).
+    if primary is Kind.BROWSER and impossible:
+        return Classification(
+            primary=Kind.SPOOFED_BROWSER,
+            confidence=_T["fallback_spoofed_browser"],
+            tags=frozenset(tags),
+            evidence=(
+                tag_ev.get(
+                    "impossible-referer",
+                    "browser User-Agent carrying a Referer no real browser could emit after "
+                    "the site's www/apex redirect",
+                ),
+            ),
+            all_signals=stored,
+            tag_evidence=tag_evidence,
+        )
     if primary is Kind.FEED_READER and _fetches_non_feeds(features):
         tags.add("fetches-non-feeds")
         if keep_signals:
@@ -187,6 +223,7 @@ def _below_threshold(
     signals: tuple[Signal, ...],
     stored: tuple[Signal, ...],
     datacenter: bool,
+    impossible: bool,
     by_label: dict[Kind, float],
 ) -> Classification:
     """Pick a fallback when no classifier cleared the bar, narrowing UNKNOWN where we can."""
@@ -205,12 +242,23 @@ def _below_threshold(
             boilerplate_lead=True,
         )
 
-    # A browser UA from a hosting IP with no browser behaviour is automation in disguise.
-    if datacenter and looks_like_fake_browser(features):
+    # A browser UA that isn't a real browser is automation in disguise. The
+    # impossible-www-Referer tell is dispositive on its own -- residential included --
+    # so it reaches spoofed_browser without a datacenter origin; the plain costume
+    # pattern still needs the hosting origin to corroborate (see issue #100 for the
+    # direction of loosening that gate).
+    if looks_like_fake_browser(features, impossible_referer=impossible) and (
+        datacenter or impossible
+    ):
         return verdict(
             Kind.SPOOFED_BROWSER,
             _T["fallback_spoofed_browser"],
-            "browser User-Agent from a datacenter IP, without browser behaviour",
+            (
+                "browser User-Agent carrying a Referer no real browser could emit after "
+                "the site's www/apex redirect"
+                if impossible
+                else "browser User-Agent from a datacenter IP, without browser behaviour"
+            ),
         )
     # A generic HTTP library (or no UA) fetching several pages from hosting infrastructure
     # is harvesting content -- a scraper. The datacenter origin is what tips it.

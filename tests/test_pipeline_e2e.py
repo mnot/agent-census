@@ -66,6 +66,155 @@ def test_vhost_filter_scopes_to_one_site(tmp_path: Path) -> None:
     assert ips == {"1.1.1.1", "1.1.1.2", "1.1.1.3"}  # no httplint clients
 
 
+_CHROME = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+)
+
+
+def _www_redirector_log(tmp_path: Path, *, www_status: int) -> Path:
+    """A vhost log: a fleet of www requests (301 or 200 per ``www_status``) plus one
+    residential Chrome client fetching apex pages with a www.example.com Referer.
+
+    The client's Referer is the (distinct) homepage, and its request timing is
+    irregular, so nothing but the www-Referer tell is in play -- no incidental
+    self-Referer or metronomic-cadence confounder."""
+    lines: list[str] = []
+    for i in range(60):  # enough www requests to judge the gate
+        lines.append(
+            f'www.example.com:443 198.51.100.{i % 200} - - '
+            f'[10/Oct/2023:12:00:{i % 60:02d} +0000] "GET /p{i} HTTP/1.1" '
+            f'{www_status} 0 "-" "{_CHROME}"'
+        )
+    secs = [0, 4, 9, 11, 18, 26, 27, 40, 55, 58]  # irregular -> not metronomic
+    for i, sec in enumerate(secs):  # the spoofed client: apex pages, www Referer
+        lines.append(
+            f'example.com:443 203.0.113.5 - - '
+            f'[10/Oct/2023:12:05:{sec:02d} +0000] "GET /a{i} HTTP/1.1" 200 500 '
+            f'"https://www.example.com/" "{_CHROME}"'
+        )
+    log = tmp_path / f"wwwredir_{www_status}.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return log
+
+
+def _profile_for(result: pipeline.AnalysisResult, ip: str) -> object:
+    for profile in result.profiles:
+        if profile.client_id.ip == ip:
+            return profile
+    raise AssertionError(f"no client with ip {ip}")
+
+
+def test_www_redirector_gate_fires_impossible_referer(tmp_path: Path) -> None:
+    # www 301s to apex (100% 3xx over 60 requests) -> the gate arms, and the Chrome
+    # client carrying a same-site www Referer becomes a spoofed_browser.
+    log = _www_redirector_log(tmp_path, www_status=301)
+    parser = resolve("apache", {"format": PRESETS["vhost_combined"]})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
+    profile = _profile_for(result, "203.0.113.5")
+    assert profile.classification.primary is Kind.SPOOFED_BROWSER  # type: ignore[attr-defined]
+    assert "impossible-referer" in profile.classification.tags  # type: ignore[attr-defined]
+
+
+def test_www_serving_content_leaves_gate_off(tmp_path: Path) -> None:
+    # www serves 200s (a genuine alias, not a redirector) -> the gate stays off and
+    # the same client's www Referer is unremarkable: it stays a browser.
+    log = _www_redirector_log(tmp_path, www_status=200)
+    parser = resolve("apache", {"format": PRESETS["vhost_combined"]})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
+    profile = _profile_for(result, "203.0.113.5")
+    assert profile.classification.primary is Kind.BROWSER  # type: ignore[attr-defined]
+    assert "impossible-referer" not in profile.classification.tags  # type: ignore[attr-defined]
+
+
+def test_apex_redirector_gate_fires_impossible_referer(tmp_path: Path) -> None:
+    # The symmetric regime: the bare apex 301s to www (www is canonical). A Chrome
+    # client served for www that carries a bare-apex Referer becomes a spoofed_browser.
+    lines: list[str] = []
+    for i in range(60):  # the apex is redirect-only: 60 x 301
+        lines.append(
+            f'example.com:443 198.51.100.{i} - - '
+            f'[10/Oct/2023:12:00:{i % 60:02d} +0000] "GET /p{i} HTTP/1.1" 301 0 "-" "curl/8"'
+        )
+    for i, sec in enumerate([0, 4, 9, 11, 18, 26, 27, 40, 55, 58]):  # served www, apex Referer
+        lines.append(
+            f'www.example.com:443 203.0.113.5 - - '
+            f'[10/Oct/2023:12:05:{sec:02d} +0000] "GET /a{i} HTTP/1.1" 200 500 '
+            f'"https://example.com/" "{_CHROME}"'
+        )
+    log = tmp_path / "apexredir.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["vhost_combined"]})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"))
+    profile = _profile_for(result, "203.0.113.5")
+    assert profile.classification.primary is Kind.SPOOFED_BROWSER  # type: ignore[attr-defined]
+    assert "impossible-referer" in profile.classification.tags  # type: ignore[attr-defined]
+
+
+def test_www_redirector_gate_holds_for_mid_stream_eviction(tmp_path: Path) -> None:
+    # A quiescent client flushed mid-stream by the retired-cap overflow (emit() runs
+    # before end-of-stream) must still see the armed gate -- the gate is evaluated
+    # live from the running counters, not once after the loop.
+    lines: list[str] = []
+    for i in range(60):  # arm the gate early: 60 www 301s in the first minute
+        lines.append(
+            f'www.example.com:443 198.51.100.{i} - - '
+            f'[10/Oct/2023:12:00:{i % 60:02d} +0000] "GET /p{i} HTTP/1.1" 301 0 "-" "curl/8"'
+        )
+    for i, sec in enumerate([0, 1, 2, 3, 4, 5]):  # the spoofed client, next minute
+        lines.append(
+            f'example.com:443 203.0.113.5 - - '
+            f'[10/Oct/2023:12:01:{sec:02d} +0000] "GET /a{i} HTTP/1.1" 200 500 '
+            f'"https://www.example.com/" "{_CHROME}"'
+        )
+    # A much-later request advances the clock so the spoofed client goes quiescent and
+    # is evicted; retired_cap=0 emits it immediately, mid-stream.
+    lines.append(
+        '8.8.8.8 8.8.8.8 - - [10/Oct/2023:13:00:00 +0000] "GET / HTTP/1.1" 200 100 "-" "curl/8"'
+    )
+    log = tmp_path / "midstream.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["vhost_combined"]})
+    result = pipeline.analyze(
+        log,
+        parser,
+        identity.get_strategy("ip_ua"),
+        quiescent_seconds=60.0,
+        retired_cap=0,
+    )
+    profile = _profile_for(result, "203.0.113.5")
+    assert profile.classification.primary is Kind.SPOOFED_BROWSER  # type: ignore[attr-defined]
+    assert "impossible-referer" in profile.classification.tags  # type: ignore[attr-defined]
+
+
+def test_redirect_shadow_directions_and_suppression() -> None:
+    from agent_census.pipeline import _redirect_shadow
+
+    # bucket = [www_total, www_3xx, bare_total, bare_3xx]
+    def shadow(bucket: list[int]) -> str | None:
+        return _redirect_shadow({"s": bucket}, "s", min_requests=50, gate_ratio=0.9)
+
+    assert shadow([60, 60, 100, 0]) == "www"  # www redirect-only, apex serves content
+    assert shadow([100, 0, 60, 60]) == "apex"  # apex redirect-only, www serves content
+    assert shadow([60, 60, 60, 60]) is None  # both redirect-dominated -> suppressed
+    assert shadow([10, 10, 100, 0]) is None  # www below the min sample
+    assert shadow([100, 0, 100, 0]) is None  # neither redirect-dominated
+    assert _redirect_shadow({}, "missing", min_requests=50, gate_ratio=0.9) is None
+
+
+def test_redirect_shadow_is_scoped_per_site_key() -> None:
+    # A foreign non-www 301 farm must not pollute the analysed site's bare bucket:
+    # the gate reads only the dominant site's own www-vs-bare split.
+    from agent_census.pipeline import _redirect_shadow
+
+    site_redir = {
+        "a.com": [60, 60, 100, 0],  # analysed site: www 301s, apex serves content
+        "legacy.com": [0, 0, 500, 500],  # a foreign, heavily-redirecting non-www host
+    }
+    # a.com is judged on a.com alone -> www-shadow, not flipped to apex by legacy.com.
+    assert _redirect_shadow(site_redir, "a.com", min_requests=50, gate_ratio=0.9) == "www"
+
+
 def test_vhost_filter_keeps_any_of_several(tmp_path: Path) -> None:
     # Repeated --vhost is a union: a line is kept if it matches any term.
     rows = [

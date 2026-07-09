@@ -726,6 +726,10 @@ _SHARED_TUNING: dict[str, str] = {
     "fabricated_min_requests": "fabricated_referer.min_requests",
     "storm_404_ratio_min": "storm_404.ratio_min",
     "storm_404_distinct_paths_min": "storm_404.distinct_paths_min",
+    "impossible_referer_ratio_min": "impossible_referer.ratio_min",
+    "impossible_referer_min_hits": "impossible_referer.min_hits",
+    "redirect_gate_min_requests": "redirect_gate.min_requests",
+    "redirect_gate_3xx_ratio": "redirect_gate.gate_3xx_ratio",
 }
 
 

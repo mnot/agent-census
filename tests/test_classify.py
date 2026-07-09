@@ -145,6 +145,119 @@ def test_self_referer_on_non_browser_ua_is_not_tagged() -> None:
     assert "forged-referer" not in classify_client(feats).tags
 
 
+def _www_referer_browser(**kw: object) -> ClientFeatures:
+    """A browser-shaped client carrying a same-site www Referer on every request
+    (served the apex) -- the www->apex-redirector spoof shape."""
+    base: dict[str, object] = dict(
+        request_count=200,
+        ua_looks_like_browser=True,
+        asset_coload_ratio=0.5,  # otherwise a solid browser
+        feed_requests=0,
+        www_referer_hits=200,
+        www_referer_ratio=1.0,
+    )
+    base.update(kw)
+    return ClientFeatures(**base)  # type: ignore[arg-type]
+
+
+def _apex_referer_browser(**kw: object) -> ClientFeatures:
+    """The mirror shape: a browser carrying a same-site bare-apex Referer on every
+    request (served www) -- the apex->www-redirector spoof shape."""
+    base: dict[str, object] = dict(
+        request_count=200,
+        ua_looks_like_browser=True,
+        asset_coload_ratio=0.5,
+        feed_requests=0,
+        apex_referer_hits=200,
+        apex_referer_ratio=1.0,
+    )
+    base.update(kw)
+    return ClientFeatures(**base)  # type: ignore[arg-type]
+
+
+def test_impossible_referer_makes_a_browser_spoofed() -> None:
+    # On a www-redirector site a same-site www Referer is impossible from a real
+    # browser: a residential browser -> spoofed_browser, tagged. This is the #96 catch.
+    result = classify_client(_www_referer_browser(), redirect_shadow="www")
+    assert result.primary is Kind.SPOOFED_BROWSER
+    assert "impossible-referer" in result.tags
+
+
+def test_impossible_apex_referer_makes_a_browser_spoofed() -> None:
+    # The symmetric case: an apex->www redirector, where a bare-apex Referer is the
+    # impossible one. Same verdict, driven by the apex-side counter and gate.
+    result = classify_client(_apex_referer_browser(), redirect_shadow="apex")
+    assert result.primary is Kind.SPOOFED_BROWSER
+    assert "impossible-referer" in result.tags
+
+
+def test_impossible_referer_direction_must_match_the_gate() -> None:
+    # A www Referer on an apex-redirector site (and vice versa) is NOT impossible --
+    # the tell only fires when the Referer names the redirect-only form.
+    assert "impossible-referer" not in classify_client(
+        _www_referer_browser(), redirect_shadow="apex"
+    ).tags
+    assert "impossible-referer" not in classify_client(
+        _apex_referer_browser(), redirect_shadow="www"
+    ).tags
+
+
+def test_impossible_referer_needs_a_redirect_shadow() -> None:
+    # Same client, but the site redirects neither form (e.g. www serves content):
+    # the tell can't fire, so it stays a browser.
+    result = classify_client(_www_referer_browser(), redirect_shadow=None)
+    assert result.primary is Kind.BROWSER
+    assert "impossible-referer" not in result.tags
+
+
+def test_impossible_referer_below_min_ratio_does_not_fire() -> None:
+    # A lone www Referer could be a quirky proxy / extension -- require a real share.
+    feats = _www_referer_browser(www_referer_hits=3, www_referer_ratio=0.015)
+    result = classify_client(feats, redirect_shadow="www")
+    assert result.primary is Kind.BROWSER
+    assert "impossible-referer" not in result.tags
+
+
+def test_impossible_referer_ignores_feed_clients() -> None:
+    # Feed pollers that hit www are already handled by feed_ratio -- not additive.
+    feats = _www_referer_browser(feed_requests=200, feed_ratio=1.0)
+    result = classify_client(feats, redirect_shadow="www")
+    assert "impossible-referer" not in result.tags
+
+
+def test_impossible_referer_does_not_override_a_stronger_signal() -> None:
+    # A vuln scanner behind a browser UA that also carries www Referers stays a
+    # vuln scanner: the conversion only applies when browser is the winning verdict.
+    feats = _www_referer_browser(
+        vuln_path_hits=50,
+        vuln_path_ratio=0.25,
+        ratio_404=0.7,
+        distinct_404_paths=20,
+    )
+    assert classify_client(feats, redirect_shadow="www").primary is Kind.VULN_SCANNER
+
+
+def test_impossible_referer_reaches_spoofed_from_below_threshold() -> None:
+    # When no classifier clears the bar, the tell still routes a residential
+    # browser-UA client to spoofed_browser rather than letting it fall to UNKNOWN.
+    feats = _www_referer_browser(asset_coload_ratio=0.0)
+    result = combine([], feats, redirect_shadow="www")
+    assert result.primary is Kind.SPOOFED_BROWSER
+    assert "impossible-referer" in result.tags
+
+
+def test_plain_costume_residential_stays_unspoofed() -> None:
+    # Regression: a browser costume with no www tell on a residential IP keeps its
+    # datacenter gate -- it must NOT become spoofed_browser off the back of this work.
+    feats = ClientFeatures(
+        request_count=200,
+        ua_looks_like_browser=True,
+        asset_coload_ratio=0.0,
+        referer_following_ratio=0.0,
+    )
+    assert classify_client(feats, redirect_shadow="www").primary is not Kind.SPOOFED_BROWSER
+
+
 def test_probing_browser_is_not_a_confident_browser() -> None:
     # Headless-browser automation co-loads assets like a real browser, but a
     # person never fetches attack paths -- probing must sink the browser verdict.

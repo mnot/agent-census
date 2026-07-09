@@ -45,3 +45,26 @@ min_requests = 4
 # classifier and the 404-storm tag.
 ratio_min = 0.6
 distinct_paths_min = 15
+
+[impossible_referer]
+# A same-site Referer naming the host form the site only ever redirects (never
+# renders) is impossible from a real browser. Gated on the site actually redirecting
+# one form to the other (see [redirect_gate]), this then requires a browser UA, no
+# feed activity, and the Referer on a real share of requests -- a lone hit could be a
+# quirky proxy / extension. Used by the impossible-referer tag and the combiner's
+# browser -> spoofed_browser conversion. Calibrated on live logs: the offending
+# clients are low-volume (so min_hits stays low), and a real browser essentially never
+# carries the redirect-only form on a fifth of its requests.
+ratio_min = 0.2
+min_hits = 2
+
+[redirect_gate]
+# Infer that the site 301s one host form to the other (www <-> apex) from observed
+# traffic rather than a hard-coded rule: within the dominant site's own traffic, the
+# share of its www.* requests (and, separately, its non-www requests) that returned a
+# 3xx. When exactly one side is at/above `gate_3xx_ratio` (with at least `min_requests`
+# requests to judge), that side is the redirect-only "shadow" and the impossible-
+# referer signal is armed for it. Scoped per site so a foreign vhost's redirects don't
+# arm it. Used by the pipeline.
+min_requests = 50
+gate_3xx_ratio = 0.9

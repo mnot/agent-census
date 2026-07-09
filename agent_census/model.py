@@ -170,6 +170,19 @@ class ClientFeatures:  # pylint: disable=too-many-instance-attributes
     referer_following_ratio: float = 0.0  # referer is a path this client fetched earlier
     self_referer_ratio: float = 0.0  # referer == the requested path (fabricated; browsers never do)
     referer_count: int = 0  # requests that carried a Referer (0 -> can't judge navigation)
+    # Same-site Referers, split by the Referer's own host form. On a site that 301s
+    # one form to the other, a compliant browser can never be *on* the redirect-only
+    # form to refer from, so a Referer naming it is fabricated / replayed -- whether
+    # the request went to the apex or to the redirect-only host itself. Both forms are
+    # tallied because either can be the redirect-only one; the pipeline's redirect-
+    # shadow gate says which applies, and only that counter is meaningful (the other is
+    # ordinary same-site navigation on the content host). ``www_referer_*`` counts
+    # www.<site> Referers; ``apex_referer_*`` counts bare-apex Referers. Ratios are over
+    # all requests, so a threshold can require the Referer on a real share of them.
+    www_referer_hits: int = 0
+    www_referer_ratio: float = 0.0
+    apex_referer_hits: int = 0
+    apex_referer_ratio: float = 0.0
 
     # asset co-loading (the browser fingerprint)
     asset_coload_ratio: float = 0.0  # HTML responses followed by sub-resource fetches

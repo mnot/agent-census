@@ -57,6 +57,119 @@ def test_as_number_filled_from_later_line() -> None:
     assert feats.as_number == "16509"
 
 
+def _served(path: str, referer: str, *, host: str = "example.com", **kw: object) -> object:
+    """A request served for ``host`` (via %v), with a Referer."""
+    extra = {"server_name": host}
+    return entry(path, referer=referer, extra=extra, **kw)  # type: ignore[arg-type]
+
+
+def test_same_site_www_referer_counts() -> None:
+    # A Referer that is the www. form of the host the request was served for.
+    feats = extract_features(
+        [
+            _served("/a", "https://www.example.com/a"),
+            _served("/b", "https://www.example.com/b", offset=1),
+        ]
+    )
+    assert feats.www_referer_hits == 2
+    assert feats.www_referer_ratio == 1.0
+    assert feats.apex_referer_hits == 0
+
+
+def test_same_site_apex_referer_counts() -> None:
+    # The mirror: served for www.example.com, Referer names the bare apex.
+    feats = extract_features(
+        [
+            _served("/a", "https://example.com/a", host="www.example.com"),
+            _served("/b", "https://example.com/b", host="www.example.com", offset=1),
+        ]
+    )
+    assert feats.apex_referer_hits == 2
+    assert feats.apex_referer_ratio == 1.0
+    assert feats.www_referer_hits == 0
+
+
+def test_www_referer_counts_even_when_served_by_www() -> None:
+    # URL-replaying automation hits the www host directly (served www) carrying a www
+    # Referer and eats the 301 -- still impossible (www never renders), so it counts as
+    # a www Referer regardless of the request's own host form.
+    feats = extract_features(
+        [
+            _served("/a", "https://www.example.com/a", host="www.example.com", status=301),
+            _served("/b", "https://www.example.com/b", host="www.example.com", offset=1, status=301),
+        ]
+    )
+    assert feats.www_referer_hits == 2
+    assert feats.apex_referer_hits == 0
+
+
+def test_referer_form_is_tallied_by_the_referer_not_the_served_host() -> None:
+    # The counter follows the Referer's form: an apex Referer tallies apex, a www
+    # Referer tallies www, whatever host the request itself was served for.
+    feats = extract_features(
+        [
+            _served("/a", "https://example.com/x"),  # apex Referer -> apex counter
+            _served("/b", "https://www.example.com/y", offset=1),  # www Referer -> www counter
+        ]
+    )
+    assert feats.apex_referer_hits == 1
+    assert feats.www_referer_hits == 1
+
+
+def test_cross_site_referer_is_not_counted() -> None:
+    # A Referer for a different registrable site is never a same-site tell.
+    feats = extract_features([_served("/a", "https://www.other.com/a")])
+    assert feats.www_referer_hits == 0
+    assert feats.apex_referer_hits == 0
+
+
+def test_cross_site_www_referer_is_not_a_www_hit() -> None:
+    # A www Referer for a *different* site is not a same-site www tell; a same-site
+    # apex Referer tallies on the apex side, not the www side.
+    feats = extract_features(
+        [
+            _served("/a", "https://www.other.com/a"),  # cross-site www -> neither
+            _served("/b", "https://example.com/b", offset=1),  # same-site apex -> apex side
+        ]
+    )
+    assert feats.www_referer_hits == 0
+    assert feats.www_referer_ratio == 0.0
+    assert feats.apex_referer_hits == 1
+
+
+def test_www_referer_ratio_is_over_all_requests() -> None:
+    feats = extract_features(
+        [
+            _served("/a", "https://www.example.com/a"),
+            _served("/b", "https://example.com/b", offset=1),  # apex Referer
+            _served("/c", "https://example.com/c", offset=2),  # apex Referer
+        ]
+    )
+    assert feats.www_referer_hits == 1
+    assert feats.www_referer_ratio == pytest.approx(1 / 3)
+
+
+def test_www_referer_needs_a_served_host() -> None:
+    # No %v / Host header in the log -> the site can't be established, so a www
+    # Referer can't be judged same-site and is not counted.
+    feats = extract_features(
+        [entry("/a", referer="https://www.example.com/a")],
+    )
+    assert feats.www_referer_hits == 0
+
+
+def test_www_referer_hits_merge() -> None:
+    # Folding two IPs of one actor sums the www-Referer hits.
+    from agent_census.features import FeatureAccumulator
+
+    left = FeatureAccumulator()
+    left.add(_served("/a", "https://www.example.com/a"))  # type: ignore[arg-type]
+    right = FeatureAccumulator()
+    right.add(_served("/b", "https://www.example.com/b"))  # type: ignore[arg-type]
+    left.merge(right)
+    assert left.www_referer_hits == 2
+
+
 def test_volume_and_bandwidth() -> None:
     feats = extract_features(
         [entry("/a", bytes_sent=100), entry("/b", bytes_sent=300, offset=1)]

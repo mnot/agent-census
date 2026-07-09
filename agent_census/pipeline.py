@@ -31,8 +31,9 @@ from .classify.relative import (
     make_collector,
     tag_profile,
 )
-from .dataload import KNOWN_AGENT_CATEGORIES, CrawlerSpec
+from .dataload import KNOWN_AGENT_CATEGORIES, CrawlerSpec, load_shared_tuning
 from .features import DisallowedCheck, FeatureAccumulator
+from .hostforms import bare_host, site_key
 from .hosting import (
     asn_for_ip,
     datacenter_provider,
@@ -138,6 +139,40 @@ def _logged_asn(entry: LogEntry) -> str | None:
 def _vhost_of(entry: LogEntry) -> str | None:
     """The virtual host a line was served for: the logged ``%v``, else the Host header."""
     return entry.extra.get("server_name") or entry.host_header
+
+
+def _redirect_shadow(
+    site_redir: dict[str, list[int]],
+    dominant: str | None,
+    *,
+    min_requests: float,
+    gate_ratio: float,
+) -> str | None:
+    """Which host form (if any) the dominant site redirects away -- ``"www"`` (www
+    301s to the apex) or ``"apex"`` (the apex 301s to www) -- inferred from that one
+    site's own www-vs-bare 3xx split. Scoped to the dominant site's registrable key so
+    a foreign vhost's redirects (a legacy 301 farm, an HTTP-only host) can't arm the
+    gate off traffic that isn't the site's. ``bucket`` is
+    ``[www_total, www_3xx, bare_total, bare_3xx]``.
+
+    Returns ``None`` when neither side is redirect-dominated, and *also* when both are:
+    with no content host there is nothing to have browsed, so nothing to spoof. (A site
+    that additionally 301s http->https on the apex can, in principle, push the bare side
+    over the gate and mask a genuine www-shadow. That suppression is deliberate --
+    silence is the conservative choice over a possible false accusation on a real
+    browser.) The ``>= min_requests`` checks also guard the divisions (min is positive).
+    """
+    bucket = site_redir.get(dominant or "")
+    if bucket is None:
+        return None
+    www_total, www_3xx, bare_total, bare_3xx = bucket
+    www = www_total >= min_requests and www_3xx / www_total >= gate_ratio
+    apex = bare_total >= min_requests and bare_3xx / bare_total >= gate_ratio
+    if www and not apex:
+        return "www"
+    if apex and not www:
+        return "apex"
+    return None
 
 
 def _excluded_by_vhost(entry: LogEntry, vhosts: Sequence[str] | None) -> bool:
@@ -560,9 +595,26 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
     total = parsed = skipped = excluded = out_of_window = 0
     client_count = singleton_count = multi_ua_ips = declared_resident_count = 0
     host_counts: Counter[str] = Counter()  # served host -> line count, for the site label
+    # Redirect-shadow gate, per registrable site: site-key -> [www_total, www_3xx,
+    # bare_total, bare_3xx]. The dominant site's own www-vs-bare 3xx split decides
+    # whether it 301s one host form to the other (arming the impossible-referer tell);
+    # keying it per site keeps a foreign vhost's redirects out of the denominator.
+    # See _redirect_shadow.
+    site_redir: dict[str, list[int]] = defaultdict(lambda: [0, 0, 0, 0])
+    _shared = load_shared_tuning()
+    _redir_min = _shared["redirect_gate_min_requests"]
+    _redir_gate = _shared["redirect_gate_3xx_ratio"]
     latest_ts: float | None = None
     reasons: dict[str, int] = defaultdict(int)
     nonce_tracker = WbaNonceTracker()  # Web Bot Auth replay detection across the whole log
+
+    def _dominant_site_key() -> str | None:
+        # The site the report is about: the most-common served host's registrable key.
+        # Read live at each emit so a mid-stream retired-cap eviction (emit() runs
+        # before end-of-stream) uses the best key so far -- a real redirector's counts
+        # dominate within its first handful of requests, so it matches the final value.
+        top = host_counts.most_common(1)
+        return site_key(bare_host(top[0][0])) if top else None
 
     def emit(
         key: ClientId,
@@ -683,6 +735,9 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             wba=wba_result,
             datacenter=in_datacenter,
             aggregate=aggregate,
+            redirect_shadow=_redirect_shadow(
+                site_redir, _dominant_site_key(), min_requests=_redir_min, gate_ratio=_redir_gate
+            ),
             unknown_threshold=unknown_threshold,
             keep_signals=keep_signals,
         )
@@ -828,6 +883,13 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         served = _vhost_of(entry)
         if served:
             host_counts[served] += 1
+            sk = site_key(bare_host(served))
+            if sk:  # tally into this site's www or bare 3xx bucket for the gate
+                bucket = site_redir[sk]
+                base = 0 if served.lower().startswith("www.") else 2
+                bucket[base] += 1
+                if entry.status is not None and 300 <= entry.status < 400:
+                    bucket[base + 1] += 1
         ip, ua = entry.remote_host, entry.user_agent
         # Track this signed request's nonce against its origin, for replay detection
         # over the whole log (done per entry, not per sampled claim, so a replay

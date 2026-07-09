@@ -716,6 +716,7 @@ def load_request_signatures() -> RequestSignatures:
 _SHARED_TUNING: dict[str, str] = {
     "unknown_threshold": "verdict.unknown_threshold",
     "browser_coload_min": "browser_shape.coload_ratio_min",
+    "browser_coload_min_pages": "browser_shape.coload_min_pages",
     "browser_no_coload_max": "browser_shape.no_coload_max",
     "browser_follow_min": "browser_shape.follow_ratio_min",
     "browser_no_follow_max": "browser_shape.no_follow_max",

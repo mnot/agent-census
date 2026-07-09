@@ -109,13 +109,32 @@ def test_browser_fires_on_coloading() -> None:
     feats = ClientFeatures(
         request_count=10,
         asset_coload_ratio=0.8,
+        page_count=5,  # enough pages that the co-load share is real evidence
         ua_looks_like_browser=True,
         static_ratio=0.5,
         ratio_404=0.0,
     )
     signals = BrowserClassifier().evaluate(feats)
     assert signals and signals[0].kind is Kind.BROWSER
-    assert signals[0].confidence >= 0.45
+    # The co-load signal itself fired -- confidence is above the bare UA floor and the
+    # evidence names the sub-resource loading, not just a browser-shaped UA.
+    assert signals[0].confidence > 0.45
+    assert any("sub-resource" in e for e in signals[0].evidence)
+
+
+def test_browser_coload_ignored_when_too_few_pages() -> None:
+    # One incidental HTML page co-loads its assets (100%), but a single page is not
+    # enough to read the ratio as evidence -- the co-load signal must not fire, so a
+    # feed reader that gets clicked into once doesn't score a confident browser.
+    feats = ClientFeatures(
+        request_count=10,
+        asset_coload_ratio=1.0,
+        page_count=1,
+        ua_looks_like_browser=True,
+        ratio_404=0.0,
+    )
+    signals = BrowserClassifier().evaluate(feats)
+    assert signals and not any("sub-resource" in e for e in signals[0].evidence)
 
 
 def test_self_referer_browser_is_demoted_and_tagged() -> None:
@@ -1134,7 +1153,13 @@ def test_uses_head_tag() -> None:
 
 
 def test_304_lifts_browser_and_feed_reader_confidence() -> None:
-    base = dict(request_count=10, asset_coload_ratio=0.6, ua_looks_like_browser=True, ratio_404=0.0)
+    base = dict(
+        request_count=10,
+        asset_coload_ratio=0.6,
+        page_count=5,
+        ua_looks_like_browser=True,
+        ratio_404=0.0,
+    )
     without = BrowserClassifier().evaluate(ClientFeatures(**base, status_counts={200: 10}))
     with_cache = BrowserClassifier().evaluate(ClientFeatures(**base, status_counts={304: 2}))
     assert with_cache[0].confidence > without[0].confidence

@@ -258,6 +258,25 @@ class Signal:
 
 
 @dataclass(frozen=True, slots=True)
+class ClassifyContext:
+    """Combiner-level inputs a classifier may need but that are *not* per-client
+    features: the origin's network type and the site's redirect regime.
+
+    Classifiers are pure functions of :class:`ClientFeatures` by default; the wall
+    between "measure" and "decide" keeps them independently testable. A few kinds,
+    though, can only be judged with context the feature vector deliberately excludes
+    -- whether the origin is hosting infrastructure, and which host form the site
+    redirects away (arming the impossible-referer tell). Rather than leak those into
+    every feature struct, they travel in this small context object, passed to
+    :meth:`Classifier.evaluate_in_context`. A classifier that ignores it (the common
+    case) is unaffected; one that needs it opts in by overriding that method.
+    """
+
+    datacenter: bool = False
+    redirect_shadow: str | None = None  # "www" | "apex" | None -- see pipeline._redirect_shadow
+
+
+@dataclass(frozen=True, slots=True)
 class Classification:
     """The final verdict for a client: one primary kind plus secondary tags."""
 

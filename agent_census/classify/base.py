@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from ..model import ClientFeatures, Kind, Signal
+from ..model import ClassifyContext, ClientFeatures, Kind, Signal
 
 
 class Classifier(ABC):
@@ -26,6 +26,18 @@ class Classifier(ABC):
     @abstractmethod
     def evaluate(self, features: ClientFeatures) -> list[Signal]:
         """Return signals supporting :attr:`label` (possibly empty)."""
+
+    def evaluate_in_context(
+        self, features: ClientFeatures, context: ClassifyContext
+    ) -> list[Signal]:
+        """Context-aware entry point the combiner runs (see :class:`ClassifyContext`).
+
+        The default ignores the context and defers to the pure :meth:`evaluate`, so
+        the purity contract stays the norm and existing classifiers need no change. A
+        classifier that genuinely needs a combiner-level input -- the origin network,
+        the site's redirect regime -- overrides *this* method, not :meth:`evaluate`.
+        """
+        return self.evaluate(features)
 
     def _signal(
         self,

@@ -10,6 +10,7 @@ from __future__ import annotations
 from ..model import (
     BotVerification,
     Classification,
+    ClassifyContext,
     ClientFeatures,
     ComplianceReport,
     Signal,
@@ -20,11 +21,19 @@ from .combiner import DEFAULT_UNKNOWN_THRESHOLD, combine
 from .registry import all_classifiers
 
 
-def run_classifiers(features: ClientFeatures) -> list[Signal]:
-    """Collect signals from every classifier for one client."""
+def run_classifiers(
+    features: ClientFeatures, context: ClassifyContext | None = None
+) -> list[Signal]:
+    """Collect signals from every classifier for one client.
+
+    ``context`` carries the combiner-level inputs (origin network, redirect regime) a
+    context-aware classifier may read; it defaults to an empty context, under which
+    every classifier behaves exactly as its pure :meth:`~Classifier.evaluate`.
+    """
+    ctx = context if context is not None else ClassifyContext()
     signals: list[Signal] = []
     for classifier in all_classifiers():
-        signals.extend(classifier.evaluate(features))
+        signals.extend(classifier.evaluate_in_context(features, ctx))
     return signals
 
 
@@ -48,7 +57,8 @@ def classify_client(
     ``redirect_shadow`` names the host form the site redirects away (``"www"`` or
     ``"apex"``), arming the impossible-referer spoof tell for that direction.
     """
-    signals = run_classifiers(features)
+    context = ClassifyContext(datacenter=datacenter, redirect_shadow=redirect_shadow)
+    signals = run_classifiers(features, context)
     return combine(
         signals,
         features,

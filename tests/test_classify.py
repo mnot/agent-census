@@ -238,10 +238,11 @@ def test_impossible_referer_does_not_override_a_stronger_signal() -> None:
 
 
 def test_impossible_referer_reaches_spoofed_from_below_threshold() -> None:
-    # When no classifier clears the bar, the tell still routes a residential
-    # browser-UA client to spoofed_browser rather than letting it fall to UNKNOWN.
+    # A residential browser-UA client with no other classifier support still reaches
+    # spoofed_browser: the SpoofedBrowserClassifier fires on the dispositive
+    # impossible-referer tell rather than letting it fall to UNKNOWN.
     feats = _www_referer_browser(asset_coload_ratio=0.0)
-    result = combine([], feats, redirect_shadow="www")
+    result = classify_client(feats, redirect_shadow="www")
     assert result.primary is Kind.SPOOFED_BROWSER
     assert "impossible-referer" in result.tags
 
@@ -341,8 +342,10 @@ def test_lacks_cache_is_tagged() -> None:
     assert feats.holds_no_cache
     result = classify_client(feats)
     assert "lacks-cache" in result.tags
-    # The REDbot tool-driver shape: browser UA, but no cache and no purpose -> automation.
-    assert result.primary is Kind.AUTOMATION
+    # The REDbot tool-driver shape: a browser UA that holds no cache and follows no
+    # links is a costume, so it now reads as spoofed_browser (issue #100) rather than
+    # the older, vaguer automation fallback.
+    assert result.primary is Kind.SPOOFED_BROWSER
 
 
 def test_headless_with_no_purpose_is_automation() -> None:
@@ -763,14 +766,15 @@ _FAKE_BROWSER = ClientFeatures(
 
 
 def test_combiner_spoofed_browser_from_datacenter() -> None:
-    # Browser UA + hosting IP + no browser behaviour, otherwise unknown -> spoofed.
-    # The verdict's evidence is now in the tags: browser-ua, but no-assets and cold.
-    signals = [Signal(Kind.BROWSER, 0.3, ("ua only",), "browser")]
-    result = combine(signals, _FAKE_BROWSER, datacenter=True, unknown_threshold=0.45)
+    # Browser UA + hosting IP + no browser behaviour -> spoofed_browser, now produced by
+    # the SpoofedBrowserClassifier competing in normal aggregation (datacenter is one
+    # weighted tell, not a hard gate). Evidence is in the tags: browser-ua, no-assets, cold.
+    result = classify_client(_FAKE_BROWSER, datacenter=True)
     assert result.primary is Kind.SPOOFED_BROWSER
     assert {"browser-ua", "no-assets", "cold", "datacenter"} <= result.tags
-    # Same fixed-sentence-is-the-whole-reason shape as the automation fallback.
-    assert result.boilerplate_lead is True
+    # The classifier reports the specific tells that fired, so the lead is real evidence,
+    # not the old boilerplate fallback sentence.
+    assert result.boilerplate_lead is False
 
 
 def test_browser_version_parsing_and_age() -> None:

@@ -1,0 +1,51 @@
+# Browser-spoof score (classify/spoofed_browser.py).
+#
+# A browser-shaped User-Agent that does not behave like a browser is a costume.
+# Rather than one hard AND gated on a datacenter origin (the old rule), the kind is
+# now an accumulation of tells: a strong enough combination -- on ANY origin -- makes
+# the client a spoofed_browser, with the datacenter origin only one weighted tell
+# among many (issue #100). See docs/design/stage1-100-spoofed-browser.md.
+#
+# Weights are 0.05-step ordinal strengths (like every classifier's), calibrated on a
+# live mnot.net digest against four anchors that must all hold:
+#   - impossible-referer fires alone                       (0.60 >= threshold)
+#   - datacenter + costume fires                           (0.30 + 0.15 + 0.15)
+#   - residential costume + one strong tell fires          (0.30 + 0.30)
+#   - residential costume ALONE does not                   (0.30 < threshold)
+# The last anchor is the false-positive guard: a referer-stripping privacy browser
+# shows the costume shape but nothing else, and must stay a browser.
+#
+# High blast radius: a weight change moves every client, so re-verify against a real
+# log (agent-census calibrate), not just the tests, before changing these.
+
+[score]
+threshold = 0.45      # fire at/above this. MUST be >= shared unknown_threshold (enforced at
+                      # load in classify/spoofed_browser.py): a firing spoof signal has to
+                      # clear the bar so it becomes a real primary, because the combiner drops
+                      # the browser vote as soon as a spoof signal is present.
+confidence_cap = 0.9  # emitted confidence = min(score, confidence_cap)
+
+[gate]
+min_requests = 2      # one request reveals nothing either way (as fake_browser.min_requests)
+
+# Tells fall in two groups (see classify/spoofed_browser.py). ACTIVE-deception / origin
+# tells count regardless of how browser-shaped the traffic looks -- a client faking
+# referers or replaying an impossible one is deceiving even while it renders pages. COLD /
+# costume tells are absence-of-browserness and count only when the client does NOT
+# genuinely co-load a page's sub-resources (asset_coload_ratio <= browser_coload_min), so
+# a cache-disabled or privacy human who still loads assets is not swept in.
+
+[weights]
+# --- active-deception / origin (always counted) ---
+# Dispositive alone (validated on live logs in #101): a same-site Referer naming the
+# site's redirect-only host form, which a compliant browser cannot emit.
+impossible_referer = 0.6
+datacenter = 0.3      # hosting origin -- corroboration, no longer a hard gate
+head_heavy = 0.3      # HEAD share above the notable line -- browsers issue GET
+forged_referer = 0.3  # Referer == the requested URL -- fabricated navigation
+
+# --- cold / costume (counted only when the client does not co-load assets) ---
+holds_no_cache = 0.3  # re-fetches / high volume, never a 304
+no_coload = 0.15      # fetched HTML pages but co-loaded none of their sub-resources
+no_follow = 0.15      # followed no on-site links
+ua_age = 0.15         # UA version reads ancient / impossible for its active period

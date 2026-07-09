@@ -21,7 +21,8 @@ scraper_min_distinct_paths = 2
 [fallback]
 # Confidence assigned to each narrowed-UNKNOWN verdict when no classifier cleared the
 # bar but the origin / behaviour still points somewhere more specific than "unknown".
-spoofed_browser = 0.6
+# (spoofed_browser is no longer a fallback -- it is a scored classifier now; see
+# data/tuning/spoofed_browser.toml and issue #100.)
 scraper = 0.5
 automation = 0.5
 

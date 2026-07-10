@@ -366,7 +366,9 @@ class RequestSignatures:
     """
 
     static_extensions: tuple[str, ...] = ()
+    static_media_types: tuple[str, ...] = ()
     page_extensions: tuple[str, ...] = ()
+    page_media_types: tuple[str, ...] = ()
     chrome_asset_markers: tuple[str, ...] = ()
     traversal_markers: tuple[str, ...] = ()
     evasion_markers: tuple[str, ...] = ()
@@ -684,8 +686,8 @@ def load_ua_signatures() -> UaSignatures:
 
 
 _REQUEST_SIGNATURE_SCHEMA: dict[str, set[str]] = {
-    "static_assets": {"extensions"},
-    "pages": {"extensions"},
+    "static_assets": {"extensions", "media_types"},
+    "pages": {"extensions", "media_types"},
     "chrome_assets": {"path_markers"},
     "path_traversal": {"markers"},
     "encoding_evasion": {"markers"},
@@ -704,7 +706,9 @@ def load_request_signatures() -> RequestSignatures:
     )
     return RequestSignatures(
         static_extensions=groups[("static_assets", "extensions")],
+        static_media_types=groups[("static_assets", "media_types")],
         page_extensions=groups[("pages", "extensions")],
+        page_media_types=groups[("pages", "media_types")],
         chrome_asset_markers=groups[("chrome_assets", "path_markers")],
         traversal_markers=groups[("path_traversal", "markers")],
         evasion_markers=groups[("encoding_evasion", "markers")],

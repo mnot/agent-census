@@ -249,6 +249,49 @@ def test_coload_referer_to_other_page_is_not_credited() -> None:
     assert feats.asset_coload_ratio == 0.0
 
 
+def _ct(path: str, content_type: str, **kw: object) -> object:
+    """An entry with a response Content-Type set (the parser's ``out:Content-Type``)."""
+    extra = {"out:Content-Type": content_type}
+    return entry(path, extra=extra, **kw)  # type: ignore[arg-type]
+
+
+def test_media_type_beats_extension_for_page_and_asset() -> None:
+    from agent_census.features import _is_page, _is_static
+
+    # No media type -> extension fallback: /style has no extension, so it reads as a page.
+    assert _is_page(200, "/style") is True
+    assert _is_static("/style") is False
+    # With the served media type, /style (text/css) is a sub-resource, not a page; a JSON
+    # fetch is a sub-resource too. Media type wins over the URL.
+    assert _is_page(200, "/style", "text/css") is False
+    assert _is_static("/style", "text/css") is True
+    assert _is_static("/blog/pinned.json", "application/json") is True
+    assert _is_page(200, "/blog/pinned.json", "application/json") is False
+    # A non-200 Content-Type is untrusted (a 404 for /a.css commonly logs text/html), so
+    # it falls back to the extension.
+    from agent_census.features import _served_media
+
+    assert _served_media(entry("/a.css", status=404, extra={"out:Content-Type": "text/html"})) == ""
+
+
+def test_extensionless_and_json_subresources_complete_the_cascade() -> None:
+    # The real-world case (#109): a page whose sub-resources include an extension-less
+    # stylesheet (/style, text/css) and a JSON fetch (/blog/pinned.json) -- both
+    # referer-linked. By media type they are sub-resources, so the page's co-load is
+    # recognised and neither is a phantom page.
+    ref = "https://example.com/blog/x"
+    feats = extract_features(
+        [
+            entry("/blog/x", status=200, offset=0),
+            _ct("/style", "text/css", referer=ref, offset=1),
+            _ct("/blog/pinned.json", "application/json", referer=ref, offset=2),
+            _ct("/blog/top.js", "application/javascript", referer=ref, offset=3),
+        ]
+    )
+    assert feats.page_count == 1  # only /blog/x -- /style and .json are not phantom pages
+    assert feats.asset_coload_ratio == 1.0  # the page's cascade is recognised
+
+
 def test_no_coloading_for_scraper_pattern() -> None:
     entries = [entry(f"/article/{i}", status=200, offset=i) for i in range(10)]
     feats = extract_features(entries)

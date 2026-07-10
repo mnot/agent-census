@@ -26,7 +26,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from ..features import _is_static, _referer_path
+from ..features import _is_static, _referer_path, _served_media
 from ..model import ClientProfile, Kind
 from ._htmlutil import esc as _esc
 from ._htmlutil import kind_badge as _kind_badge
@@ -178,7 +178,7 @@ def _trace_view(
     rows: list[dict[str, object]] = []
     for entry in shown:
         request = (entry.path + ("?" + entry.query if entry.query else "")) or entry.raw_request
-        is_asset = _is_static(entry.path)
+        is_asset = _is_static(entry.path, _served_media(entry))
         ref = entry.referer
         child = bool(
             not folded

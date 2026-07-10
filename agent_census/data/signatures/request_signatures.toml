@@ -5,10 +5,21 @@
 # Path/query markers are matched case-insensitively as substrings.
 
 [static_assets]
-# File extensions a browser pulls in *after* a page: stylesheets, scripts, images,
-# fonts, media. A high share of these is a browser tell -- a real browser fetches a
-# page and then its sub-resources; their absence is a tell the client wants only
-# documents.
+# Sub-resources a browser pulls in *after* a page: stylesheets, scripts, images,
+# fonts, media, data fetches. A high share of these is a browser tell -- a real
+# browser fetches a page and then its sub-resources; their absence is a tell the
+# client wants only documents.
+#
+# The response media type is preferred over the URL extension (see features._is_static):
+# a stylesheet served at /style with no .css is still text/css, and an XHR/fetch of
+# /data.json is a sub-resource. `media_types` are matched as a prefix of the logged
+# 200 Content-Type (so "image/" covers image/png, image/svg+xml, ...); `extensions` are
+# the fallback when the log carries no (200) Content-Type.
+media_types = [
+    "text/css", "text/javascript", "application/javascript", "application/json",
+    "application/pdf", "application/wasm",
+    "image/", "font/", "audio/", "video/", "application/font", "application/x-font",
+]
 extensions = [
     "css", "js", "mjs",
     "png", "jpg", "jpeg", "gif", "svg", "webp", "avif", "ico", "bmp",
@@ -17,9 +28,11 @@ extensions = [
 ]
 
 [pages]
-# Extensions that count as an HTML page rather than an asset (a trailing slash or a
-# path with no extension counts too). Pages are the anchor for the co-load and
-# breadth measurements.
+# What counts as an HTML page (the anchor for the co-load and breadth measurements),
+# rather than a sub-resource. Media type wins: a 200 whose Content-Type is text/html is
+# a page whatever its URL looks like; `extensions` (plus a trailing slash or an
+# extension-less path) are the fallback when no 200 Content-Type was logged.
+media_types = ["text/html", "application/xhtml+xml"]
 extensions = ["html", "htm", "xhtml", "php", "asp", "aspx", "jsp", "shtml", "cfm"]
 
 [chrome_assets]

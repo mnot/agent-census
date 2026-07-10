@@ -10,6 +10,7 @@ from agent_census.model import (
     ClientId,
     ClientProfile,
     Kind,
+    Signal,
     VerificationStatus,
     WbaResult,
     WbaStatus,
@@ -25,6 +26,7 @@ from agent_census.report.format import (
     feature_rows,
     human_duration,
     md_escape,
+    rationale_rows,
     top_evidence,
     truncate,
 )
@@ -337,3 +339,37 @@ def test_md_escape_neutralises_pipe_and_line_breaks() -> None:
     assert md_escape("a|b") == "a\\|b"
     assert md_escape("a\r\nb") == "a  b"  # CRLF -> two spaces, no row break
     assert md_escape("a\rb") == "a b"  # bare CR is neutralised too
+
+
+def test_rationale_leads_with_a_synthesized_primary() -> None:
+    # A fallback verdict (automation / scraper / unknown / impersonator) is decided by
+    # the combiner, so no classifier signal carries it. The rationale must still lead
+    # with it -- otherwise the section shows only the kinds that lost.
+    cls = Classification(
+        primary=Kind.AUTOMATION,
+        confidence=0.4,
+        evidence=("from datacenter infrastructure, with no human signal",),
+        all_signals=(Signal(Kind.BROWSER, 0.3, ("UA matches a browser",), "browser"),),
+    )
+    rows = rationale_rows(cls)
+    assert rows[0].primary and rows[0].kind is Kind.AUTOMATION
+    assert rows[0].evidence == ("from datacenter infrastructure, with no human signal",)
+    assert [r.kind for r in rows] == [Kind.AUTOMATION, Kind.BROWSER]  # winner first, loser after
+
+
+def test_rationale_shows_a_real_primary_once() -> None:
+    # When the primary does come from a classifier signal, it leads exactly once (not
+    # duplicated as both the primary row and a competitor).
+    cls = Classification(
+        primary=Kind.SPOOFED_BROWSER,
+        confidence=0.9,
+        evidence=("browser costume",),
+        all_signals=(
+            Signal(Kind.SPOOFED_BROWSER, 0.9, ("browser costume",), "spoofed_browser"),
+            Signal(Kind.VULN_SCANNER, 0.7, ("44 probe paths",), "vuln_scanner"),
+        ),
+    )
+    rows = rationale_rows(cls)
+    assert [r.kind for r in rows] == [Kind.SPOOFED_BROWSER, Kind.VULN_SCANNER]
+    assert rows[0].classifier == "spoofed_browser"
+    assert sum(r.kind is Kind.SPOOFED_BROWSER for r in rows) == 1

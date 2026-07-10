@@ -24,6 +24,7 @@ from .format import (
     kind_label,
     md_escape,
     ordered_tags,
+    rationale_rows,
     truncate,
 )
 
@@ -124,16 +125,12 @@ def _identity_block(profile: ClientProfile) -> list[str]:
 def _rationale_block(profile: ClientProfile) -> list[str]:
     cls = profile.classification
     lines = ["### Why this classification", ""]
-    signals = sorted(cls.all_signals, key=lambda s: s.confidence, reverse=True)
-    if not signals:
-        lines.append("No classifier produced a signal — left UNKNOWN.")
-    for signal in signals:
-        marker = "→" if signal.kind is cls.primary else " "
+    for row in rationale_rows(cls):
+        marker = "→" if row.primary else " "
         lines.append(
-            f"- {marker} **{kind_label(signal.kind)}** ({signal.confidence:.0%}) "
-            f"— {signal.classifier}"
+            f"- {marker} **{kind_label(row.kind)}** ({row.confidence:.0%}) — {row.classifier}"
         )
-        for item in signal.evidence:
+        for item in row.evidence:
             lines.append(f"    - {md_escape(item)}")
     lines.append("")
     lines += _tags_evidence_block(cls)

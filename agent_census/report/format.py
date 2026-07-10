@@ -461,7 +461,7 @@ def feature_rows(feats: ClientFeatures) -> list[tuple[str, str]]:
             f"2xx {pct(feats.ratio_2xx)} · 3xx {pct(feats.ratio_3xx)} · "
             f"4xx {pct(feats.ratio_4xx)} · 5xx {pct(feats.ratio_5xx)}",
         ),
-        ("404s", f"{pct(feats.ratio_404)} across {feats.distinct_404_paths} distinct paths"),
+        ("404s", f"{pct(feats.ratio_404)} across {feats.distinct_404_targets} distinct URLs"),
         (
             "vuln-path hits",
             f"{feats.vuln_path_hits} ({pct(feats.vuln_path_ratio)}); "

@@ -90,12 +90,11 @@ class VulnScannerClassifier(Classifier):
 
         if (
             features.ratio_404 > _S["storm_404_ratio_min"]
-            and features.distinct_404_paths >= _S["storm_404_distinct_paths_min"]
+            and features.distinct_404_targets >= _S["storm_404_distinct_paths_min"]
         ):
             confidence += _T["storm_404_weight"]
-            evidence.append(
-                f"{features.ratio_404:.0%} 404s across {features.distinct_404_paths} distinct paths"
-            )
+            urls = features.distinct_404_targets
+            evidence.append(f"{features.ratio_404:.0%} 404s across {urls} distinct URLs")
 
         if features.traversal_hits > 0:
             confidence += _T["traversal_weight"]

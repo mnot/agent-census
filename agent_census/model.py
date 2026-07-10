@@ -141,7 +141,8 @@ class ClientFeatures:  # pylint: disable=too-many-instance-attributes
     ratio_4xx: float = 0.0
     ratio_5xx: float = 0.0
     ratio_404: float = 0.0
-    distinct_404_paths: int = 0
+    # Distinct 404 request targets (path + query), so query-string enumeration counts.
+    distinct_404_targets: int = 0
 
     # vulnerability-probe signal
     vuln_path_hits: int = 0

@@ -741,6 +741,9 @@ _SHARED_TUNING: dict[str, str] = {
     "impossible_referer_min_hits": "impossible_referer.min_hits",
     "redirect_gate_min_requests": "redirect_gate.min_requests",
     "redirect_gate_3xx_ratio": "redirect_gate.gate_3xx_ratio",
+    "no_cache_dominant_refetch_min": "no_cache_dominance.cold_refetch_min",
+    "no_cache_dominant_fraction": "no_cache_dominance.dominant_fraction",
+    "no_cache_high_volume": "no_cache_dominance.high_volume",
 }
 
 

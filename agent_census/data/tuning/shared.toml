@@ -90,3 +90,18 @@ min_hits = 2
 # arm it. Used by the pipeline.
 min_requests = 50
 gate_3xx_ratio = 0.9
+
+[no_cache_dominance]
+# When a no-cache client (never a 304) is re-fetching hard enough that "holds no browser
+# cache" is *dispositive* rather than merely notable: re-fetching dominates its traffic --
+# at least `cold_refetch_min` revisits making up at least `dominant_fraction` of requests --
+# or the volume alone passes `high_volume`. Shared because two classifiers must agree on it:
+# browser.py hard-disqualifies a browser verdict on exactly this condition (a soft penalty
+# below it), and spoofed_browser.py fires its no-cache tell on exactly this condition too --
+# so the "not a browser on cache grounds" line is drawn once. The broader
+# `ClientFeatures.holds_no_cache` (which also trips on modest re-fetching) is the *notable*
+# line; this is the *dispositive* one. A broad-path client that never caches but re-fetches
+# little (a heavy human session on a site with no validators) stays under it.
+cold_refetch_min = 20
+dominant_fraction = 0.5
+high_volume = 2000

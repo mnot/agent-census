@@ -91,14 +91,20 @@ def _extension(path: str) -> str:
     return last.rsplit(".", 1)[-1].lower() if "." in last else ""
 
 
-def _served_media(entry: LogEntry) -> str:
-    """The response media type (no parameters), lower-cased -- but only for a 200. A
-    non-200 reports the error/redirect page's type, not the requested resource, so it is
-    not trusted (a 404 for /style.css commonly logs text/html); callers then fall back to
-    the URL extension."""
-    if entry.status != 200:
+def _media_from(content_type: str, status: int | None) -> str:
+    """The response media type (no parameters) -- but only for a 200. A non-200 reports
+    the error/redirect page's type, not the requested resource (a 404 for /style.css
+    commonly logs text/html), so it is not trusted; callers fall back to the URL extension."""
+    if status != 200:
         return ""
-    return _response_content_type(entry).split(";", 1)[0].strip()
+    return content_type.split(";", 1)[0].strip()
+
+
+def _served_media(entry: LogEntry) -> str:
+    """The trusted response media type of ``entry`` (see :func:`_media_from`). The hot
+    per-request path in ``add`` parses the Content-Type once and calls ``_media_from``
+    directly; this convenience is for the low-volume inspect-trace view."""
+    return _media_from(_response_content_type(entry), entry.status)
 
 
 def _media_matches(media: str, markers: tuple[str, ...]) -> bool:
@@ -194,15 +200,16 @@ def _as_identity(entry: LogEntry) -> tuple[str | None, str | None]:
     return org, number
 
 
-def _is_feed_request(entry: LogEntry, path: str) -> bool:
-    """True if the request looks like a feed poll: feed-ish URL or RSS/Atom type."""
+def _is_feed_request(path: str, content_type: str) -> bool:
+    """True if the request looks like a feed poll: feed-ish URL or RSS/Atom media type.
+    ``content_type`` is the raw logged response type (feeds are recognised regardless of
+    status, so it is not the 200-gated :func:`_media_from` value)."""
     segments = [p for p in path.split("/") if p]
     filename = segments[-1].lower() if segments else ""
     if filename in _FEED_FILENAMES:
         return True
     if _FEED_TOKENS.intersection(_FILENAME_PARTS.split(filename)):
         return True
-    content_type = _response_content_type(entry)
     return "rss" in content_type or "atom" in content_type
 
 
@@ -460,11 +467,12 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         if self.distinct_paths is None:
             self.distinct_paths = set()
         self.distinct_paths.add(path)
-        media = _served_media(entry)
+        content_type = _response_content_type(entry)  # parsed once for this request
+        media = _media_from(content_type, entry.status)
         static = _is_static(path, media)
         if static:
             self.static_count += 1
-        if _is_feed_request(entry, path):
+        if _is_feed_request(path, content_type):
             self.feed_requests += 1
 
         self._track_robots(path)

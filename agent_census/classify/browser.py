@@ -72,11 +72,12 @@ class BrowserClassifier(Classifier):
         # stale (but not ancient) version is a mild nudge, not a disqualifier.
         disqualified = False
 
-        # The co-load ratio is the strongest single tell, so it must not fire off a
-        # denominator too small to mean anything: with one HTML page fetched, the
-        # ratio is only ever 0% or 100%, and a feed reader (or anyone) whose user
-        # incidentally loads a single page would score a full-weight "100% co-load".
-        # Require enough pages that the share is actual evidence, not a coin flip.
+        # The co-load ratio is the strongest single tell. Co-load is referer-linked
+        # (#109), so even a single page's cascade -- its sub-resources carrying a Referer
+        # that names it -- is real evidence, not the coin flip a bare-temporal co-load
+        # over one page would be. One-and-done page loads are a large, legitimate share of
+        # sessions, so the floor is low (shared.toml coload_min_pages); it still guards the
+        # degenerate zero-page case.
         if (
             features.page_count >= _S["browser_coload_min_pages"]
             and features.asset_coload_ratio > _S["browser_coload_min"]

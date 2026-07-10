@@ -285,9 +285,10 @@ def _fingerprint_tags(features: ClientFeatures, aggregate: bool) -> dict[str, st
                 f"over {count:,} requests"
             )
 
-    # Sub-resource loading: a browser pulls a page's CSS/JS/images. Only judgeable
-    # once the client fetched enough HTML pages for the co-load share to be a signal
-    # rather than a coin flip (one page is only ever 0% or 100%).
+    # Sub-resource loading: a browser pulls a page's CSS/JS/images. Co-load is
+    # referer-linked (#109), so a single page's cascade is a real signal (its
+    # sub-resources named it), not the coin flip a bare-temporal co-load would be;
+    # judgeable once at least coload_min_pages HTML pages were fetched.
     if features.page_count >= _S["browser_coload_min_pages"]:
         ratio = features.asset_coload_ratio
         if ratio > BROWSER_COLOAD_MIN:

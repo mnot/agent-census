@@ -8,7 +8,7 @@ weight = 0.4
 
 [few_urls]
 # Polls just a URL or two, repeatedly, over enough requests to be sure.
-distinct_paths_max = 2
+distinct_targets_max = 2
 min_requests = 5
 weight = 0.2
 

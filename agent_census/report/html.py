@@ -756,6 +756,7 @@ def render_report_html(
     country_flags: CountryFlags | None = None,
     breakout_min_share: float = BREAKOUT_MIN_SHARE,
     inspect_dir: str | None = None,
+    inspect_version: str | None = None,
 ) -> str:
     """Render the full analysis report as a standalone HTML page.
 
@@ -765,6 +766,10 @@ def render_report_html(
     ``<inspect_dir>/<slug>.json``. One switch, so links and the fetch directory can't
     disagree. Only set it when :func:`inspect_data.write_inspect_bundle` also runs,
     so every linked file exists; leave it ``None`` for a plain copy-the-id report.
+
+    ``inspect_version`` is that bundle's content digest (from ``write_inspect_bundle``);
+    the viewer appends it as ``?v=<digest>`` to each fetch so a republished report busts
+    the browser cache exactly when the data changed. Pass it whenever ``inspect_dir`` is set.
     """
     inspect = inspect_dir is not None
     flags = country_flags or CountryFlags()
@@ -789,7 +794,8 @@ def render_report_html(
         # after this report). JS-string-escaped, with < neutralised so a filename
         # can't close the script element.
         (
-            f"<script>window.__INSPECT_DIR__={_js(inspect_dir + '/')}</script>"
+            f"<script>window.__INSPECT_DIR__={_js(inspect_dir + '/')};"
+            f"window.__INSPECT_VER__={_js(inspect_version or '')}</script>"
             if inspect_dir
             else ""
         ),

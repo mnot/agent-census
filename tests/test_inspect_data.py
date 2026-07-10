@@ -329,12 +329,34 @@ def test_referer_display_treats_www_and_apex_as_same_site() -> None:
 
 def test_writer_emits_one_file_per_rendered_group(tmp_path: Path) -> None:
     result = _run()
-    n = write_inspect_bundle(result.profiles, tmp_path, limit=20, top=5)
+    n, digest = write_inspect_bundle(result.profiles, tmp_path, limit=20, top=5)
     files = list(tmp_path.glob("*.json"))
     assert n == len(files) == len(rendered_groups(result.profiles, top=5))
+    assert re.fullmatch(r"[0-9a-f]{12}", digest)  # a stable content digest for cache-busting
     for path in files:
         data = json.loads(path.read_text(encoding="utf-8"))  # valid JSON
         assert data["slug"] == path.stem  # filename is the slug
+
+
+def test_inspect_digest_is_deterministic_and_content_sensitive(tmp_path: Path) -> None:
+    # Same data -> same digest (the browser keeps its cache); different data -> different
+    # digest (a republished report re-fetches). Independent of the output directory.
+    result = _run()
+    _, d1 = write_inspect_bundle(result.profiles, tmp_path / "a", limit=20, top=5)
+    _, d2 = write_inspect_bundle(result.profiles, tmp_path / "b", limit=20, top=5)
+    assert d1 == d2
+    # A shorter trace limit changes what the files contain -> the token must move.
+    _, d3 = write_inspect_bundle(result.profiles, tmp_path / "c", limit=1, top=5)
+    assert d3 != d1
+
+
+def test_report_embeds_inspect_version_for_cache_busting(tmp_path: Path) -> None:
+    result = _run()
+    _, digest = write_inspect_bundle(result.profiles, tmp_path, limit=20, top=5)
+    html = render_report_html(
+        result, source="x", top=5, inspect_dir="report.inspect", inspect_version=digest
+    )
+    assert f'window.__INSPECT_VER__="{digest}"' in html
 
 
 def test_every_report_link_resolves_to_a_file(tmp_path: Path) -> None:

@@ -848,6 +848,23 @@ def main(argv: Sequence[str] | None = None) -> int:  # pylint: disable=too-many-
                     country_flags=ctx.country_flags,
                 )
             else:
+                # Write the per-client data files first, so the report can embed their
+                # content digest as the cache-busting token before it is rendered. The
+                # directory is named after the report (<report-stem>.inspect) so several
+                # reports can share a folder without colliding and a re-run prunes its own
+                # stale files.
+                inspect_dir = inspect_version = None
+                if _wants_inspect_data(args):
+                    data_dir = args.output.parent / f"{args.output.stem}.inspect"
+                    count, inspect_version = write_inspect_bundle(
+                        ctx.result.profiles,
+                        data_dir,
+                        limit=args.inspect_limit,
+                        top=args.top,
+                        site=ctx.result.site,
+                    )
+                    inspect_dir = f"{args.output.stem}.inspect"
+                    print(f"wrote {count} inspect file(s) to {data_dir}", file=sys.stderr)
                 text = render_report_html(
                     result,
                     source=source,
@@ -856,29 +873,14 @@ def main(argv: Sequence[str] | None = None) -> int:  # pylint: disable=too-many-
                     elapsed=ctx.elapsed,
                     country_flags=ctx.country_flags,
                     breakout_min_share=args.breakout_min_pct / 100,
-                    inspect_dir=(
-                        f"{args.output.stem}.inspect" if _wants_inspect_data(args) else None
-                    ),
+                    inspect_dir=inspect_dir,
+                    inspect_version=inspect_version,
                 )
         elif args.command == "calibrate":
             text = render_calibration(ctx.result, source=_source_label(args), top=args.top)
         else:
             text = _inspect_text(ctx, args)
         _emit(text, args.output)
-        if _wants_inspect_data(args):
-            # The report links each client to <report-stem>.inspect/<slug>.json --
-            # a directory named after the report so several reports can share a
-            # folder without colliding, and a re-run of the same report can prune
-            # its own stale files. Write those files there.
-            data_dir = args.output.parent / f"{args.output.stem}.inspect"
-            count = write_inspect_bundle(
-                ctx.result.profiles,
-                data_dir,
-                limit=args.inspect_limit,
-                top=args.top,
-                site=ctx.result.site,
-            )
-            print(f"wrote {count} inspect file(s) to {data_dir}", file=sys.stderr)
     except KeyboardInterrupt:
         print("\ninterrupted", file=sys.stderr)
         return 130

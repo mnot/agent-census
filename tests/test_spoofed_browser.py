@@ -22,7 +22,11 @@ def _browser_costume(**kw: object) -> ClientFeatures:
     """A browser-UA client showing none of a browser's behaviour: it fetches HTML pages
     but co-loads none of their sub-resources and follows no on-site links. The base
     costume shape -- on its own too weak to be called spoofed (the false-positive guard),
-    but a spoofed_browser the moment a corroborating tell is added."""
+    but a spoofed_browser the moment a corroborating tell is added.
+
+    It carries some (non-following) referers so it is *not* all-cold: the cold tell would
+    otherwise push the bare costume over the bar on its own at this volume (issue #103), and
+    the anchor tests need the base to sit at 0.30 so each proves its one added tell."""
     base: dict[str, object] = dict(
         request_count=200,
         ua_looks_like_browser=True,
@@ -30,6 +34,7 @@ def _browser_costume(**kw: object) -> ClientFeatures:
         page_count=50,
         asset_coload_ratio=0.0,
         referer_following_ratio=0.0,
+        referer_count=60,  # blank-Referer share 0.7, under the cold tell's 0.9 line
         feed_requests=0,
     )
     base.update(kw)
@@ -77,6 +82,30 @@ def test_residential_costume_plus_forged_referer_is_spoofed() -> None:
     # costume + fabricated referers (Referer == the requested URL).
     feats = _browser_costume(self_referer_ratio=0.9, referer_count=200)
     assert classify_client(feats).primary is Kind.SPOOFED_BROWSER
+
+
+def test_all_cold_at_volume_is_spoofed_even_when_it_caches() -> None:
+    # The #103 catch: a browser-UA client that never sends a Referer, renders nothing
+    # (co-loads no assets), yet makes conditional requests (304s) escaped every tell
+    # before -- caching spared no_cache. All-cold at volume adds the tell that tips it:
+    # no_coload (0.15) + no_follow (0.15) + cold (0.20) = 0.50.
+    feats = _browser_costume(referer_count=0, status_counts={200: 150, 304: 50})
+    assert not feats.holds_no_cache  # it caches -- no_cache does NOT fire
+    assert classify_client(feats).primary is Kind.SPOOFED_BROWSER
+
+
+def test_low_volume_all_cold_stays_browser() -> None:
+    # The volume floor is the privacy-browser guard: a handful of blank-Referer requests
+    # (below cold.min_requests) is a session entry / a referer-stripping human, not proof.
+    feats = _browser_costume(request_count=8, page_count=4, referer_count=0)
+    assert classify_client(feats).primary is not Kind.SPOOFED_BROWSER
+
+
+def test_all_cold_but_co_loading_stays_browser() -> None:
+    # A privacy browser that still renders (co-loads a page's sub-resources) is spared:
+    # the co-load guard suppresses the cold tell along with the other costume tells.
+    feats = _browser_costume(referer_count=0, asset_coload_ratio=0.9)
+    assert classify_client(feats).primary is not Kind.SPOOFED_BROWSER
 
 
 def test_genuine_browser_is_never_spoofed() -> None:

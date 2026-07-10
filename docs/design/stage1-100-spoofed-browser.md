@@ -116,6 +116,7 @@ that genuinely co-loads a page's sub-resources is rendering like a browser; the 
 | holds no cache at volume | `features.holds_no_cache` | 0.30 |
 | no asset co-load | `page_count > 0 and asset_coload_ratio == 0` | 0.15 |
 | no link-following | `referer_following_ratio == 0` | 0.15 |
+| all-cold at volume | `blank-Referer share >= cold.blank_ratio_min over >= cold.min_requests` (#103) | 0.20 |
 | ancient / impossible UA | `uas.version_age_band(...) in {ancient, impossible}` | 0.15 |
 
 `fire at score >= 0.45`; emitted confidence `= min(score, 0.90)`. A dispositive tell carries

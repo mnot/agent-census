@@ -38,7 +38,10 @@ _TUNING_SCHEMA = {
     "w_forged_referer": "weights.forged_referer",
     "w_no_coload": "weights.no_coload",
     "w_no_follow": "weights.no_follow",
+    "w_cold": "weights.cold",
     "w_ua_age": "weights.ua_age",
+    "cold_blank_min": "cold.blank_ratio_min",
+    "cold_min_requests": "cold.min_requests",
 }
 _T = load_tuning("spoofed_browser", _TUNING_SCHEMA)
 _S = load_shared_tuning()
@@ -147,6 +150,21 @@ class SpoofedBrowserClassifier(Classifier):
                 )
             if features.referer_following_ratio == 0.0:
                 tell(_T["w_no_follow"], "followed no on-site links")
+            # All-cold at volume: essentially every request carried no Referer. A browser
+            # sets a Referer both when it follows a link and when it co-loads a page's
+            # sub-resources, so a browser-UA client that never sends one -- over enough
+            # requests to be sure, and while rendering nothing (guarded above) -- never
+            # navigated in. The volume floor is the privacy-browser guard (issue #103).
+            blank_ratio = 1.0 - features.referer_count / features.request_count
+            if (
+                features.request_count >= _T["cold_min_requests"]
+                and blank_ratio >= _T["cold_blank_min"]
+            ):
+                tell(
+                    _T["w_cold"],
+                    f"sent no Referer on {blank_ratio:.0%} of {features.request_count:,} "
+                    "requests — never navigated in",
+                )
             if features.holds_no_cache:
                 tell(
                     _T["w_no_cache"],

@@ -7,13 +7,18 @@
 # among many (issue #100). See docs/design/stage1-100-spoofed-browser.md.
 #
 # Weights are 0.05-step ordinal strengths (like every classifier's), calibrated on a
-# live mnot.net digest against four anchors that must all hold:
+# live mnot.net digest against five anchors that must all hold:
 #   - impossible-referer fires alone                       (0.60 >= threshold)
 #   - datacenter + costume fires                           (0.30 + 0.15 + 0.15)
 #   - residential costume + one strong tell fires          (0.30 + 0.30)
-#   - residential costume ALONE does not                   (0.30 < threshold)
-# The last anchor is the false-positive guard: a referer-stripping privacy browser
-# shows the costume shape but nothing else, and must stay a browser.
+#   - all-cold at volume (never a Referer) fires           (0.15 + 0.15 + 0.20)
+#   - residential costume ALONE, not all-cold, does not    (0.30 < threshold)
+# The last anchor is the false-positive guard: a referer-stripping privacy browser that
+# still renders (co-loads assets, so the cold tells below are suppressed) stays a browser.
+# An all-cold client at volume that renders nothing is a costume and now fires -- a
+# deliberate softening of the old "costume alone stays browser" line (issue #103): it
+# accepts a small lone-residential edge to catch the coordinated all-cold botnets that
+# dominate that population (clustered /24 blocks, rotating UAs).
 #
 # High blast radius: a weight change moves every client, so re-verify against a real
 # log (agent-census calibrate), not just the tests, before changing these.
@@ -52,4 +57,15 @@ forged_referer = 0.3  # Referer == the requested URL -- fabricated navigation
 holds_no_cache = 0.3  # re-fetches / high volume, never a 304
 no_coload = 0.15      # fetched HTML pages but co-loaded none of their sub-resources
 no_follow = 0.15      # followed no on-site links
+cold = 0.2            # essentially every request carried no Referer at all (see [cold]) --
+                      # a browser navigates and co-loads, both of which set a Referer, so a
+                      # client that never sends one at volume never behaved like a browser
 ua_age = 0.15         # UA version reads ancient / impossible for its active period
+
+[cold]
+# The `cold` tell: a client whose blank-Referer share is at least `blank_ratio_min` over
+# at least `min_requests` requests -- essentially all-cold. The volume floor is mandatory
+# (issue #103): a privacy browser sending a handful of blank requests must not trip it, and
+# only the co-load guard + this floor stand between the tell and a referer-stripping human.
+blank_ratio_min = 0.9
+min_requests = 10

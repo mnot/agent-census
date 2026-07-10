@@ -46,6 +46,13 @@ notable_ratio = 0.1
 self_referer_min = 0.5
 min_requests = 4
 
+[feed_traffic]
+# At/above this share of feed requests a client is a feed reader, not something else.
+# Shared because two classifiers must agree on it: feed_reader claims the client as
+# "dominant" here, and spoofed_browser excludes it here -- so the two never fire for the
+# same client. Reading one value keeps that non-overlap true by construction.
+dominant_ratio_min = 0.5
+
 [storm_404]
 # A 404 rate above `ratio_min` spread across at least `distinct_paths_min` distinct
 # missing paths is probing, not a few broken links. Used by the vuln-scanner

@@ -127,6 +127,26 @@ def test_minority_feed_spoofer_is_still_caught() -> None:
     assert classify_client(feats).primary is Kind.SPOOFED_BROWSER
 
 
+def test_near_line_feed_poller_that_renders_stays_browser() -> None:
+    # The near-line false-positive guard: a real browser with a feed extension, just under
+    # the feed-dominant gate (so spoof-eligible), but it co-loads its pages' sub-resources.
+    # The co-load guard suppresses its cold tells and it has no active tell, so it scores ~0
+    # and stays a browser -- exactly the case the fix must not break.
+    feats = ClientFeatures(
+        request_count=100,
+        feed_requests=49,
+        feed_ratio=0.49,
+        ua_looks_like_browser=True,
+        ua_empty=False,
+        page_count=50,
+        asset_coload_ratio=0.6,
+        referer_following_ratio=0.4,
+        referer_count=90,
+        status_counts={200: 90, 304: 10},
+    )
+    assert classify_client(feats).primary is Kind.BROWSER
+
+
 # ---- Classifier unit tests ------------------------------------------------------------
 
 

@@ -31,7 +31,6 @@ _TUNING_SCHEMA = {
     "threshold": "score.threshold",
     "confidence_cap": "score.confidence_cap",
     "min_requests": "gate.min_requests",
-    "feed_dominant": "gate.feed_dominant",
     "w_impossible_referer": "weights.impossible_referer",
     "w_datacenter": "weights.datacenter",
     "w_no_cache": "weights.holds_no_cache",
@@ -78,13 +77,16 @@ class SpoofedBrowserClassifier(Classifier):
         # costume. A feed-*dominant* client is a feed reader even behind a browser UA, so
         # exclude it -- but only when feeds are the majority of its traffic: a spoofer that
         # also polls feeds (forged referers, no cache, hosting origin, yet 40% feeds) is a
-        # costume, not a feed reader, and must still be caught. The combiner backstops this
-        # -- when the feed_reader classifier does fire it outranks spoofed_browser -- so a
-        # genuine browser-UA feed poller can't be stolen even near the line.
+        # costume, not a feed reader, and must still be caught. Two things keep a genuine
+        # browser-UA feed poller safe: this gate reads the same shared feed-dominant
+        # threshold feed_reader uses (shared.toml feed_traffic.dominant_ratio_min), so the
+        # two classifiers never fire for the same client; and the co-load guard suppresses a
+        # real renderer's cold tells, so a browser with a feed extension scores ~0 whatever
+        # its feed share.
         if (
             not features.ua_looks_like_browser
             or identifies_as_known_agent(features)
-            or features.feed_ratio >= _T["feed_dominant"]
+            or features.feed_ratio >= _S["feed_dominant_ratio_min"]
             or features.request_count < _T["min_requests"]
         ):
             return []

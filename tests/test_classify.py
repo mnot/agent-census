@@ -1130,6 +1130,19 @@ def test_behavioural_tags_promoted_from_evidence() -> None:
     assert not ({"404-storm", "exotic-method", "metronomic"} & classify_client(plain).tags)
 
 
+def test_often_forbidden_tag_flags_a_blocked_client() -> None:
+    # The server refusing most of a client's requests (403) is its own verdict that the
+    # client is misbehaving -- surfaced as a tag.
+    blocked = ClientFeatures(request_count=20, status_counts={403: 19, 200: 1})
+    assert "often-forbidden" in classify_client(blocked).tags
+    # One incidental 403 (a single protected path) amid normal traffic doesn't trip it.
+    incidental = ClientFeatures(request_count=100, status_counts={200: 99, 403: 1})
+    assert "often-forbidden" not in classify_client(incidental).tags
+    # Nor does a small sample, even if all forbidden -- too little to characterise.
+    tiny = ClientFeatures(request_count=2, status_counts={403: 2})
+    assert "often-forbidden" not in classify_client(tiny).tags
+
+
 def test_tag_evidence_covers_every_derived_tag() -> None:
     # Inspect mode shows the measurement behind each tag, so derive_tag_evidence
     # must explain exactly the tags derive_tags emits -- no tag without a reason,

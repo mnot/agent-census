@@ -111,6 +111,7 @@ _TAG_ORDER = {
             "traversal",
             "encoding-evasion",
             "404-storm",
+            "often-forbidden",
             "exotic-method",
             "uses-HEAD",
             "post-heavy",
@@ -259,6 +260,8 @@ _TAG_HELP: dict[str, str] = {
     "scanners and WebDAV probes, not browsers.",
     "404-storm": "A high share of 404s spread across many distinct paths — scanning for "
     "content, or a broken integration.",
+    "often-forbidden": "The server refused a high share of this client's requests with 403 "
+    "Forbidden — actively blocked by a WAF rule, hotlink protection, or a blocklist.",
     "metronomic": "Near-constant intervals between requests — clockwork timing characteristic "
     "of automation, not a human.",
     "forged-referer": "Sends a Referer equal to the requested URL — fabricated "

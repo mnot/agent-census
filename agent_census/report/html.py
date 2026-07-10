@@ -106,6 +106,7 @@ _TAG_TOKENS: dict[str, str] = {
     "headless-browser": "bot",
     "uses-HEAD": "bot",
     "404-storm": "notable",
+    "often-forbidden": "notable",  # the server's own refusal verdict, not our forgery claim
     "ignores-robots": "notable",
     "post-heavy": "notable",
     "exotic-method": "notable",

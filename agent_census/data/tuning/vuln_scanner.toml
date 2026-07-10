@@ -29,6 +29,13 @@ weight = 0.3
 # At 0.3 (the storm-404 tier) it tips a client that also shows one real hostile tell
 # (a traversal marker, a probe) over the bar, but 403 + only a weak tell -- or 403
 # alone -- stays under it.
+#
+# The minimum tipping case is a knife-edge: 0.3 (this) + 0.15 (a single traversal
+# marker) is 0.44999… in IEEE double, just under the 0.45 bar. It fires because the
+# combiner rounds each signal's confidence to round_digits before the >= compare -- a
+# deliberate mechanism (combiner.py cites this exact 0.3 + 0.15 case). So don't "tidy"
+# this weight or round_digits without re-checking that boundary; the guard is
+# tests/test_classify.py::test_forbidden_heavy_tips_a_client_with_a_hostile_tell.
 weight = 0.3
 
 [traversal]

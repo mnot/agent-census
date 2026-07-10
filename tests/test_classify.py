@@ -54,6 +54,11 @@ def test_forbidden_heavy_corroborates_but_does_not_fire_alone() -> None:
 def test_forbidden_heavy_tips_a_client_with_a_hostile_tell() -> None:
     # A single traversal marker (0.15) is under the bar by itself; the server also
     # refusing most of this client's requests (403, 0.30) tips it to vuln_scanner.
+    # This is the minimum tipping case and a deliberate knife-edge: 0.30 + 0.15 is
+    # 0.44999… in double precision, and clears 0.45 only because the combiner rounds each
+    # confidence to round_digits before comparing (see combiner.py, which cites this exact
+    # sum). If the forbidden weight, the traversal weight, or round_digits changes, this is
+    # the guard that catches the boundary flipping -- do not weaken it to a >= check.
     traversal = ClientFeatures(request_count=40, traversal_hits=1, status_counts={200: 40})
     assert classify_client(traversal).primary is not Kind.VULN_SCANNER
     traversal_blocked = replace(traversal, status_counts={403: 30, 200: 10})

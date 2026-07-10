@@ -10,7 +10,7 @@ from __future__ import annotations
 from ..dataload import load_list, load_shared_tuning, load_tokens, load_tuning
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
-from .tags import forbidden_share, is_forbidden_heavy
+from .tags import forbidden_tell
 
 
 def _scanner_ua_tokens() -> tuple[str, ...]:
@@ -101,11 +101,11 @@ class VulnScannerClassifier(Classifier):
         # The server's own hostility verdict: it refuses most of this client's requests
         # (403). Corroboration only -- a 403 can be a benign hotlink / WAF block, so this
         # is weighted below the direct probe tells and cannot fire the scanner on its own.
-        if is_forbidden_heavy(features):
+        forbidden_heavy, forbidden, forbidden_total = forbidden_tell(features)
+        if forbidden_heavy:
             confidence += _T["forbidden_weight"]
-            forbidden, total = forbidden_share(features)
             evidence.append(
-                f"server refused {forbidden / total:.0%} of requests with 403 — "
+                f"server refused {forbidden / forbidden_total:.0%} of requests with 403 — "
                 "the site's defences treat it as hostile"
             )
 

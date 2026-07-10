@@ -46,25 +46,23 @@ _T = load_tuning("tags", _TUNING_SCHEMA)
 _S = load_shared_tuning()
 
 
-def forbidden_share(features: ClientFeatures) -> tuple[int, int]:
-    """``(403 responses, responses with a status)`` for a client. The server refusing
-    a sustained share of a client's requests is its own verdict that the client is
-    unwelcome -- read here by the often-forbidden tag and by the vuln-scanner classifier
-    (as corroboration), both against the shared ``forbidden`` threshold, so they agree."""
+def forbidden_tell(features: ClientFeatures) -> tuple[bool, int, int]:
+    """The server's 403 refusals, as ``(heavy, count, total)``: whether they are both
+    frequent (>= the shared ratio) and numerous (>= the shared count floor) enough to be
+    the site's standing verdict that the client is unwelcome -- not an incidental block of
+    one protected path -- alongside the 403 count and the number of responses with a
+    status (for the caller's evidence string). Read by the often-forbidden tag and, as
+    corroboration, the vuln-scanner classifier, both against the shared ``forbidden``
+    threshold so they agree. One pass over ``status_counts``, so callers needn't re-sum."""
     status_counts = features.status_counts or {}
-    return status_counts.get(403, 0), sum(status_counts.values())
-
-
-def is_forbidden_heavy(features: ClientFeatures) -> bool:
-    """True when 403s are both frequent (>= the shared ratio) and numerous enough
-    (>= the shared count floor) to be the server's standing verdict, not an incidental
-    block of a single protected path."""
-    forbidden, total = forbidden_share(features)
-    return (
+    forbidden = status_counts.get(403, 0)
+    total = sum(status_counts.values())
+    heavy = (
         forbidden >= _S["forbidden_min_requests"]
         and total > 0
         and forbidden / total >= _S["forbidden_ratio_min"]
     )
+    return heavy, forbidden, total
 
 
 # Inter-arrival cadence tags: one is emitted from a single client's request timing.
@@ -429,9 +427,9 @@ def _conduct_tags(features: ClientFeatures, redirect_shadow: str | None) -> dict
     # blocked -- a WAF rule, hotlink / referer protection, an IP or path blocklist. One
     # 403 is incidental (a single protected path); a high share of a client's traffic
     # coming back Forbidden says the site has decided it is misbehaving (see
-    # is_forbidden_heavy for the shared threshold, which the vuln-scanner also weighs).
-    if is_forbidden_heavy(features):
-        forbidden, with_status = forbidden_share(features)
+    # forbidden_tell for the shared threshold, which the vuln-scanner also weighs).
+    heavy, forbidden, with_status = forbidden_tell(features)
+    if heavy:
         tags["often-forbidden"] = (
             f"server returned 403 Forbidden to {forbidden / with_status:.0%} of requests "
             f"({forbidden:,} of {with_status:,})"

@@ -769,6 +769,31 @@ def test_combiner_one_request_keeps_confident_kind() -> None:
     assert result.primary is Kind.VULN_SCANNER
 
 
+def test_vuln_scanner_outranks_a_stronger_spoof_costume() -> None:
+    # A datacenter no-cache costume accumulates a higher spoof score (0.90) than its
+    # probing scores as a scanner (0.70); without precedence the scan would read as a
+    # mere costume. Probing attack paths is the more actionable verdict, so vuln_scanner
+    # wins once it clears the bar -- the costume tells still surface via tags.
+    signals = [
+        Signal(Kind.SPOOFED_BROWSER, 0.90, ("browser costume",), "spoofed_browser"),
+        Signal(Kind.VULN_SCANNER, 0.70, ("44 probe paths",), "vuln_scanner"),
+    ]
+    result = combine(signals, ClientFeatures(request_count=758), unknown_threshold=0.45)
+    assert result.primary is Kind.VULN_SCANNER
+
+
+def test_below_threshold_vuln_does_not_displace_spoofed() -> None:
+    # A whiff of probing that doesn't clear the bar isn't a scanner, so it must not steal
+    # the primary verdict from a genuine costume -- the precedence only applies when
+    # vuln_scanner itself fires.
+    signals = [
+        Signal(Kind.SPOOFED_BROWSER, 0.90, ("browser costume",), "spoofed_browser"),
+        Signal(Kind.VULN_SCANNER, 0.30, ("one odd path",), "vuln_scanner"),
+    ]
+    result = combine(signals, ClientFeatures(request_count=758), unknown_threshold=0.45)
+    assert result.primary is Kind.SPOOFED_BROWSER
+
+
 def test_one_request_library_is_automation_not_singleton() -> None:
     # A one-shot library client carries a machine tell, so it's characterisable as
     # automation -- it shouldn't fall into the "too little to tell" singleton bucket.

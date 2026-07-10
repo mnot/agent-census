@@ -141,6 +141,15 @@ def combine(
     if Kind.SPOOFED_BROWSER in by_label:
         by_label.pop(Kind.BROWSER, None)
 
+    # A client that probes attack paths is a vuln_scanner, whatever costume it wears: the
+    # hostile activity is a more actionable, specific verdict than the disguise. So once
+    # vuln_scanner clears the bar it takes precedence over spoofed_browser, whose accumulated
+    # costume score can otherwise out-confidence it (a datacenter no-cache costume scores
+    # 0.9 while its probing scores 0.7, so the scan would read as a mere costume). The
+    # behavioural costume tags still show on the row -- only the primary verdict changes.
+    if Kind.VULN_SCANNER in by_label and by_label[Kind.VULN_SCANNER] >= unknown_threshold:
+        by_label.pop(Kind.SPOOFED_BROWSER, None)
+
     tag_ev = derive_tag_evidence(
         features,
         compliance,

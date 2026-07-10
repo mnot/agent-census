@@ -40,6 +40,7 @@ from .format import (
     human_bytes,
     human_duration,
     ordered_tags,
+    rationale_rows,
     tag_title,
 )
 from .html import _EXPAND_LIMIT, tag_class
@@ -53,17 +54,15 @@ def _tag_chip(tag: str) -> str:
 
 
 def _signals_view(profile: ClientProfile) -> list[dict[str, object]]:
-    cls = profile.classification
-    signals = sorted(cls.all_signals, key=lambda s: s.confidence, reverse=True)
     return [
         {
-            "primary": signal.kind is cls.primary,
-            "badge": _kind_badge(signal.kind),
-            "confidence": f"{signal.confidence:.0%}",
-            "classifier": signal.classifier,
-            "evidence": list(signal.evidence),
+            "primary": row.primary,
+            "badge": _kind_badge(row.kind),
+            "confidence": f"{row.confidence:.0%}",
+            "classifier": row.classifier,
+            "evidence": list(row.evidence),
         }
-        for signal in signals
+        for row in rationale_rows(profile.classification)
     ]
 
 

@@ -5,9 +5,17 @@ from __future__ import annotations
 import re
 from datetime import datetime
 from functools import lru_cache
+from typing import NamedTuple
 
 from ..dataload import load_egress_networks
-from ..model import ChannelVerdict, ClientFeatures, ClientProfile, Kind, WbaStatus
+from ..model import (
+    ChannelVerdict,
+    Classification,
+    ClientFeatures,
+    ClientProfile,
+    Kind,
+    WbaStatus,
+)
 
 _KHTML_MARKER = "(khtml, like gecko)"
 # Layout-engine tokens: their presence in a trimmed preamble means the UA wore a
@@ -389,6 +397,46 @@ def client_label(profile: ClientProfile) -> str:
 def kind_label(kind: Kind) -> str:
     """Human-facing category name: the enum slug with underscores shown as spaces."""
     return kind.value.replace("_", " ")
+
+
+class RationaleRow(NamedTuple):
+    """One row of the 'why this classification' rationale: a kind, its confidence,
+    the classifier (or the combiner) behind it, and its evidence."""
+
+    kind: Kind
+    confidence: float
+    classifier: str
+    evidence: tuple[str, ...]
+    primary: bool
+
+
+def rationale_rows(cls: Classification) -> list[RationaleRow]:
+    """The verdict rationale as ordered rows, always leading with the chosen kind.
+
+    A synthesized primary -- an ``impersonator``, or the ``automation`` / ``scraper`` /
+    ``unknown`` that ``combine`` falls back to below threshold -- is decided by the
+    combiner, not argued for by any classifier, so it is absent from ``all_signals``.
+    Listing the signals alone would then show every kind *except* the one that won, which
+    reads as "here are the classifications that lost." Lead with the primary instead (its
+    confidence and evidence live on the Classification itself), then the competitors.
+    """
+    signals = sorted(cls.all_signals, key=lambda s: s.confidence, reverse=True)
+    primary_sig = next((s for s in signals if s.kind is cls.primary), None)
+    rows = [
+        RationaleRow(
+            cls.primary,
+            cls.confidence,
+            primary_sig.classifier if primary_sig else "combiner",
+            tuple(cls.evidence),
+            True,
+        )
+    ]
+    rows += [
+        RationaleRow(s.kind, s.confidence, s.classifier, tuple(s.evidence), False)
+        for s in signals
+        if s.kind is not cls.primary
+    ]
+    return rows
 
 
 def truncate(text: str, limit: int = 80) -> str:

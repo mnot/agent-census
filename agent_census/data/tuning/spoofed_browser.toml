@@ -6,19 +6,26 @@
 # the client a spoofed_browser, with the datacenter origin only one weighted tell
 # among many (issue #100). See docs/design/stage1-100-spoofed-browser.md.
 #
-# Weights are 0.05-step ordinal strengths (like every classifier's), calibrated on a
-# live mnot.net digest against five anchors that must all hold:
+# Weights are 0.05-step ordinal strengths (like every classifier's), calibrated on
+# live mnot.net + redbot.org digests against anchors that must all hold:
 #   - impossible-referer fires alone                       (0.60 >= threshold)
-#   - datacenter + costume fires                           (0.30 + 0.15 + 0.15)
-#   - residential costume + one strong tell fires          (0.30 + 0.30)
+#   - no-cache-at-volume fires alone                       (0.45 >= threshold)
 #   - all-cold at volume (never a Referer) fires           (0.15 + 0.15 + 0.20)
-#   - residential costume ALONE, not all-cold, does not    (0.30 < threshold)
+#   - datacenter + shape-costume fires                     (0.30 + 0.15 + 0.15)
+#   - residential shape-costume + one strong tell fires    (0.30 + 0.30)
+#   - residential shape-costume ALONE (cached, some        (0.30 < threshold)
+#     Referers) does not
 # The last anchor is the false-positive guard: a referer-stripping privacy browser that
-# still renders (co-loads assets, so the cold tells below are suppressed) stays a browser.
-# An all-cold client at volume that renders nothing is a costume and now fires -- a
-# deliberate softening of the old "costume alone stays browser" line (issue #103): it
-# accepts a small lone-residential edge to catch the coordinated all-cold botnets that
-# dominate that population (clustered /24 blocks, rotating UAs).
+# still renders (co-loads assets, so the cold SHAPE tells below are suppressed) stays a
+# browser. Two firing-alone tells narrow it deliberately: (1) all-cold at volume -- a
+# client that renders nothing and never sends a Referer is a costume, a softening of the
+# old "costume alone stays browser" line (issue #103) that accepts a small lone-residential
+# edge to catch coordinated all-cold botnets (clustered /24 blocks, rotating UAs); and
+# (2) no-cache-at-volume -- volume-proven (20+ revisits, never a 304), which the live
+# digests show is narrow-path automation (0 of 36 an organic cache-disabled human), so it
+# is dispositive on any origin, matching browser.py, which already disqualifies the same
+# client as "not browsing". Neither overlaps the shape-costume guard: a privacy human that
+# renders, caches, and sends some Referers trips none of them.
 #
 # High blast radius: a weight change moves every client, so re-verify against a real
 # log (agent-census calibrate), not just the tests, before changing these.
@@ -39,22 +46,26 @@ min_requests = 2      # one request reveals nothing either way (as fake_browser.
 
 # Tells fall in two groups (see classify/spoofed_browser.py). ACTIVE-deception / origin
 # tells count regardless of how browser-shaped the traffic looks -- a client faking
-# referers or replaying an impossible one is deceiving even while it renders pages. COLD /
-# costume tells are absence-of-browserness and count only when the client does NOT
-# genuinely co-load a page's sub-resources (asset_coload_ratio <= browser_coload_min), so
-# a cache-disabled or privacy human who still loads assets is not swept in.
+# referers, replaying an impossible one, or never caching at volume is not browsing even
+# while it renders pages. COLD / costume-SHAPE tells are absence-of-browserness and count
+# only when the client does NOT genuinely co-load a page's sub-resources
+# (asset_coload_ratio <= browser_coload_min), so a privacy human who still loads assets is
+# not swept in.
 
 [weights]
 # --- active-deception / origin (always counted) ---
 # Dispositive alone (validated on live logs in #101): a same-site Referer naming the
 # site's redirect-only host form, which a compliant browser cannot emit.
 impossible_referer = 0.6
+# Dispositive alone (calibrated on live redbot/mnot digests): re-fetches at volume, never
+# a 304. browser.py already disqualifies this same client as "not browsing" regardless of
+# co-load, so it counts here on any co-load level too. Volume-gated in ClientFeatures.
+holds_no_cache = 0.45
 datacenter = 0.3      # hosting origin -- corroboration, no longer a hard gate
 head_heavy = 0.3      # HEAD share above the notable line -- browsers issue GET
 forged_referer = 0.3  # Referer == the requested URL -- fabricated navigation
 
-# --- cold / costume (counted only when the client does not co-load assets) ---
-holds_no_cache = 0.3  # re-fetches / high volume, never a 304
+# --- cold / costume-shape (counted only when the client does not co-load assets) ---
 no_coload = 0.15      # fetched HTML pages but co-loaded none of their sub-resources
 no_follow = 0.15      # followed no on-site links
 cold = 0.2            # essentially every request carried no Referer at all (see [cold]) --

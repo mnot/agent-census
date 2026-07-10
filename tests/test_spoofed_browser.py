@@ -5,10 +5,11 @@ Two layers: behavioural tests through the public ``classify_client`` asserting t
 priority together), and unit tests on ``SpoofedBrowserClassifier`` itself via its
 context-aware entry point.
 
-The weights are calibrated in data/tuning/spoofed_browser.toml; these tests pin the four
-calibration anchors (impossible-referer alone; datacenter+costume; residential
-costume+one-strong-tell; residential costume alone stays a browser) plus the exclusions
-found on the live digest (known agents, feed-fetchers, probers).
+The weights are calibrated in data/tuning/spoofed_browser.toml; these tests pin the
+calibration anchors (impossible-referer alone; no-cache-at-volume alone; all-cold at
+volume; datacenter+shape-costume; residential shape-costume+one-strong-tell; residential
+shape-costume alone stays a browser) plus the exclusions found on the live digest (known
+agents, feed-fetchers, probers).
 """
 
 from __future__ import annotations
@@ -72,8 +73,33 @@ def test_residential_costume_plus_head_heavy_is_spoofed() -> None:
 
 
 def test_residential_costume_plus_no_cache_is_spoofed() -> None:
-    # costume + holds-no-cache at volume (0.30 + 0.30). Previously landed on AUTOMATION.
-    feats = _browser_costume(request_count=600, distinct_paths=1, status_counts={200: 600})
+    # costume shape (0.15 + 0.15) + holds-no-cache at volume (0.45) = 0.75. Previously
+    # landed on AUTOMATION. referer_count=120 keeps blank-Referer share at 0.80 (under the
+    # cold tell's 0.90 line) so this isolates the no_cache tell, not the #103 cold one.
+    feats = _browser_costume(
+        request_count=600, distinct_paths=1, referer_count=120, status_counts={200: 600}
+    )
+    assert feats.holds_no_cache
+    assert classify_client(feats).primary is Kind.SPOOFED_BROWSER
+
+
+def test_coloading_no_cache_browser_is_spoofed() -> None:
+    # The presenting case (182.185.138.16, seen on both mnot and redbot): a browser-shaped
+    # client that genuinely co-loads assets and follows links, yet never earns a 304 across
+    # hundreds of re-fetches. It trips no costume-shape tell, so before the fix it fell
+    # through to AUTOMATION; holds_no_cache is now an active tell that counts despite the
+    # co-load (matching browser.py, which already disqualifies it as "not browsing").
+    feats = ClientFeatures(
+        request_count=785,
+        ua_looks_like_browser=True,
+        ua_empty=False,
+        page_count=122,
+        distinct_paths=10,
+        asset_coload_ratio=0.89,
+        referer_following_ratio=0.84,
+        referer_count=785,
+        status_counts={200: 660, 303: 125},
+    )
     assert feats.holds_no_cache
     assert classify_client(feats).primary is Kind.SPOOFED_BROWSER
 
@@ -217,6 +243,25 @@ def test_impossible_referer_is_dispositive_alone() -> None:
         www_referer_ratio=1.0,
     )
     assert _confidence(feats, redirect_shadow="www") >= 0.45
+
+
+def test_no_cache_is_dispositive_alone() -> None:
+    # An otherwise solid browser (co-loads, follows links) that never earns a 304 at volume
+    # fires on the no-cache tell alone -- it is not suppressed by the co-load, because
+    # holds_no_cache is an active tell, not a costume-shape one.
+    feats = ClientFeatures(
+        request_count=600,
+        ua_looks_like_browser=True,
+        ua_empty=False,
+        page_count=120,
+        distinct_paths=10,
+        asset_coload_ratio=0.6,
+        referer_following_ratio=0.4,
+        referer_count=600,
+        status_counts={200: 600},
+    )
+    assert feats.holds_no_cache
+    assert _confidence(feats) >= 0.45
 
 
 def test_known_agent_never_fires() -> None:

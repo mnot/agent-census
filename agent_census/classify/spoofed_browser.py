@@ -134,13 +134,29 @@ class SpoofedBrowserClassifier(Classifier):
                 f"Referer equals the requested URL on {features.self_referer_ratio:.0%} of "
                 "requests — fabricated navigation",
             )
+        # Volume-proven no-cache is an active tell, NOT a cold one: browser.py already
+        # disqualifies a no-cache client as "not browsing" regardless of co-load (it caps
+        # the browser verdict at disqualified_ceiling on the same signal), so suppressing it
+        # here whenever the client co-loads left the two halves of one browser/costume
+        # question contradicting each other -- a co-loading client that never caches was
+        # disqualified as a browser AND denied spoofed_browser, falling through to
+        # automation. Calibrated on live redbot/mnot digests: every no-cache browser-UA
+        # client is narrow-path / high-repeat automation (0 of 36 looked like an organic
+        # cache-disabled human), so this counts on ANY co-load level. holds_no_cache is
+        # itself volume-gated (20+ revisits or 500+ requests, never a 304 -- see
+        # ClientFeatures.holds_no_cache), which is what keeps a low-volume privacy human out.
+        if features.holds_no_cache:
+            tell(
+                _T["w_no_cache"],
+                f"{features.request_count:,} requests, never a 304 — holds no browser cache",
+            )
 
         # Cold / costume tells: absence-of-browserness. A client that genuinely co-loads a
         # page's sub-resources IS rendering like a browser, so these do not count for it --
         # the design's "a real browser signal lowers the score" guard, which keeps a
-        # cache-disabled or privacy human who still loads assets out of the net. The active
-        # tells above are untouched, so a co-loading URL-replayer is still caught by its
-        # impossible / forged Referer.
+        # privacy human who still loads assets out of the net. The active tells above are
+        # untouched, so a co-loading URL-replayer is still caught by its impossible / forged
+        # Referer or its no-cache tell.
         if features.asset_coload_ratio < _S["browser_coload_min"]:
             if features.page_count > 0 and features.asset_coload_ratio == 0.0:
                 tell(
@@ -155,6 +171,8 @@ class SpoofedBrowserClassifier(Classifier):
             # sub-resources, so a browser-UA client that never sends one -- over enough
             # requests to be sure, and while rendering nothing (guarded above) -- never
             # navigated in. The volume floor is the privacy-browser guard (issue #103).
+            # (holds_no_cache is NOT here: it is an active tell above now, counted on any
+            # co-load level -- see the block after forged_referer.)
             blank_ratio = 1.0 - features.referer_count / features.request_count
             if (
                 features.request_count >= _T["cold_min_requests"]
@@ -164,11 +182,6 @@ class SpoofedBrowserClassifier(Classifier):
                     _T["w_cold"],
                     f"sent no Referer on {blank_ratio:.0%} of {features.request_count:,} "
                     "requests — never navigated in",
-                )
-            if features.holds_no_cache:
-                tell(
-                    _T["w_no_cache"],
-                    f"{features.request_count:,} requests, never a 304 — holds no browser cache",
                 )
             if uas.version_age_band(features.user_agent, features.last_seen) in (
                 "ancient",

@@ -159,43 +159,40 @@ def _trace_view(
     folded = bool(profile.member_ips) or profile.is_aggregate
     # A nested asset reads as its delay after the page that pulled it; every other
     # request is top-level and reads as the gap since the previous top-level request.
-    # Two references are tracked separately so a stray top-level asset can't corrupt
-    # the page nesting:
-    #   ``base``     -- the previous top-level request, for a top-level offset. It
-    #                   re-bases at every top-level request (a page, or a bare
-    #                   favicon/icon fetch that nests under no page). Keying this off
-    #                   non-child (not merely non-asset) is the fix for an all-assets
-    #                   client: with no page, is_asset would never re-base and every
-    #                   offset would read cumulatively from the first request.
-    #   ``page_ts``/``parent_path`` -- the last real page, for a child's offset and
-    #                   for asset nesting. ONLY a page updates these; a top-level
-    #                   asset leaves them intact, so a page's referer-bearing assets
-    #                   still nest and still measure from the page even when a
-    #                   no-Referer favicon was logged between them.
+    #   ``base``    -- the previous top-level request, for a top-level offset. It re-bases
+    #                  at every top-level request (a page, or a bare no-page asset fetch).
+    #                  Keying this off non-child (not merely non-asset) is the fix for an
+    #                  all-assets client: with no page, is_asset would never re-base and
+    #                  every offset would read cumulatively from the first request.
+    #   ``page_ts`` -- the last page, for a child's offset; all cascade members read from
+    #                  the page that opened them.
+    #   ``cascade`` -- the paths in the current page's cascade: the page plus every
+    #                  sub-resource that hung off it, transitively. An asset nests when its
+    #                  Referer names anything already in the cascade -- not only the page --
+    #                  so a stylesheet's @font-face fonts (Referer: the .css) nest as a
+    #                  second level rather than as stray top-level requests. Only a new page
+    #                  resets it; a no-Referer favicon (an asset) leaves it intact.
     base = first_ts
     page_ts = first_ts
-    parent_path: str | None = None
+    cascade: set[str] = set()
     rows: list[dict[str, object]] = []
     for entry in shown:
         request = (entry.path + ("?" + entry.query if entry.query else "")) or entry.raw_request
         is_asset = _is_static(entry.path, _served_media(entry))
         ref = entry.referer
-        child = bool(
-            not folded
-            and is_asset
-            and parent_path
-            and ref
-            and ref != "-"
-            and _referer_path(ref) == parent_path
-        )
+        ref_path = _referer_path(ref) if ref and ref != "-" else None
+        child = bool(not folded and is_asset and ref_path is not None and ref_path in cascade)
         ts = entry.timestamp
         origin = page_ts if child else base
         when = _rel_time(origin, ts) if (ts is not None and origin is not None) else "–"
-        if not folded and not child:
+        if child:
+            if entry.path:
+                cascade.add(entry.path)  # its own sub-resources can nest under it in turn
+        elif not folded:
             if ts is not None:
                 base = ts  # this top-level request is the origin for the next one
-            if not is_asset:  # a real page: the parent/origin for later assets
-                parent_path = entry.path or None
+            if not is_asset:  # a new top-level document: start a fresh cascade
+                cascade = {entry.path} if entry.path else set()
                 if ts is not None:
                     page_ts = ts
         rows.append(

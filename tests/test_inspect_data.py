@@ -195,6 +195,27 @@ def test_trace_no_referer_favicon_between_page_and_assets_keeps_nesting(tmp_path
     assert [r["time"] for r in rows] == ["+0.0s", "+1.0s", "+3.0s", "+4.0s"]
 
 
+def test_trace_transitive_cascade_nests_an_assets_own_sub_resources(tmp_path: Path) -> None:
+    # A stylesheet pulls in @font-face fonts, which carry the .css (not the page) as their
+    # Referer -- a second level of the cascade. The stylesheet nests under the page, and the
+    # font nests under the stylesheet, rather than showing as a stray top-level request.
+    lines = [
+        '6.6.6.6 - - [10/Oct/2023:12:00:00 +0000] "GET /page HTTP/1.1" 200 500 "-" "b/1"',
+        '6.6.6.6 - - [10/Oct/2023:12:00:01 +0000] "GET /style.css HTTP/1.1" 200 90 '
+        '"http://h/page" "b/1"',
+        '6.6.6.6 - - [10/Oct/2023:12:00:01 +0000] "GET /font.woff2 HTTP/1.1" 200 90 '
+        '"http://h/style.css" "b/1"',
+    ]
+    log = tmp_path / "cascade.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"), inspect_trace=20)
+    (profile,) = [p for p in result.profiles if p.client_id.ip == "6.6.6.6"]
+    rows = build_member_view(profile, limit=20)["trace"]["rows"]
+    # page (top-level), stylesheet (child of page), font (child of the stylesheet).
+    assert [r["child"] for r in rows] == [False, True, True]
+
+
 def test_trace_referer_shortens_same_site_only(tmp_path: Path) -> None:
     lines = [
         '8.8.8.8 - - [10/Oct/2023:12:00:00 +0000] "GET /a HTTP/1.1" 200 500 '

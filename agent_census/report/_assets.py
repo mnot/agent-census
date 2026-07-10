@@ -593,7 +593,9 @@ document.addEventListener('click', function (event) {
     show();
     var dir = window.__INSPECT_DIR__;
     if (!dir) return;  // links are only emitted alongside the dir, so this is belt-and-braces
-    fetch(dir + encodeURIComponent(slug) + '.json').then(function (r) {
+    var ver = window.__INSPECT_VER__;  // content digest: cache-busting query so a republished report re-fetches changed data
+    var url = dir + encodeURIComponent(slug) + '.json' + (ver ? '?v=' + encodeURIComponent(ver) : '');
+    fetch(url).then(function (r) {
       if (!r.ok) throw new Error(String(r.status));
       return r.json();
     }).then(render).catch(function () {

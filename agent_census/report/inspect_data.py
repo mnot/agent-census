@@ -19,6 +19,7 @@ can honestly say "showing N of M".
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections import Counter
 from collections.abc import Sequence
@@ -305,26 +306,35 @@ def write_inspect_bundle(
     limit: int,
     top: int,
     site: str | None = None,
-) -> int:
+) -> tuple[int, str]:
     """Write one ``<slug>.json`` per rendered actor group into ``data_dir``.
 
-    Returns the number of files written. The slugs match the ``data-inspect``
-    attributes the report emits, so every linkable row resolves to a file. The
-    report references this directory by a fixed relative name (``inspect/``), so
-    ``data_dir`` is named after the report (``<report-stem>.inspect``), so it belongs
-    to this report alone: existing ``*.json`` in it are cleared first, pruning files
-    from clients that have since vanished (or an earlier, larger run). ``site`` is the
-    analysed site's host, used to shorten same-site referers; when unset (the log
+    Returns ``(count, digest)``: the number of files written and a short content
+    digest over all of them. The digest is the report's cache-busting token -- the
+    viewer appends it as ``?v=<digest>`` when fetching a client's data file, so a
+    republished report re-fetches only when the data actually changed (new log data
+    *or* a code change to what the files contain), not on every publish. Derived from
+    the file bodies, sorted by slug, so it is deterministic and independent of write
+    order.
+
+    The slugs match the ``data-inspect`` attributes the report emits, so every linkable
+    row resolves to a file. The report references this directory by a fixed relative
+    name, so ``data_dir`` is named after the report (``<report-stem>.inspect``) and
+    belongs to this report alone: existing ``*.json`` in it are cleared first, pruning
+    files from clients that have since vanished (or an earlier, larger run). ``site`` is
+    the analysed site's host, used to shorten same-site referers; when unset (the log
     carries no host) it is inferred from the traces.
     """
     site = site or _infer_site_host(profiles)
     data_dir.mkdir(parents=True, exist_ok=True)
     for stale in data_dir.glob("*.json"):
         stale.unlink()
-    written = 0
+    blobs: list[tuple[str, str]] = []
     for group in rendered_groups(profiles, top=top):
         view = build_group_view(group, limit=limit, site=site)
-        path = data_dir / f"{group.slug}.json"
-        path.write_text(json.dumps(view, ensure_ascii=False), encoding="utf-8")
-        written += 1
-    return written
+        blob = json.dumps(view, ensure_ascii=False)
+        (data_dir / f"{group.slug}.json").write_text(blob, encoding="utf-8")
+        blobs.append((group.slug, blob))
+    fingerprint = "\0".join(f"{slug}\0{blob}" for slug, blob in sorted(blobs))
+    digest = hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()[:12]
+    return len(blobs), digest

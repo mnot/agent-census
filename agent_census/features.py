@@ -546,7 +546,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
                 self.last_seen = stamp
         ts = stamp.timestamp() if stamp is not None else None
         if ts is not None:
-            self._record_arrival(ts)
+            self._record_arrival(ts, static)
         pending = self._pending_pages
         if ts is not None and pending is not None:
             while pending and pending[0][0] < ts - _COLOAD_WINDOW_SECONDS:
@@ -574,16 +574,26 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
                         del pending[i]
                         break
 
-    def _record_arrival(self, ts: float) -> None:
-        """Fold one request's timestamp into the bounded timing summary."""
+    def _record_arrival(self, ts: float, static: bool) -> None:
+        """Fold one request's timestamp into the bounded timing summary.
+
+        Volume (peak requests/minute) counts every request. Inter-arrival *cadence*
+        (median / min / p95 / regularity) counts only navigations, not static
+        sub-resources: a browser bursts a page's CSS/JS/images within milliseconds, so
+        including them would read the client's rhythm as machine-fast (median ~0s) and
+        drown the human page-to-page pace. Assets are excluded from the cadence; pages and
+        other non-asset requests set it. A scanner fetches URLs, not sub-resources, so its
+        fast cadence is unaffected."""
         if self._minute_counts is None:
             self._minute_counts = {}
         minute = int(ts // 60)
         self._minute_counts[minute] = self._minute_counts.get(minute, 0) + 1
+        if static:
+            return
         # Inter-arrival in stream order (≈ time order). An out-of-order (earlier)
         # timestamp is skipped -- but the baseline must NOT retreat to it, or the
         # next in-order delta is measured from the wrong point and inflated. Keep
-        # _prev_ts monotonic so it always tracks the latest timestamp seen.
+        # _prev_ts monotonic so it always tracks the latest non-asset timestamp seen.
         if self._prev_ts is None:
             self._prev_ts = ts
         elif ts >= self._prev_ts:

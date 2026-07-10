@@ -362,6 +362,23 @@ def test_regular_timing_low_cv() -> None:
     assert feats.inter_arrival_median == 60.0
 
 
+def test_cadence_ignores_asset_bursts() -> None:
+    # A browser bursts a page's sub-resources within the same instant. Cadence must be
+    # measured over navigations (pages), not those 0s asset intervals -- which would read
+    # as machine-fast. Two pages 10s apart, each co-loading a same-instant asset burst.
+    entries = [
+        entry("/p1", offset=0),
+        entry("/a1.css", offset=0, referer="https://h/p1"),
+        entry("/a2.js", offset=0, referer="https://h/p1"),
+        entry("/p2", offset=10),
+        entry("/a3.css", offset=10, referer="https://h/p2"),
+    ]
+    feats = extract_features(entries)
+    # Only the page->page interval (10s) is counted; no 0s asset intervals leak in.
+    assert feats.inter_arrival_median == 10.0
+    assert feats.inter_arrival_min == 10.0
+
+
 def test_out_of_order_timestamp_keeps_baseline_monotonic() -> None:
     # An earlier-than-previous timestamp (clock skew, interleaved workers) is
     # skipped, and the baseline must not retreat to it -- otherwise the next

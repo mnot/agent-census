@@ -16,7 +16,13 @@ unknown_threshold = 0.45
 # scraper, and the reference-browser predicate that calibrates the relative tags.
 coload_ratio_min = 0.4   # at/above this share of pages co-load sub-resources: browser-like
 no_coload_max = 0.1      # below this: essentially no sub-resource co-loading
-coload_min_pages = 3     # too few HTML pages to read the co-load ratio as evidence (1 page => 0% or 100%, no signal)
+# Minimum HTML pages before the co-load ratio is read as evidence. #115 set this to 3
+# because a *bare-temporal* co-load over one page was a coin flip; co-load is now
+# referer-linked (#109), so a single-page cascade means the page's sub-resources actually
+# referenced it -- real evidence -- and one-and-done page loads are a large, legitimate
+# share of sessions, so 1 is the right bar. (A feed-dominant client that also loaded one
+# browser page can tip to browser here; accepted as a rare, mixed-IP case.)
+coload_min_pages = 1
 follow_ratio_min = 0.3   # at/above this share follow on-site links: browser-like
 no_follow_max = 0.1      # below this: hits URLs cold, no on-site link-following
 

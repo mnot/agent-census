@@ -122,10 +122,11 @@ def test_browser_fires_on_coloading() -> None:
     assert any("sub-resource" in e for e in signals[0].evidence)
 
 
-def test_browser_coload_ignored_when_too_few_pages() -> None:
-    # One incidental HTML page co-loads its assets (100%), but a single page is not
-    # enough to read the ratio as evidence -- the co-load signal must not fire, so a
-    # feed reader that gets clicked into once doesn't score a confident browser.
+def test_single_page_cascade_scores_coload() -> None:
+    # A single HTML page whose sub-resources co-load it (100%) now scores the co-load
+    # signal (coload_min_pages = 1). Co-load is referer-linked (#109), so one page's
+    # cascade is real evidence rather than the coin flip #115 guarded against, and
+    # one-and-done page loads are a large, legitimate share of sessions.
     feats = ClientFeatures(
         request_count=10,
         asset_coload_ratio=1.0,
@@ -134,7 +135,7 @@ def test_browser_coload_ignored_when_too_few_pages() -> None:
         ratio_404=0.0,
     )
     signals = BrowserClassifier().evaluate(feats)
-    assert signals and not any("sub-resource" in e for e in signals[0].evidence)
+    assert signals and any("sub-resource" in e for e in signals[0].evidence)
 
 
 def test_self_referer_browser_is_demoted_and_tagged() -> None:

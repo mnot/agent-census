@@ -60,6 +60,14 @@ dominant_ratio_min = 0.5
 ratio_min = 0.6
 distinct_paths_min = 15
 
+[forbidden]
+# The server refused at least `ratio_min` of a client's requests with 403, over at
+# least `min_requests` of them -- its own verdict that the client is unwelcome (a WAF
+# rule, hotlink protection, a blocklist). Shared by the often-forbidden tag and the
+# vuln-scanner classifier (which weighs it as corroboration), so the two stay in step.
+ratio_min = 0.5
+min_requests = 5
+
 [impossible_referer]
 # A same-site Referer naming the host form the site only ever redirects (never
 # renders) is impossible from a real browser. Gated on the site actually redirecting

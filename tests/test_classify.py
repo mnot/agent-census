@@ -40,6 +40,26 @@ def test_vuln_scanner_fires_on_probes() -> None:
     assert signals[0].confidence >= 0.45
 
 
+def test_forbidden_heavy_corroborates_but_does_not_fire_alone() -> None:
+    # The server refusing most of a client's requests (403) is corroboration for
+    # vuln_scanner, but a 403 can be a benign hotlink / WAF block, so it must not brand a
+    # client a scanner on its own.
+    blocked = ClientFeatures(request_count=40, status_counts={403: 30, 200: 10})
+    sig = VulnScannerClassifier().evaluate(blocked)
+    assert sig and any("403" in e for e in sig[0].evidence)  # it contributes a tell...
+    assert sig[0].confidence < 0.45  # ...but not enough to fire on its own
+    assert classify_client(blocked).primary is not Kind.VULN_SCANNER
+
+
+def test_forbidden_heavy_tips_a_client_with_a_hostile_tell() -> None:
+    # A single traversal marker (0.15) is under the bar by itself; the server also
+    # refusing most of this client's requests (403, 0.30) tips it to vuln_scanner.
+    traversal = ClientFeatures(request_count=40, traversal_hits=1, status_counts={200: 40})
+    assert classify_client(traversal).primary is not Kind.VULN_SCANNER
+    traversal_blocked = replace(traversal, status_counts={403: 30, 200: 10})
+    assert classify_client(traversal_blocked).primary is Kind.VULN_SCANNER
+
+
 def test_lone_probe_is_a_scanner_not_a_singleton() -> None:
     # A single request, and it's a probe: its whole footprint is hostile, so it
     # clears as a vuln_scanner rather than falling into the singleton bucket.

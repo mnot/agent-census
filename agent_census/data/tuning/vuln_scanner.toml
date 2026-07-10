@@ -21,6 +21,16 @@ incidental_weight = 0.2
 # there, not a few broken links.
 weight = 0.3
 
+[forbidden]
+# The server refusing a sustained share of the client's requests with 403 -- its own
+# hostility verdict (threshold shared with the often-forbidden tag, shared.toml
+# forbidden). Corroboration, not proof of probing: a 403 can be a benign hotlink / WAF
+# block, so it sits below the direct probe tells and can't fire the scanner alone.
+# At 0.3 (the storm-404 tier) it tips a client that also shows one real hostile tell
+# (a traversal marker, a probe) over the bar, but 403 + only a weak tell -- or 403
+# alone -- stays under it.
+weight = 0.3
+
 [traversal]
 # Any path-traversal / injection marker in a request.
 weight = 0.15

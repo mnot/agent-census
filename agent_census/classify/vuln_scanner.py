@@ -10,6 +10,7 @@ from __future__ import annotations
 from ..dataload import load_list, load_shared_tuning, load_tokens, load_tuning
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
+from .tags import forbidden_share, is_forbidden_heavy
 
 
 def _scanner_ua_tokens() -> tuple[str, ...]:
@@ -39,6 +40,7 @@ _TUNING_SCHEMA = {
     "probe_strong_weight": "probe_paths.strong_weight",
     "probe_incidental_weight": "probe_paths.incidental_weight",
     "storm_404_weight": "storm_404.weight",
+    "forbidden_weight": "forbidden.weight",
     "traversal_weight": "traversal.weight",
     "evasion_weight": "encoding_evasion.weight",
     "exotic_weight": "exotic_method.weight",
@@ -95,6 +97,17 @@ class VulnScannerClassifier(Classifier):
             confidence += _T["storm_404_weight"]
             urls = features.distinct_404_targets
             evidence.append(f"{features.ratio_404:.0%} 404s across {urls} distinct URLs")
+
+        # The server's own hostility verdict: it refuses most of this client's requests
+        # (403). Corroboration only -- a 403 can be a benign hotlink / WAF block, so this
+        # is weighted below the direct probe tells and cannot fire the scanner on its own.
+        if is_forbidden_heavy(features):
+            confidence += _T["forbidden_weight"]
+            forbidden, total = forbidden_share(features)
+            evidence.append(
+                f"server refused {forbidden / total:.0%} of requests with 403 — "
+                "the site's defences treat it as hostile"
+            )
 
         if features.traversal_hits > 0:
             confidence += _T["traversal_weight"]

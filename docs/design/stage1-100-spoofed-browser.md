@@ -116,7 +116,15 @@ that genuinely co-loads a page's sub-resources is rendering like a browser; the 
 | holds no cache at volume | `features.holds_no_cache` | 0.30 |
 | no asset co-load | `page_count > 0 and asset_coload_ratio == 0` | 0.15 |
 | no link-following | `referer_following_ratio == 0` | 0.15 |
+| all-cold at volume | `blank-Referer share >= cold.blank_ratio_min over >= cold.min_requests` (#103) | 0.20 |
 | ancient / impossible UA | `uas.version_age_band(...) in {ancient, impossible}` | 0.15 |
+
+`all-cold at volume` and `no link-following` are **not independent**: link-following can't be
+observed without a Referer, so at `blank_ratio >= 0.9` the `no-link-following` tell has
+necessarily fired too (`cold + no_coload = 0.35` is under the bar on its own — the tipping
+cases are exactly the ones where `no_follow` co-fires). So `cold` does not add an independent
+0.20; it raises the all-cold non-rendering costume from 0.30 to 0.50 by stacking on a
+correlated tell. Deliberate (issue #103), but keep the coupling in mind if these are retuned.
 
 `fire at score >= 0.45`; emitted confidence `= min(score, 0.90)`. A dispositive tell carries
 the threshold on its own (preserving #101's `impossible-referer` behaviour). Headless-UA,

@@ -128,6 +128,7 @@ _TAG_ORDER = {
             "declares-known-bot",
             "declares-app-client",
             "fetches-feeds",
+            "polls-feeds",
             "user-triggered",
             "no-user-agent",
             "checked-robots",
@@ -202,6 +203,8 @@ _TAG_HELP: dict[str, str] = {
     "declares-app-client": "User-Agent names a native app's platform networking stack "
     "(CFNetwork, Flutter's dart:io…) rather than a browser engine or crawler.",
     "fetches-feeds": "User-Agent names a feed reader or generic feed tool (rss/atom…).",
+    "polls-feeds": "Requested RSS/Atom feed resources — observed behaviour, whatever the "
+    "User-Agent claims (a browser-UA client that also polls feeds carries this).",
     "user-triggered": "User-Agent names an on-behalf-of proxy (a '-User' fetcher like "
     "ChatGPT-User or Amzn-User) that the operator designates as acting for a present user "
     "rather than crawling autonomously. The user-driven part is taken on trust -- not "

@@ -154,6 +154,18 @@ def test_self_referer_browser_is_demoted_and_tagged() -> None:
     assert "forged-referer" in result.tags
 
 
+def test_polls_feeds_tag_is_behavioural() -> None:
+    # The across-the-board feed tag fires on the observed behaviour (requested feed
+    # resources), whatever the UA claims -- distinct from the UA-based fetches-feeds. So a
+    # browser-UA spoofer that also polls feeds carries it alongside its verdict.
+    feats = ClientFeatures(
+        request_count=100, feed_requests=40, feed_ratio=0.4, ua_looks_like_browser=True
+    )
+    tags = classify_client(feats).tags
+    assert "polls-feeds" in tags
+    assert "fetches-feeds" not in tags  # UA does not name a feed tool
+
+
 def test_self_referer_on_non_browser_ua_is_not_tagged() -> None:
     # A non-browser UA self-referring isn't faking browser navigation -> no tag.
     feats = ClientFeatures(

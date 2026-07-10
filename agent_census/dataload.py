@@ -732,6 +732,7 @@ _SHARED_TUNING: dict[str, str] = {
     "head_notable_ratio": "head_traffic.notable_ratio",
     "fabricated_self_referer_min": "fabricated_referer.self_referer_min",
     "fabricated_min_requests": "fabricated_referer.min_requests",
+    "feed_dominant_ratio_min": "feed_traffic.dominant_ratio_min",
     "storm_404_ratio_min": "storm_404.ratio_min",
     "storm_404_distinct_paths_min": "storm_404.distinct_paths_min",
     "impossible_referer_ratio_min": "impossible_referer.ratio_min",

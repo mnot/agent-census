@@ -11,13 +11,14 @@ from __future__ import annotations
 import re
 from functools import lru_cache
 
-from ..dataload import load_list, load_tuning, load_ua_signatures
+from ..dataload import load_list, load_shared_tuning, load_tuning, load_ua_signatures
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
 
-# Numeric knobs live in data/tuning/feed_reader.toml.
+# Numeric knobs live in data/tuning/feed_reader.toml. The feed-dominant share is shared with
+# spoofed_browser (which excludes a client at the same line, so the two never fire for one
+# client), so it lives in shared.toml instead.
 _TUNING_SCHEMA = {
-    "dominant_ratio_min": "feed_traffic.dominant_ratio_min",
     "dominant_weight": "feed_traffic.dominant_weight",
     "present_weight": "feed_traffic.present_weight",
     "feed_ua_weight": "feed_ua.weight",
@@ -32,6 +33,7 @@ _TUNING_SCHEMA = {
     "head_weight": "head_checks.weight",
 }
 _T = load_tuning("feed_reader", _TUNING_SCHEMA)
+_S = load_shared_tuning()
 
 # Generic feed terms plus the specific reader product names from signatures/feed_readers.toml,
 # folded into one compiled alternation. A single C-level search beats scanning the
@@ -74,7 +76,7 @@ class FeedReaderClassifier(Classifier):
     def evaluate(self, features: ClientFeatures) -> list[Signal]:
         feed_ua = ua_is_feed_reader(features.user_agent)
         feed_dominant = (
-            features.feed_requests > 0 and features.feed_ratio >= _T["dominant_ratio_min"]
+            features.feed_requests > 0 and features.feed_ratio >= _S["feed_dominant_ratio_min"]
         )
         # Feeds have to be the point: either a declared reader, or feeds are the
         # majority of traffic. A client that mostly hammers non-feed pages and only

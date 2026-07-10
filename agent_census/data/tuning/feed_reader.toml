@@ -3,10 +3,10 @@
 # URLs with conditional/HEAD freshness checks. Each block adds its `weight`.
 
 [feed_traffic]
-# Feeds are the point. When they are the majority of requests (`dominant_ratio_min`)
-# the dominant weight applies; otherwise any feed request at all earns the smaller
-# present weight.
-dominant_ratio_min = 0.5
+# Feeds are the point. When they are the majority of requests -- feed-dominant, at the
+# shared `feed_traffic.dominant_ratio_min` in shared.toml (shared with spoofed_browser so
+# the two agree on the line) -- the dominant weight applies; otherwise any feed request at
+# all earns the smaller present weight.
 dominant_weight = 0.5
 present_weight = 0.2
 

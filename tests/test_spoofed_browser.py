@@ -110,11 +110,41 @@ def test_probing_browser_ua_stays_vuln_scanner() -> None:
     assert classify_client(feats).primary is Kind.VULN_SCANNER
 
 
-def test_feed_fetcher_behind_browser_ua_is_not_spoofed() -> None:
-    # A feed reader wearing a plain browser UA (common on the digest) is caught by feed
-    # behaviour, not repainted as a costume: the spoof classifier gates on feed_requests.
+def test_feed_dominant_browser_ua_is_not_spoofed() -> None:
+    # A feed-*dominant* client wearing a plain browser UA is caught by feed behaviour, not
+    # repainted as a costume: the spoof classifier gates on the feed-dominant share.
     feats = _browser_costume(head_ratio=0.8, feed_requests=200, feed_ratio=1.0)
     assert classify_client(feats).primary is not Kind.SPOOFED_BROWSER
+
+
+def test_minority_feed_spoofer_is_still_caught() -> None:
+    # A spoofer that ALSO polls feeds, but only as a minority of its traffic (below the
+    # feed-dominant gate), is a costume, not a feed reader -- it must still be spoofed. This
+    # is the OneHostPlanet case: forged referers + no cache + hosting, yet ~40% feeds.
+    feats = _browser_costume(
+        feed_requests=40, feed_ratio=0.4, self_referer_ratio=0.9, referer_count=200
+    )
+    assert classify_client(feats).primary is Kind.SPOOFED_BROWSER
+
+
+def test_near_line_feed_poller_that_renders_stays_browser() -> None:
+    # The near-line false-positive guard: a real browser with a feed extension, just under
+    # the feed-dominant gate (so spoof-eligible), but it co-loads its pages' sub-resources.
+    # The co-load guard suppresses its cold tells and it has no active tell, so it scores ~0
+    # and stays a browser -- exactly the case the fix must not break.
+    feats = ClientFeatures(
+        request_count=100,
+        feed_requests=49,
+        feed_ratio=0.49,
+        ua_looks_like_browser=True,
+        ua_empty=False,
+        page_count=50,
+        asset_coload_ratio=0.6,
+        referer_following_ratio=0.4,
+        referer_count=90,
+        status_counts={200: 90, 304: 10},
+    )
+    assert classify_client(feats).primary is Kind.BROWSER
 
 
 # ---- Classifier unit tests ------------------------------------------------------------

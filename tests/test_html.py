@@ -33,6 +33,16 @@ def test_every_relative_tag_has_hover_text() -> None:
     assert not missing, f"tags with no hover description: {missing}"
 
 
+def test_often_forbidden_chip_carries_a_severity_colour() -> None:
+    from agent_census.report.html import tag_class
+
+    # A conduct flag must not render as a neutral grey chip while its siblings
+    # (404-storm, exotic-method, post-heavy) carry a severity colour; often-forbidden
+    # shares their notable tier.
+    assert tag_class("often-forbidden") != "tag"
+    assert tag_class("often-forbidden") == tag_class("404-storm")
+
+
 def test_report_html_is_a_full_page() -> None:
     html = render_report_html(_run(), source="sample")
     assert html.startswith("<!doctype html>")

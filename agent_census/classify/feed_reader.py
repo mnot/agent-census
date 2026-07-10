@@ -22,7 +22,7 @@ _TUNING_SCHEMA = {
     "dominant_weight": "feed_traffic.dominant_weight",
     "present_weight": "feed_traffic.present_weight",
     "feed_ua_weight": "feed_ua.weight",
-    "few_urls_distinct_max": "few_urls.distinct_paths_max",
+    "few_urls_distinct_max": "few_urls.distinct_targets_max",
     "few_urls_min_requests": "few_urls.min_requests",
     "few_urls_weight": "few_urls.weight",
     "steady_regularity_max": "steady_polling.regularity_max",
@@ -99,11 +99,11 @@ class FeedReaderClassifier(Classifier):
             evidence.append("User-Agent identifies a feed reader")
 
         if (
-            features.distinct_paths <= _T["few_urls_distinct_max"]
+            features.distinct_targets <= _T["few_urls_distinct_max"]
             and features.request_count >= _T["few_urls_min_requests"]
         ):
             confidence += _T["few_urls_weight"]
-            evidence.append(f"polls {features.distinct_paths} URL(s) repeatedly")
+            evidence.append(f"polls {features.distinct_targets} URL(s) repeatedly")
 
         regularity = features.rate_regularity
         if (

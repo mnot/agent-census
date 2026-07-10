@@ -35,7 +35,7 @@ def _monitor_ua_pattern() -> "re.Pattern[str]":
 _MONITOR_UA = _monitor_ua_pattern()
 _TUNING_SCHEMA = {
     "ua_weight": "monitor_ua.weight",
-    "few_urls_distinct_max": "few_urls.distinct_paths_max",
+    "few_urls_distinct_max": "few_urls.distinct_targets_max",
     "few_urls_min_requests": "few_urls.min_requests",
     "few_urls_weight": "few_urls.weight",
     "head_ratio_min": "head_polling.head_ratio_min",
@@ -65,11 +65,11 @@ class MonitorClassifier(Classifier):
             evidence.append("User-Agent names a monitoring service")
 
         if (
-            features.distinct_paths <= _T["few_urls_distinct_max"]
+            features.distinct_targets <= _T["few_urls_distinct_max"]
             and features.request_count >= _T["few_urls_min_requests"]
         ):
             confidence += _T["few_urls_weight"]
-            evidence.append(f"polls just {features.distinct_paths} URL(s) repeatedly")
+            evidence.append(f"polls just {features.distinct_targets} URL(s) repeatedly")
 
         if features.head_ratio > _T["head_ratio_min"]:
             confidence += _T["head_weight"]

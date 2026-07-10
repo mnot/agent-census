@@ -16,7 +16,7 @@ weight = 0.4
 
 [few_urls]
 # Polls a handful of URLs repeatedly, over enough requests to judge it.
-distinct_paths_max = 3
+distinct_targets_max = 3
 min_requests = 4
 weight = 0.1
 

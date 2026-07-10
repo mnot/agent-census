@@ -218,6 +218,26 @@ def test_404_targets_are_capped() -> None:
     assert extract_features(entries).distinct_404_targets == _STORM_404_TARGET_CAP
 
 
+def test_distinct_targets_counts_query_varying_requests() -> None:
+    # A redirect / link checker hits two bare paths (/ and /check) but a different target
+    # each time via ?uri=. By bare path it looks like it polls 2 URLs; by full target it
+    # is processing a fresh URL every request.
+    entries = []
+    for i, host in enumerate(("a.example", "b.example", "c.example", "d.example")):
+        entries.append(entry("/", status=303, query=f"uri=https://{host}/p", offset=2 * i))
+        entries.append(entry("/check", status=200, query=f"uri=https://{host}/p", offset=2 * i + 1))
+    feats = extract_features(entries)
+    assert feats.distinct_paths == 2  # / and /check
+    assert feats.distinct_targets == 8  # a fresh target per request
+
+
+def test_distinct_targets_are_capped() -> None:
+    from agent_census.features import _DISTINCT_TARGET_CAP
+
+    entries = [entry("/check", query=f"uri={i}", offset=i) for i in range(_DISTINCT_TARGET_CAP + 50)]
+    assert extract_features(entries).distinct_targets == _DISTINCT_TARGET_CAP
+
+
 def test_asset_coloading_detected() -> None:
     # A genuine page cascade: the page, then its sub-resources each carrying a Referer
     # that names the page. Only a referer-linked sub-resource counts as a co-load (#109).

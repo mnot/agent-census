@@ -166,6 +166,9 @@ class ClientFeatures:  # pylint: disable=too-many-instance-attributes
 
     # crawl shape
     distinct_paths: int = 0
+    # Distinct full request targets (path + query), so a client that varies the target in
+    # the query string isn't mistaken for one polling the same path repeatedly.
+    distinct_targets: int = 0
     coverage: float = 0.0  # distinct_paths / request_count
     breadth_ratio: float = 0.0  # fraction of consecutive hops that change subtree
     referer_following_ratio: float = 0.0  # referer is a path this client fetched earlier

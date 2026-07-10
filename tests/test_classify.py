@@ -11,6 +11,7 @@ from agent_census.classify.browser import BrowserClassifier
 from agent_census.classify.combiner import combine
 from agent_census.classify.crawler import CrawlerClassifier
 from agent_census.classify.feed_reader import FeedReaderClassifier
+from agent_census.classify.monitor import MonitorClassifier
 from agent_census.classify.scraper import ScraperClassifier
 from agent_census.classify.spam_bot import SpamBotClassifier
 from agent_census.classify.vuln_scanner import VulnScannerClassifier
@@ -1194,6 +1195,21 @@ def test_aggregate_suppresses_cadence_tag() -> None:
     assert "metronomic" not in classify_client(feats, aggregate=True).tags
 
 
+def _monitor_evidence(feats: ClientFeatures) -> tuple[str, ...]:
+    signals = MonitorClassifier().evaluate(feats)
+    return signals[0].evidence if signals else ()
+
+
+def test_monitor_few_urls_counts_targets_not_paths() -> None:
+    # Polling one URL over and over is a monitor tell; hitting one path with a different
+    # query every time (a redirect / link checker: /check?uri=<a-new-site>) is not -- the
+    # "polls a few URLs" signal keys on distinct targets, so it fires for the former only.
+    poller = ClientFeatures(request_count=20, distinct_paths=1, distinct_targets=1)
+    assert any("polls just" in e for e in _monitor_evidence(poller))
+    checker = ClientFeatures(request_count=20, distinct_paths=1, distinct_targets=20)
+    assert not any("polls just" in e for e in _monitor_evidence(checker))
+
+
 def test_uses_head_tag() -> None:
     signals = [Signal(Kind.MONITOR, 0.6, ("monitors",), "monitor")]
     heading = ClientFeatures(request_count=10, head_ratio=0.5)
@@ -1492,7 +1508,8 @@ def test_head_corroborates_a_feed_reader() -> None:
         request_count=8,
         feed_requests=8,
         feed_ratio=1.0,
-        distinct_paths=5,  # above the "polls few URLs" bonus, so we're off the ceiling
+        distinct_paths=5,
+        distinct_targets=5,  # above the "polls few URLs" bonus, so we're off the ceiling
         user_agent="NetNewsWire (RSS reader)",
     )
     heading = replace(base, head_ratio=0.5)

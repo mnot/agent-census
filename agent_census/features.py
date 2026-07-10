@@ -35,6 +35,11 @@ _WBA_SAMPLE_CAP = 8
 # client that enumerates endlessly through the query string (millions of distinct
 # targets on one path) -- exactly the traffic the storm signal is meant to catch.
 _STORM_404_TARGET_CAP = 256
+# Distinct full request-targets (path + query) kept per client, so the "polls a few URLs
+# repeatedly" signals can tell a real poller from a client that varies the target in the
+# query string. The gate only asks "<= a handful", so a small cap bounds memory (and is
+# strictly tighter than the uncapped distinct-path set it sits beside).
+_DISTINCT_TARGET_CAP = 256
 
 # Request-line marker lists live in data/signatures/request_signatures.toml; this module turns
 # them into the sets and regexes the accumulator matches against per request.
@@ -316,7 +321,8 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
     __slots__ = (
         "_disallowed_check", "count", "total_bytes", "status_counts", "count_404",
         "targets_404", "vuln_hits", "vuln_sample", "submit_hits", "traversal_hits", "evasion_hits",
-        "methods", "distinct_paths", "static_count", "fetched_robots", "user_agent", "as_org",
+        "methods", "distinct_paths", "distinct_targets", "static_count", "fetched_robots",
+        "user_agent", "as_org",
         "as_number", "first_seen",
         "last_seen", "_has_prev", "_prev_top", "breadth_changes",
         "breadth_pairs", "ref_total", "ref_onsite", "self_referer_hits", "www_referer_hits",
@@ -391,6 +397,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         self.vuln_sample: list[str] | None = None
         self.methods: dict[str, int] | None = None
         self.distinct_paths: set[str] | None = None
+        self.distinct_targets: set[str] | None = None
         self._pending_pages: deque[tuple[float, str]] | None = None
         self.disallowed_sample: list[str] | None = None
 
@@ -477,6 +484,14 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         if self.distinct_paths is None:
             self.distinct_paths = set()
         self.distinct_paths.add(path)
+        # Distinct full targets (path + query), capped: a redirect / link checker hitting
+        # /check?uri=<a-different-site-each-time> varies only the query, so by bare path it
+        # looks like it polls one URL over and over when it is processing a fresh target
+        # every request. Lets the "polls a few URLs repeatedly" signals tell them apart.
+        if self.distinct_targets is None:
+            self.distinct_targets = set()
+        if len(self.distinct_targets) < _DISTINCT_TARGET_CAP:
+            self.distinct_targets.add(f"{path}?{entry.query}" if entry.query else path)
         content_type = _response_content_type(entry)  # parsed once for this request
         media = _media_from(content_type, entry.status)
         static = _is_static(path, media)
@@ -724,6 +739,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         self.methods = _merge_counts(self.methods, other.methods)
         self.targets_404 = _merge_sets(self.targets_404, other.targets_404)
         self.distinct_paths = _merge_sets(self.distinct_paths, other.distinct_paths)
+        self.distinct_targets = _merge_sets(self.distinct_targets, other.distinct_targets)
         self.vuln_sample = _merge_sample(self.vuln_sample, other.vuln_sample)
         self.disallowed_sample = _merge_sample(self.disallowed_sample, other.disallowed_sample)
         if self._trace is not None and other._trace:  # pylint: disable=protected-access
@@ -787,6 +803,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
             else 0.0
         )
         distinct = len(self.distinct_paths) if self.distinct_paths is not None else 0
+        distinct_targets = len(self.distinct_targets) if self.distinct_targets is not None else 0
         return ClientFeatures(
             request_count=self.count,
             total_bytes=self.total_bytes,
@@ -815,6 +832,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
             rate_regularity=timing["cv"],
             request_buckets=self._request_buckets(),
             distinct_paths=distinct,
+            distinct_targets=distinct_targets,
             coverage=_ratio(distinct, self.count),
             breadth_ratio=_ratio(self.breadth_changes, self.breadth_pairs),
             referer_following_ratio=_ratio(self.ref_onsite, self.ref_total),

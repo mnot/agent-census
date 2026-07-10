@@ -110,11 +110,21 @@ def test_probing_browser_ua_stays_vuln_scanner() -> None:
     assert classify_client(feats).primary is Kind.VULN_SCANNER
 
 
-def test_feed_fetcher_behind_browser_ua_is_not_spoofed() -> None:
-    # A feed reader wearing a plain browser UA (common on the digest) is caught by feed
-    # behaviour, not repainted as a costume: the spoof classifier gates on feed_requests.
+def test_feed_dominant_browser_ua_is_not_spoofed() -> None:
+    # A feed-*dominant* client wearing a plain browser UA is caught by feed behaviour, not
+    # repainted as a costume: the spoof classifier gates on the feed-dominant share.
     feats = _browser_costume(head_ratio=0.8, feed_requests=200, feed_ratio=1.0)
     assert classify_client(feats).primary is not Kind.SPOOFED_BROWSER
+
+
+def test_minority_feed_spoofer_is_still_caught() -> None:
+    # A spoofer that ALSO polls feeds, but only as a minority of its traffic (below the
+    # feed-dominant gate), is a costume, not a feed reader -- it must still be spoofed. This
+    # is the OneHostPlanet case: forged referers + no cache + hosting, yet ~40% feeds.
+    feats = _browser_costume(
+        feed_requests=40, feed_ratio=0.4, self_referer_ratio=0.9, referer_count=200
+    )
+    assert classify_client(feats).primary is Kind.SPOOFED_BROWSER
 
 
 # ---- Classifier unit tests ------------------------------------------------------------

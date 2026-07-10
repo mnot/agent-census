@@ -27,6 +27,10 @@ confidence_cap = 0.9  # emitted confidence = min(score, confidence_cap)
 
 [gate]
 min_requests = 2      # one request reveals nothing either way (as fake_browser.min_requests)
+# At/above this share of feed requests the client is a feed reader, not a costume, and is
+# excluded (even behind a browser UA). Below it -- a spoofer that merely also polls feeds --
+# it stays eligible; the combiner still lets a firing feed_reader verdict outrank spoofed.
+feed_dominant = 0.5
 
 # Tells fall in two groups (see classify/spoofed_browser.py). ACTIVE-deception / origin
 # tells count regardless of how browser-shaped the traffic looks -- a client faking

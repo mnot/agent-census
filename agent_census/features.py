@@ -39,6 +39,10 @@ _SIG = load_request_signatures()
 _STATIC_EXT = frozenset(_SIG.static_extensions)
 # Extensions (plus extension-less / trailing-slash paths) that count as an HTML page.
 _PAGE_EXT = frozenset(_SIG.page_extensions)
+# Response media-type prefixes, preferred over the URL extension when the log carries a
+# 200 Content-Type (a stylesheet at /style with no .css is still text/css).
+_STATIC_MEDIA = tuple(m.lower() for m in _SIG.static_media_types)
+_PAGE_MEDIA = tuple(m.lower() for m in _SIG.page_media_types)
 # Browser-chrome requests (favicon / apple-touch-icon) that are static by extension but
 # not rendered page sub-resources -- excluded from co-load satisfaction (see _is_chrome_asset).
 _CHROME_ASSET_MARKERS = tuple(m.lower() for m in _SIG.chrome_asset_markers)
@@ -87,7 +91,29 @@ def _extension(path: str) -> str:
     return last.rsplit(".", 1)[-1].lower() if "." in last else ""
 
 
-def _is_static(path: str) -> bool:
+def _served_media(entry: LogEntry) -> str:
+    """The response media type (no parameters), lower-cased -- but only for a 200. A
+    non-200 reports the error/redirect page's type, not the requested resource, so it is
+    not trusted (a 404 for /style.css commonly logs text/html); callers then fall back to
+    the URL extension."""
+    if entry.status != 200:
+        return ""
+    return _response_content_type(entry).split(";", 1)[0].strip()
+
+
+def _media_matches(media: str, markers: tuple[str, ...]) -> bool:
+    """Whether ``media`` starts with any marker -- markers are type prefixes, so
+    ``image/`` covers ``image/png`` and ``text/css`` matches exactly."""
+    return any(media.startswith(m) for m in markers)
+
+
+def _is_static(path: str, media: str = "") -> bool:
+    """A page sub-resource (stylesheet, script, image, font, media, data fetch). The
+    response media type wins over the URL extension -- a stylesheet served at /style with
+    no .css is still text/css, an XHR /data.json is a sub-resource -- with the extension as
+    the fallback when no (200) Content-Type was logged. See :func:`_served_media`."""
+    if media:
+        return _media_matches(media, _STATIC_MEDIA)
     return _extension(path) in _STATIC_EXT
 
 
@@ -100,8 +126,12 @@ def _is_chrome_asset(path: str) -> bool:
     return any(marker in low for marker in _CHROME_ASSET_MARKERS)
 
 
-def _is_page(status: int | None, path: str) -> bool:
-    if status != 200 or _is_static(path):
+def _is_page(status: int | None, path: str, media: str = "") -> bool:
+    if status != 200:
+        return False
+    if media:  # media type wins: an HTML response is a page whatever the URL looks like
+        return _media_matches(media, _PAGE_MEDIA)
+    if _is_static(path):  # extension fallback (no 200 Content-Type logged)
         return False
     ext = _extension(path)
     return path.endswith("/") or ext == "" or ext in _PAGE_EXT
@@ -430,7 +460,8 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         if self.distinct_paths is None:
             self.distinct_paths = set()
         self.distinct_paths.add(path)
-        static = _is_static(path)
+        media = _served_media(entry)
+        static = _is_static(path, media)
         if static:
             self.static_count += 1
         if _is_feed_request(entry, path):
@@ -439,7 +470,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         self._track_robots(path)
         self._track_referer(entry)
         self._track_breadth(path)
-        self._track_timing_and_coload(entry, path, static)
+        self._track_timing_and_coload(entry, path, static, media)
 
     def _track_robots(self, path: str) -> None:
         if path == "/robots.txt":
@@ -496,7 +527,9 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         self._prev_top = top
         self._has_prev = True
 
-    def _track_timing_and_coload(self, entry: LogEntry, path: str, static: bool) -> None:
+    def _track_timing_and_coload(
+        self, entry: LogEntry, path: str, static: bool, media: str
+    ) -> None:
         stamp = entry.timestamp
         if stamp is not None:
             if self.first_seen is None or stamp < self.first_seen:
@@ -510,7 +543,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         if ts is not None and pending is not None:
             while pending and pending[0][0] < ts - _COLOAD_WINDOW_SECONDS:
                 pending.popleft()
-        if _is_page(entry.status, path):
+        if _is_page(entry.status, path, media):
             self.pages_total += 1
             if ts is not None:
                 if self._pending_pages is None:

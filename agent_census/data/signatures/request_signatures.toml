@@ -22,6 +22,15 @@ extensions = [
 # breadth measurements.
 extensions = ["html", "htm", "xhtml", "php", "asp", "aspx", "jsp", "shtml", "cfm"]
 
+[chrome_assets]
+# Requests the browser makes on its own -- the tab favicon, the iOS home-screen icon --
+# not sub-resources embedded in and rendered from a page. They are static by extension
+# (.ico / .png) but must NOT count as a page co-load: ~18% of icon requests carry the
+# page as Referer, yet a favicon fetch is browser chrome, not evidence the page's content
+# was rendered, so crediting a cascade from one would let a costume that fetches
+# page + favicon look like a browser. Matched case-insensitively as a path substring.
+path_markers = ["favicon", "apple-touch-icon"]
+
 [path_traversal]
 # Substrings that mark a directory-traversal or path-injection attempt. A hit is
 # scored against the client as probing, not browsing.

@@ -367,6 +367,7 @@ class RequestSignatures:
 
     static_extensions: tuple[str, ...] = ()
     page_extensions: tuple[str, ...] = ()
+    chrome_asset_markers: tuple[str, ...] = ()
     traversal_markers: tuple[str, ...] = ()
     evasion_markers: tuple[str, ...] = ()
     uncommon_methods: tuple[str, ...] = ()
@@ -685,6 +686,7 @@ def load_ua_signatures() -> UaSignatures:
 _REQUEST_SIGNATURE_SCHEMA: dict[str, set[str]] = {
     "static_assets": {"extensions"},
     "pages": {"extensions"},
+    "chrome_assets": {"path_markers"},
     "path_traversal": {"markers"},
     "encoding_evasion": {"markers"},
     "methods": {"uncommon"},
@@ -703,6 +705,7 @@ def load_request_signatures() -> RequestSignatures:
     return RequestSignatures(
         static_extensions=groups[("static_assets", "extensions")],
         page_extensions=groups[("pages", "extensions")],
+        chrome_asset_markers=groups[("chrome_assets", "path_markers")],
         traversal_markers=groups[("path_traversal", "markers")],
         evasion_markers=groups[("encoding_evasion", "markers")],
         uncommon_methods=groups[("methods", "uncommon")],

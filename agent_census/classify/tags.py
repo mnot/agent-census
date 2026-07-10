@@ -41,11 +41,29 @@ _TUNING_SCHEMA = {
     "post_heavy_ratio_min": "post_heavy.ratio_min",
     "post_heavy_min_requests": "post_heavy.min_requests",
     "fake_browser_min_requests": "fake_browser.min_requests",
-    "forbidden_ratio_min": "forbidden.ratio_min",
-    "forbidden_min_requests": "forbidden.min_requests",
 }
 _T = load_tuning("tags", _TUNING_SCHEMA)
 _S = load_shared_tuning()
+
+
+def forbidden_tell(features: ClientFeatures) -> tuple[bool, int, int]:
+    """The server's 403 refusals, as ``(heavy, count, total)``: whether they are both
+    frequent (>= the shared ratio) and numerous (>= the shared count floor) enough to be
+    the site's standing verdict that the client is unwelcome -- not an incidental block of
+    one protected path -- alongside the 403 count and the number of responses with a
+    status (for the caller's evidence string). Read by the often-forbidden tag and, as
+    corroboration, the vuln-scanner classifier, both against the shared ``forbidden``
+    threshold so they agree. One pass over ``status_counts``, so callers needn't re-sum."""
+    status_counts = features.status_counts or {}
+    forbidden = status_counts.get(403, 0)
+    total = sum(status_counts.values())
+    heavy = (
+        forbidden >= _S["forbidden_min_requests"]
+        and total > 0
+        and forbidden / total >= _S["forbidden_ratio_min"]
+    )
+    return heavy, forbidden, total
+
 
 # Inter-arrival cadence tags: one is emitted from a single client's request timing.
 # On a multi-client display aggregate (a privacy-relay / VPN egress fold that folds
@@ -408,16 +426,10 @@ def _conduct_tags(features: ClientFeatures, redirect_shadow: str | None) -> dict
     # The server's own verdict: a client refused again and again (403) is being actively
     # blocked -- a WAF rule, hotlink / referer protection, an IP or path blocklist. One
     # 403 is incidental (a single protected path); a high share of a client's traffic
-    # coming back Forbidden says the site has decided it is misbehaving. Gated on a raw
-    # count too, so a tiny sample can't trip it.
-    status_counts = features.status_counts or {}
-    with_status = sum(status_counts.values())
-    forbidden = status_counts.get(403, 0)
-    if (
-        forbidden >= _T["forbidden_min_requests"]
-        and with_status
-        and forbidden / with_status >= _T["forbidden_ratio_min"]
-    ):
+    # coming back Forbidden says the site has decided it is misbehaving (see
+    # forbidden_tell for the shared threshold, which the vuln-scanner also weighs).
+    heavy, forbidden, with_status = forbidden_tell(features)
+    if heavy:
         tags["often-forbidden"] = (
             f"server returned 403 Forbidden to {forbidden / with_status:.0%} of requests "
             f"({forbidden:,} of {with_status:,})"

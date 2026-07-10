@@ -27,14 +27,6 @@ min_ratio = 0.05
 ratio_min = 0.5
 min_requests = 5
 
-[forbidden]
-# The often-forbidden tag: the server refused at least `ratio_min` of a client's
-# requests with 403, over at least `min_requests` requests. One 403 is incidental (a
-# single protected path); a high share coming back Forbidden is the server's own
-# verdict that the client is misbehaving (a WAF rule, hotlink protection, a blocklist).
-ratio_min = 0.5
-min_requests = 5
-
 [fake_browser]
 # A browser-shaped UA showing none of a browser's behaviour is judged a costume only
 # once it has made at least this many requests (one reveals nothing either way).

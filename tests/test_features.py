@@ -195,7 +195,27 @@ def test_status_ratios_and_404_paths() -> None:
     ]
     feats = extract_features(entries)
     assert feats.ratio_404 > 0.6
-    assert feats.distinct_404_paths == 2
+    assert feats.distinct_404_targets == 2
+
+
+def test_404_targets_count_query_string_enumeration() -> None:
+    # A client enumerating one path through the query string (/x?id=1, /x?id=2, ...) is
+    # spraying just as much as one guessing distinct paths; the 404 signal must count the
+    # full request target, not collapse the whole storm to a single bare path.
+    entries = [entry("/x", status=404, query=f"id={i}", offset=i) for i in range(20)]
+    assert extract_features(entries).distinct_404_targets == 20
+
+
+def test_404_targets_are_capped() -> None:
+    # The distinct-target set is bounded so an endless query-string enumerator can't grow
+    # it without limit; the storm gate only needs a floor, so a cap loses nothing.
+    from agent_census.features import _STORM_404_TARGET_CAP
+
+    entries = [
+        entry("/x", status=404, query=f"id={i}", offset=i)
+        for i in range(_STORM_404_TARGET_CAP + 50)
+    ]
+    assert extract_features(entries).distinct_404_targets == _STORM_404_TARGET_CAP
 
 
 def test_asset_coloading_detected() -> None:

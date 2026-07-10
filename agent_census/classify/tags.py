@@ -398,10 +398,10 @@ def _conduct_tags(features: ClientFeatures, redirect_shadow: str | None) -> dict
         )
     if (
         features.ratio_404 > _S["storm_404_ratio_min"]
-        and features.distinct_404_paths >= _S["storm_404_distinct_paths_min"]
+        and features.distinct_404_targets >= _S["storm_404_distinct_paths_min"]
     ):
         tags["404-storm"] = (
-            f"{features.ratio_404:.0%} 404s across {features.distinct_404_paths:,} distinct paths"
+            f"{features.ratio_404:.0%} 404s across {features.distinct_404_targets:,} distinct URLs"
         )
     if features.exotic_method_count > 0:
         # PUT/DELETE/PROPFIND/CONNECT … — scanners, WebDAV probes

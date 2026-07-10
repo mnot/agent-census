@@ -30,6 +30,11 @@ from .wba import SIGNATURE_INPUT_HEADER, WbaClaim, build_claim
 # *mixed* identity: some signatures verify, some don't. Distinct signatures only,
 # capped; the first is the representative that drives the headline verdict.
 _WBA_SAMPLE_CAP = 8
+# Distinct 404 request-targets kept per client for the storm signal. The gate only
+# needs a floor (a dozen-plus), so a small cap bounds memory against an adversarial
+# client that enumerates endlessly through the query string (millions of distinct
+# targets on one path) -- exactly the traffic the storm signal is meant to catch.
+_STORM_404_TARGET_CAP = 256
 
 # Request-line marker lists live in data/signatures/request_signatures.toml; this module turns
 # them into the sets and regexes the accumulator matches against per request.
@@ -310,7 +315,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
 
     __slots__ = (
         "_disallowed_check", "count", "total_bytes", "status_counts", "count_404",
-        "paths_404", "vuln_hits", "vuln_sample", "submit_hits", "traversal_hits", "evasion_hits",
+        "targets_404", "vuln_hits", "vuln_sample", "submit_hits", "traversal_hits", "evasion_hits",
         "methods", "distinct_paths", "static_count", "fetched_robots", "user_agent", "as_org",
         "as_number", "first_seen",
         "last_seen", "_has_prev", "_prev_top", "breadth_changes",
@@ -382,7 +387,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         self._minute_counts: dict[int, int] | None = None
         # Lazily allocated; None until first needed.
         self.status_counts: dict[int, int] | None = None
-        self.paths_404: set[str] | None = None
+        self.targets_404: set[str] | None = None
         self.vuln_sample: list[str] | None = None
         self.methods: dict[str, int] | None = None
         self.distinct_paths: set[str] | None = None
@@ -431,9 +436,14 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
             self.status_counts[entry.status] = self.status_counts.get(entry.status, 0) + 1
             if entry.status == 404:
                 self.count_404 += 1
-                if self.paths_404 is None:
-                    self.paths_404 = set()
-                self.paths_404.add(path)
+                if self.targets_404 is None:
+                    self.targets_404 = set()
+                # Count the full request target, not just the path: an enumerator that
+                # varies only the query string (/x?id=1, /x?id=2 ...) is spraying just as
+                # much as one guessing distinct paths, and a bare-path count would collapse
+                # its whole storm to a single entry. Capped so it can't grow without bound.
+                if len(self.targets_404) < _STORM_404_TARGET_CAP:
+                    self.targets_404.add(f"{path}?{entry.query}" if entry.query else path)
 
         low = path.lower()
         always = _ALWAYS_RE is not None and _ALWAYS_RE.search(low)
@@ -712,7 +722,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
             self.last_seen = other.last_seen
         self.status_counts = _merge_counts(self.status_counts, other.status_counts)
         self.methods = _merge_counts(self.methods, other.methods)
-        self.paths_404 = _merge_sets(self.paths_404, other.paths_404)
+        self.targets_404 = _merge_sets(self.targets_404, other.targets_404)
         self.distinct_paths = _merge_sets(self.distinct_paths, other.distinct_paths)
         self.vuln_sample = _merge_sample(self.vuln_sample, other.vuln_sample)
         self.disallowed_sample = _merge_sample(self.disallowed_sample, other.disallowed_sample)
@@ -790,7 +800,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
             ratio_4xx=_ratio(classes.get(4, 0), with_status),
             ratio_5xx=_ratio(classes.get(5, 0), with_status),
             ratio_404=_ratio(self.count_404, with_status),
-            distinct_404_paths=len(self.paths_404) if self.paths_404 is not None else 0,
+            distinct_404_targets=len(self.targets_404) if self.targets_404 is not None else 0,
             vuln_path_hits=self.vuln_hits,
             vuln_path_ratio=_ratio(self.vuln_hits, self.count),
             sample_vuln_paths=tuple(self.vuln_sample or ()),

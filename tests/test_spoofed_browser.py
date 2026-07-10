@@ -105,7 +105,7 @@ def test_probing_browser_ua_stays_vuln_scanner() -> None:
     # outranks spoofed_browser in the tie-break. (Guards against the spoof score stealing
     # probers.)
     feats = _browser_costume(
-        vuln_path_hits=30, vuln_path_ratio=0.15, ratio_404=0.7, distinct_404_paths=20
+        vuln_path_hits=30, vuln_path_ratio=0.15, ratio_404=0.7, distinct_404_targets=20
     )
     assert classify_client(feats).primary is Kind.VULN_SCANNER
 

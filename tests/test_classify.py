@@ -30,7 +30,7 @@ def test_vuln_scanner_fires_on_probes() -> None:
     feats = ClientFeatures(
         request_count=10,
         ratio_404=0.9,
-        distinct_404_paths=20,
+        distinct_404_targets=20,
         vuln_path_hits=8,
         sample_vuln_paths=("/.env", "/wp-login.php"),
         traversal_hits=1,
@@ -264,7 +264,7 @@ def test_impossible_referer_does_not_override_a_stronger_signal() -> None:
         vuln_path_hits=50,
         vuln_path_ratio=0.25,
         ratio_404=0.7,
-        distinct_404_paths=20,
+        distinct_404_targets=20,
     )
     assert classify_client(feats, redirect_shadow="www").primary is Kind.VULN_SCANNER
 
@@ -1119,7 +1119,7 @@ def test_fingerprint_poles_and_indeterminate_gating() -> None:
 
 
 def test_behavioural_tags_promoted_from_evidence() -> None:
-    storm = ClientFeatures(request_count=30, ratio_404=0.9, distinct_404_paths=20)
+    storm = ClientFeatures(request_count=30, ratio_404=0.9, distinct_404_targets=20)
     assert "404-storm" in classify_client(storm).tags
     exotic = ClientFeatures(request_count=5, exotic_method_count=3)
     assert "exotic-method" in classify_client(exotic).tags

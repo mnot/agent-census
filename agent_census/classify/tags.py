@@ -422,6 +422,23 @@ def _conduct_tags(features: ClientFeatures, redirect_shadow: str | None) -> dict
             f"server returned 403 Forbidden to {forbidden / with_status:.0%} of requests "
             f"({forbidden:,} of {with_status:,})"
         )
+    # The server's own verdict: a client refused again and again (403) is being actively
+    # blocked -- a WAF rule, hotlink / referer protection, an IP or path blocklist. One
+    # 403 is incidental (a single protected path); a high share of a client's traffic
+    # coming back Forbidden says the site has decided it is misbehaving. Gated on a raw
+    # count too, so a tiny sample can't trip it.
+    status_counts = features.status_counts or {}
+    with_status = sum(status_counts.values())
+    forbidden = status_counts.get(403, 0)
+    if (
+        forbidden >= _T["forbidden_min_requests"]
+        and with_status
+        and forbidden / with_status >= _T["forbidden_ratio_min"]
+    ):
+        tags["often-forbidden"] = (
+            f"server returned 403 Forbidden to {forbidden / with_status:.0%} of requests "
+            f"({forbidden:,} of {with_status:,})"
+        )
     if features.exotic_method_count > 0:
         # PUT/DELETE/PROPFIND/CONNECT … — scanners, WebDAV probes
         tags["exotic-method"] = (

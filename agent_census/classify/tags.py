@@ -68,6 +68,7 @@ OBSERVATIONAL_TAGS = (
     frozenset(
         {
             "checked-robots",
+            "polls-feeds",
             "has-cache",
             "lacks-cache",
             "loads-assets",
@@ -568,6 +569,14 @@ def _fact_tags(
         tags["declares-known-bot"] = "User-Agent names a known crawler"
     if ua_is_feed_reader(features.user_agent):
         tags["fetches-feeds"] = "User-Agent names a feed reader or generic feed tool"
+    if features.feed_requests > 0:
+        # Behavioural, across every kind: it actually requested RSS/Atom resources,
+        # whatever its User-Agent claims (fetches-feeds is the UA-declared sibling). A
+        # browser-UA spoofer that also polls feeds carries this alongside spoofed_browser.
+        tags["polls-feeds"] = (
+            f"requested {features.feed_requests:,} feed resource(s) "
+            f"({features.feed_ratio:.0%} of traffic)"
+        )
     app_token = uas.app_stack_token(features.user_agent)
     if app_token is not None:
         tags["declares-app-client"] = (

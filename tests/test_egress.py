@@ -113,7 +113,10 @@ def _relay_browser_lines() -> list[str]:
         when_asset = f"[1{day}/Oct/2023:12:00:01 +0000]"
         return [
             f'{ip} - - {when_page} "GET /p{day} HTTP/1.1" {status} 900 "-" "{safari}"',
-            f'{ip} - - {when_asset} "GET /a{day}.css HTTP/1.1" 200 100 "-" "{safari}"',
+            # CSS carries the page as Referer, so it's a genuine (referer-linked) co-load
+            # -- the browser signal, independent of cadence.
+            f'{ip} - - {when_asset} "GET /a{day}.css HTTP/1.1" 200 100 '
+            f'"http://h/p{day}" "{safari}"',
         ]
 
     # Three visits on the 11th/12th/13th -> a >24h span; the last returns a 304.

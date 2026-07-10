@@ -224,6 +224,20 @@ def test_bare_asset_batch_is_not_a_coload() -> None:
     assert feats.asset_coload_ratio == 0.0
 
 
+def test_favicon_with_page_referer_is_not_a_coload() -> None:
+    # Browser-chrome requests (favicon / apple-touch-icon) are excluded from co-load even
+    # when they carry the page as Referer -- they are not rendered page sub-resources, so
+    # a page + favicon fetch must not read as a cascade (#109).
+    for icon in ("/favicon.ico", "/apple-touch-icon-precomposed.png"):
+        feats = extract_features(
+            [
+                entry("/", status=200, offset=0),
+                entry(icon, status=200, offset=1, referer="https://example.com/"),
+            ]
+        )
+        assert feats.asset_coload_ratio == 0.0, icon
+
+
 def test_coload_referer_to_other_page_is_not_credited() -> None:
     # A sub-resource whose Referer names a *different* page (not the one in the window)
     # is not a cascade off the current page -- e.g. a crawler navigating, not rendering.

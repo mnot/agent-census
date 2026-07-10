@@ -46,6 +46,21 @@ _T = load_tuning("tags", _TUNING_SCHEMA)
 _S = load_shared_tuning()
 
 
+def refetch_dominant(features: ClientFeatures) -> bool:
+    """True when re-fetching-without-caching is *dispositive* -- the "not a browser on cache
+    grounds" line, drawn once and read by both browser.py (hard-disqualify) and
+    spoofed_browser.py (its no-cache tell). Re-fetching dominates the traffic (at least the
+    shared floor of revisits, making up at least the shared fraction of requests), or the
+    volume alone is large enough that zero revalidations is itself damning. This is a
+    stronger condition than ``ClientFeatures.holds_no_cache``, which also fires on modest
+    re-fetching: a broad-path client that never caches but re-fetches little stays below it."""
+    revisits = features.request_count - features.distinct_paths
+    return (
+        revisits >= _S["no_cache_dominant_refetch_min"]
+        and revisits >= features.request_count * _S["no_cache_dominant_fraction"]
+    ) or (features.request_count >= _S["no_cache_high_volume"])
+
+
 def forbidden_tell(features: ClientFeatures) -> tuple[bool, int, int]:
     """The server's 403 refusals, as ``(heavy, count, total)``: whether they are both
     frequent (>= the shared ratio) and numerous (>= the shared count floor) enough to be

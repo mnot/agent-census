@@ -12,7 +12,7 @@ from ..dataload import load_shared_tuning, load_tuning
 from ..errors import ConfigError
 from ..model import ClientFeatures, Kind, Signal
 from .base import Classifier
-from .tags import identifies_as_known_agent
+from .tags import identifies_as_known_agent, refetch_dominant
 
 # Numeric knobs live in data/tuning/browser.toml (this classifier's own) and
 # data/tuning/shared.toml (thresholds shared with the tags and other classifiers).
@@ -34,9 +34,6 @@ _TUNING_SCHEMA = {
     "version_stale_penalty": "version_stale.weight",
     "fetched_robots_penalty": "fetched_robots.weight",
     "no_cache_soft_penalty": "no_cache.soft_penalty",
-    "cold_refetch_min": "no_cache.cold_refetch_min",
-    "dominant_fraction": "no_cache.dominant_fraction",
-    "high_volume": "no_cache.high_volume",
     "vuln_hits_cap": "probing.vuln_hits_cap",
 }
 _T = load_tuning("browser", _TUNING_SCHEMA)
@@ -162,15 +159,12 @@ class BrowserClassifier(Classifier):
 
         # A client that holds no browser cache (re-fetches the same URLs, or makes
         # a large number of requests, yet never earns a 304) is not browsing -- see
-        # ClientFeatures.holds_no_cache.
-        revisits = features.request_count - features.distinct_paths
-        cold_refetch = revisits >= _T["cold_refetch_min"]
+        # ClientFeatures.holds_no_cache. The dispositive "re-fetching dominates / high
+        # volume" line is the shared refetch_dominant predicate (spoofed_browser.py fires
+        # its no-cache tell on the same condition, so the two agree).
         if evidence and features.holds_no_cache:
-            dominant = (
-                cold_refetch and revisits >= features.request_count * _T["dominant_fraction"]
-            ) or (features.request_count >= _T["high_volume"])
             disqualified = True
-            if dominant:
+            if refetch_dominant(features):
                 # Re-fetching dominates, or the volume is large enough that zero
                 # revalidations is itself damning: cap below the confident threshold.
                 confidence = min(confidence, _T["disqualified_ceiling"])

@@ -25,7 +25,7 @@ from ..dataload import load_shared_tuning, load_tuning
 from ..errors import ConfigError
 from ..model import ClassifyContext, ClientFeatures, Kind, Signal
 from .base import Classifier
-from .tags import identifies_as_known_agent, looks_like_impossible_referer
+from .tags import identifies_as_known_agent, looks_like_impossible_referer, refetch_dominant
 
 _TUNING_SCHEMA = {
     "threshold": "score.threshold",
@@ -134,18 +134,19 @@ class SpoofedBrowserClassifier(Classifier):
                 f"Referer equals the requested URL on {features.self_referer_ratio:.0%} of "
                 "requests — fabricated navigation",
             )
-        # Volume-proven no-cache is an active tell, NOT a cold one: browser.py already
-        # disqualifies a no-cache client as "not browsing" regardless of co-load (it caps
-        # the browser verdict at disqualified_ceiling on the same signal), so suppressing it
-        # here whenever the client co-loads left the two halves of one browser/costume
-        # question contradicting each other -- a co-loading client that never caches was
-        # disqualified as a browser AND denied spoofed_browser, falling through to
-        # automation. Calibrated on live redbot/mnot digests: every no-cache browser-UA
-        # client is narrow-path / high-repeat automation (0 of 36 looked like an organic
-        # cache-disabled human), so this counts on ANY co-load level. holds_no_cache is
-        # itself volume-gated (20+ revisits or 500+ requests, never a 304 -- see
-        # ClientFeatures.holds_no_cache), which is what keeps a low-volume privacy human out.
-        if features.holds_no_cache:
+        # Dispositive no-cache is an active tell, NOT a cold one -- it counts regardless of
+        # co-load. This is exactly the condition browser.py hard-disqualifies a browser
+        # verdict on (the shared refetch_dominant line: re-fetching dominates the traffic, or
+        # the volume alone is damning), so the two halves of the one browser/costume question
+        # now agree: a client browser.py rules "not browsing on cache grounds" is a costume
+        # here too, even when it co-loads. It is gated on refetch_dominant, NOT the broader
+        # ClientFeatures.holds_no_cache: the difference is the non-dominant broad-path client
+        # (never caches, but re-fetches little -- a heavy human session on a site with no
+        # validators), which browser.py only soft-penalises and keeps as a browser, so it
+        # must not be swept in here. Calibrated on live redbot/mnot digests: the dispositive
+        # population is narrow-path / high-repeat automation (0 of 36 an organic cache-
+        # disabled human).
+        if features.holds_no_cache and refetch_dominant(features):
             tell(
                 _T["w_no_cache"],
                 f"{features.request_count:,} requests, never a 304 — holds no browser cache",

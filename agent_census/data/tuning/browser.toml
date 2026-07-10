@@ -80,13 +80,11 @@ weight = 0.15
 
 [no_cache]
 # Many requests yet never a 304: the client holds no browser cache. A soft penalty
-# while modest; once re-fetching dominates (`cold_refetch_min` revisits making up at
-# least `dominant_fraction` of the traffic) or the volume passes `high_volume`, the
-# verdict is instead clamped to the disqualified ceiling.
+# while modest; once re-fetching is *dispositive* (the shared no_cache_dominance line in
+# shared.toml -- re-fetching dominates the traffic, or the volume passes high_volume) the
+# verdict is instead clamped to the disqualified ceiling. That line lives in shared.toml
+# because spoofed_browser.py fires its no-cache tell on exactly the same condition.
 soft_penalty = 0.2
-cold_refetch_min = 20
-dominant_fraction = 0.5
-high_volume = 2000
 
 # ── Disqualifier (clamps to the ceiling above) ───────────────────────────────
 

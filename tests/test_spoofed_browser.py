@@ -104,6 +104,28 @@ def test_coloading_no_cache_browser_is_spoofed() -> None:
     assert classify_client(feats).primary is Kind.SPOOFED_BROWSER
 
 
+def test_broad_path_no_cache_browser_stays_browser() -> None:
+    # The FP guard for the no-cache tell: a heavy human session on a site with weak caching
+    # (no validators, so never a 304) that browses BROADLY -- 350 distinct paths, only 170
+    # revisits (< half its traffic) -- holds_no_cache but is NOT refetch-dominant. browser.py
+    # only soft-penalises it (stays a browser), so the no-cache spoof tell must not fire and
+    # flip it to Suspicious. Gating on refetch_dominant (not raw holds_no_cache) is what keeps
+    # the two classifiers consistent here.
+    feats = ClientFeatures(
+        request_count=520,
+        distinct_paths=350,
+        ua_looks_like_browser=True,
+        ua_empty=False,
+        page_count=200,
+        asset_coload_ratio=0.7,
+        referer_following_ratio=0.6,
+        referer_count=500,
+        status_counts={200: 520},
+    )
+    assert feats.holds_no_cache  # the broader "notable" line trips ...
+    assert classify_client(feats).primary is Kind.BROWSER  # ... but it stays a browser
+
+
 def test_residential_costume_plus_forged_referer_is_spoofed() -> None:
     # costume + fabricated referers (Referer == the requested URL).
     feats = _browser_costume(self_referer_ratio=0.9, referer_count=200)

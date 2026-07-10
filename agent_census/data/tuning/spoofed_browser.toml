@@ -9,7 +9,7 @@
 # Weights are 0.05-step ordinal strengths (like every classifier's), calibrated on
 # live mnot.net + redbot.org digests against anchors that must all hold:
 #   - impossible-referer fires alone                       (0.60 >= threshold)
-#   - no-cache-at-volume fires alone                       (0.45 >= threshold)
+#   - dispositive no-cache fires alone                     (0.45 >= threshold)
 #   - all-cold at volume (never a Referer) fires           (0.15 + 0.15 + 0.20)
 #   - datacenter + shape-costume fires                     (0.30 + 0.15 + 0.15)
 #   - residential shape-costume + one strong tell fires    (0.30 + 0.30)
@@ -21,11 +21,12 @@
 # client that renders nothing and never sends a Referer is a costume, a softening of the
 # old "costume alone stays browser" line (issue #103) that accepts a small lone-residential
 # edge to catch coordinated all-cold botnets (clustered /24 blocks, rotating UAs); and
-# (2) no-cache-at-volume -- volume-proven (20+ revisits, never a 304), which the live
-# digests show is narrow-path automation (0 of 36 an organic cache-disabled human), so it
-# is dispositive on any origin, matching browser.py, which already disqualifies the same
-# client as "not browsing". Neither overlaps the shape-costume guard: a privacy human that
-# renders, caches, and sends some Referers trips none of them.
+# (2) dispositive no-cache -- never a 304 while re-fetching dominates the traffic (the
+# shared no_cache_dominance line), which the live digests show is narrow-path automation
+# (0 of 36 an organic cache-disabled human). It fires on exactly the condition browser.py
+# hard-disqualifies a browser on, so the two agree; a broad-path client that never caches
+# but re-fetches little stays a browser in both. Neither tell overlaps the shape-costume
+# guard: a privacy human that renders, caches, and sends some Referers trips none of them.
 #
 # High blast radius: a weight change moves every client, so re-verify against a real
 # log (agent-census calibrate), not just the tests, before changing these.
@@ -57,9 +58,11 @@ min_requests = 2      # one request reveals nothing either way (as fake_browser.
 # Dispositive alone (validated on live logs in #101): a same-site Referer naming the
 # site's redirect-only host form, which a compliant browser cannot emit.
 impossible_referer = 0.6
-# Dispositive alone (calibrated on live redbot/mnot digests): re-fetches at volume, never
-# a 304. browser.py already disqualifies this same client as "not browsing" regardless of
-# co-load, so it counts here on any co-load level too. Volume-gated in ClientFeatures.
+# Dispositive alone (calibrated on live redbot/mnot digests): never a 304 while re-fetching
+# dominates (the shared no_cache_dominance line, gated in classify/tags.refetch_dominant).
+# browser.py hard-disqualifies a browser on exactly this condition, so it counts here on any
+# co-load level too -- the two halves agree. A broad-path low-refetch no-cache client stays
+# a browser in both.
 holds_no_cache = 0.45
 datacenter = 0.3      # hosting origin -- corroboration, no longer a hard gate
 head_heavy = 0.3      # HEAD share above the notable line -- browsers issue GET

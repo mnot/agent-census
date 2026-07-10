@@ -199,14 +199,40 @@ def test_status_ratios_and_404_paths() -> None:
 
 
 def test_asset_coloading_detected() -> None:
+    # A genuine page cascade: the page, then its sub-resources each carrying a Referer
+    # that names the page. Only a referer-linked sub-resource counts as a co-load (#109).
     entries = [
         entry("/", status=200, offset=0),
-        entry("/style.css", status=200, offset=1),
-        entry("/app.js", status=200, offset=2),
+        entry("/style.css", status=200, offset=1, referer="https://example.com/"),
+        entry("/app.js", status=200, offset=2, referer="https://example.com/"),
     ]
     feats = extract_features(entries)
     assert feats.asset_coload_ratio > 0.0
     assert feats.static_ratio > 0.0
+
+
+def test_bare_asset_batch_is_not_a_coload() -> None:
+    # The tightening: static assets that arrive within the co-load window but carry no
+    # Referer linking them to the page -- a poller's or a costume's bare batch -- do NOT
+    # count as a co-load, though the old timing-only rule credited them (#109).
+    entries = [
+        entry("/", status=200, offset=0),
+        entry("/style.css", status=200, offset=1),  # no Referer
+        entry("/app.js", status=200, offset=2),  # no Referer
+    ]
+    feats = extract_features(entries)
+    assert feats.asset_coload_ratio == 0.0
+
+
+def test_coload_referer_to_other_page_is_not_credited() -> None:
+    # A sub-resource whose Referer names a *different* page (not the one in the window)
+    # is not a cascade off the current page -- e.g. a crawler navigating, not rendering.
+    entries = [
+        entry("/one", status=200, offset=0),
+        entry("/asset.css", status=200, offset=1, referer="https://example.com/elsewhere"),
+    ]
+    feats = extract_features(entries)
+    assert feats.asset_coload_ratio == 0.0
 
 
 def test_no_coloading_for_scraper_pattern() -> None:

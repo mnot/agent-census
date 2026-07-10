@@ -337,7 +337,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
         self.vuln_sample: list[str] | None = None
         self.methods: dict[str, int] | None = None
         self.distinct_paths: set[str] | None = None
-        self._pending_pages: deque[float] | None = None
+        self._pending_pages: deque[tuple[float, str]] | None = None
         self.disallowed_sample: list[str] | None = None
 
     def add(self, entry: LogEntry) -> None:
@@ -496,17 +496,28 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
             self._record_arrival(ts)
         pending = self._pending_pages
         if ts is not None and pending is not None:
-            while pending and pending[0] < ts - _COLOAD_WINDOW_SECONDS:
+            while pending and pending[0][0] < ts - _COLOAD_WINDOW_SECONDS:
                 pending.popleft()
         if _is_page(entry.status, path):
             self.pages_total += 1
             if ts is not None:
                 if self._pending_pages is None:
                     self._pending_pages = deque()
-                self._pending_pages.append(ts)
-        elif static and ts is not None and pending:
-            self.pages_satisfied += len(pending)
-            pending.clear()
+                self._pending_pages.append((ts, path))
+        elif static and ts is not None and pending and entry.referer and entry.referer != "-":
+            # A sub-resource counts as a co-load only when its Referer names the page it
+            # hangs off -- a genuine page cascade -- not merely because it arrived within
+            # the window of some unrelated page (a poller's or a costume's bare batch, which
+            # the old timing-only rule mis-credited). One asset satisfies at most one pending
+            # page-fetch, the one its Referer points at; that page is then removed so a second
+            # asset can't re-credit it. Assumes same-origin assets, so the page's path
+            # survives in the sub-resource's Referer (issue #109).
+            ref_path = _referer_path(entry.referer)
+            for i, (_pts, ppath) in enumerate(pending):
+                if ppath == ref_path:
+                    self.pages_satisfied += 1
+                    del pending[i]
+                    break
 
     def _record_arrival(self, ts: float) -> None:
         """Fold one request's timestamp into the bounded timing summary."""

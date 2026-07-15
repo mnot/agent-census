@@ -16,13 +16,15 @@ registering it; nothing downstream changes.
 
 Classification is deliberately modular: each kind lives in its own file under
 `agent_census/classify/`, reads only the measured features, and votes with a
-confidence and a list of human-readable reasons. A combiner aggregates the votes
-into a primary kind plus secondary tags. Each classifier can be read, tested,
-and evolved on its own -- usually the easiest place to start.
+confidence. A combiner aggregates the votes into a primary kind plus secondary
+tags. Each classifier can be read, tested, and evolved on its own -- usually the
+easiest place to start.
 
-The confidence weights and the unknown-threshold are hand-tuned starting points;
-calibrating them against real, labelled logs is one of the more valuable things
-a contributor can do.
+[`SPEC.md`](SPEC.md) is the authoritative account of *how every tag and every
+classification is derived* -- the classifiers, the combiner, and the shared
+predicates that tie them together, each cross-linked to the tuning knob that
+sets it. Read it before changing classification behaviour, and keep it in step
+with any change you make.
 
 ## Coding Conventions
 

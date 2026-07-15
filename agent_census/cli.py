@@ -856,7 +856,7 @@ def main(argv: Sequence[str] | None = None) -> int:  # pylint: disable=too-many-
                 inspect_dir = inspect_version = None
                 if _wants_inspect_data(args):
                     data_dir = args.output.parent / f"{args.output.stem}.inspect"
-                    count, inspect_version = write_inspect_bundle(
+                    _, inspect_version = write_inspect_bundle(
                         ctx.result.profiles,
                         data_dir,
                         limit=args.inspect_limit,
@@ -864,7 +864,6 @@ def main(argv: Sequence[str] | None = None) -> int:  # pylint: disable=too-many-
                         site=ctx.result.site,
                     )
                     inspect_dir = f"{args.output.stem}.inspect"
-                    print(f"wrote {count} inspect file(s) to {data_dir}", file=sys.stderr)
                 text = render_report_html(
                     result,
                     source=source,

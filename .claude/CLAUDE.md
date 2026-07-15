@@ -17,3 +17,20 @@ Non-negotiables that apply to both:
 - **Neutral provider entries only.** Record what a network *is* -- datacentre,
   hosting, egress -- without characterising named third parties.
 - **Branch, don't work on `main`.** Use the assigned worktree or a fresh branch.
+
+## Keep SPEC.md in sync
+
+`SPEC.md` (repo root) is the authoritative spec for **how every tag and
+classification is derived** -- the classifiers, the combiner, the tag layer, and
+the tuning that drives them, cross-linked to each knob. If you change that logic
+(anything under `agent_census/classify/`, `features.py`, `model.py`, or the
+`data/tuning/*.toml` knobs those read), update `SPEC.md` in the same change so
+code and spec never drift. This is separate from -- and not gated by -- the
+data-only calibrate/audit rules above.
+
+## Design rationale goes in issues, not files
+
+`SPEC.md` documents *current behaviour*; the *why* -- root-cause analyses,
+rejected alternatives, implementation records, staging plans -- belongs in the
+relevant GitHub issue, not an in-repo `docs/` file. Don't create design-note
+files; put that content in the tracking issue.

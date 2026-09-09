@@ -235,7 +235,10 @@ def _as_list(value: object) -> list[object]:
 
 def parse_prefixes(text: str) -> tuple[str, ...]:
     """A ``{"prefixes": [...]}`` object whose entries are either CIDR strings
-    (e.g. Yandex Cloud) or ``{"ipv4Prefix"|"ipv6Prefix"}`` dicts (Google / GCP)."""
+    (e.g. Yandex Cloud) or dicts keyed ``ipv4Prefix``/``ipv6Prefix`` (Google / GCP)
+    or ``ip_prefix``/``ipv6_prefix`` (Amazon's searchbot-ip-addresses page mixes
+    this AWS-style key naming into the same ``{"prefixes": [...]}`` wrapper the
+    other Amazonbot pages use)."""
     try:
         data = json.loads(text)
     except (ValueError, TypeError):
@@ -246,7 +249,12 @@ def parse_prefixes(text: str) -> tuple[str, ...]:
         if isinstance(prefix, str):
             out.append(prefix)
         elif isinstance(prefix, dict):
-            cidr = prefix.get("ipv4Prefix") or prefix.get("ipv6Prefix")
+            cidr = (
+                prefix.get("ipv4Prefix")
+                or prefix.get("ipv6Prefix")
+                or prefix.get("ip_prefix")
+                or prefix.get("ipv6_prefix")
+            )
             if cidr:
                 out.append(cidr)
     return tuple(out)

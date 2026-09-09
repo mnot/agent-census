@@ -50,6 +50,13 @@ def test_parse_amazon_falls_back_to_raw_json() -> None:
     assert extract_cidrs(text, "amazon") == ("8.8.8.0/24",)
 
 
+def test_parse_prefixes_aws_style_keys() -> None:
+    # Amazon's searchbot-ip-addresses page mixes AWS-style "ip_prefix" keys into
+    # the same {"prefixes": [...]} wrapper the other Amazonbot pages use.
+    text = '{"prefixes": [{"ip_prefix": "100.24.190.202/32"}, {"ipv6_prefix": "2600:1f00::/24"}]}'
+    assert extract_cidrs(text, "prefixes") == ("100.24.190.202/32", "2600:1f00::/24")
+
+
 def test_parse_aws_schema() -> None:
     text = (
         '{"prefixes": [{"ip_prefix": "52.0.0.0/8"}], '

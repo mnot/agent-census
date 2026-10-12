@@ -594,7 +594,7 @@ def _age_text(seconds: float) -> str:
     return f"{max(int(seconds // 60), 0)} minutes"
 
 
-def _stamp(epoch: float | int | None) -> str:
+def format_stamp(epoch: float | int | None) -> str:
     if epoch is None:
         return "-"
     return datetime.fromtimestamp(epoch, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -610,9 +610,9 @@ def key_failure_detail(result: WbaResult) -> str:
         parts.append(result.key_note)
     facts = [
         f"key {result.keyid}",
-        f"signed {_stamp(result.created)}",
-        f"expires {_stamp(result.expires)}",
-        f"request {_stamp(result.request_time)}",
+        f"signed {format_stamp(result.created)}",
+        f"expires {format_stamp(result.expires)}",
+        f"request {format_stamp(result.request_time)}",
     ]
     if result.directory_url:
         facts.append(f"directory {result.directory_url}")

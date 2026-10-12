@@ -404,10 +404,15 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
 
     def _sample_wba(self, entry: LogEntry) -> None:
         # Sample Web Bot Auth-signed requests for later verification. Guarded on the
-        # header's presence (so the parse runs only on signed requests) and on the
-        # cap; only distinct signatures are kept, so a replayed-identical signature
-        # doesn't crowd out genuinely different ones from the sample.
-        if SIGNATURE_INPUT_HEADER in entry.extra and len(self.wba_claims) < _WBA_SAMPLE_CAP:
+        # header's presence (so the parse runs only on signed requests); only
+        # distinct signatures are kept, up to the cap, so a replayed-identical
+        # signature doesn't crowd out genuinely different ones. Past the cap a request
+        # is still checked for an unusable claim (but no claim is built), so the
+        # per-cause counts cover every signed request.
+        if SIGNATURE_INPUT_HEADER not in entry.extra:
+            return
+        claim = None
+        if len(self.wba_claims) < _WBA_SAMPLE_CAP:
             claim = build_claim(
                 entry.extra,
                 host=entry.host_header,
@@ -415,12 +420,13 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
                 path=entry.path,
                 timestamp=entry.timestamp.timestamp() if entry.timestamp is not None else None,
             )
-            if claim is None:
-                problem = claim_problem(entry.extra)
-                if problem is not None:
-                    self.wba_unusable[problem] = self.wba_unusable.get(problem, 0) + 1
-            elif all(c.signature != claim.signature for c in self.wba_claims):
-                self.wba_claims.append(claim)
+            if claim is not None:
+                if all(c.signature != claim.signature for c in self.wba_claims):
+                    self.wba_claims.append(claim)
+                return
+        problem = claim_problem(entry.extra)
+        if problem is not None:
+            self.wba_unusable[problem] = self.wba_unusable.get(problem, 0) + 1
 
     def add(self, entry: LogEntry) -> None:
         path = entry.path

@@ -8,13 +8,16 @@ would otherwise read as a quiet non-result.
 from __future__ import annotations
 
 import sys
+import time
+from dataclasses import replace
 
-from .model import WbaStatus
+from .model import WbaResult, WbaStatus
 from .netverify import BotVerifier
 from .pipeline import AnalysisResult
+from .report.format import count
 from .robots.parser import RobotsRules
 from .robots.source import RobotsDoc
-from .wba import key_failure_detail
+from .wba import format_stamp, key_failure_note
 
 
 def warn_robots_doc(doc: RobotsDoc, rules: RobotsRules) -> None:
@@ -124,10 +127,10 @@ def warn_wba_unusable(result: AnalysisResult) -> None:
     for profile in result.profiles:
         if profile.features.wba_unusable:
             clients += 1
-        for problem, count in profile.features.wba_unusable.items():
-            totals[problem] = totals.get(problem, 0) + count
+        for problem, num in profile.features.wba_unusable.items():
+            totals[problem] = totals.get(problem, 0) + num
     if totals:
-        causes = "; ".join(f"{problem} ({count})" for problem, count in sorted(totals.items()))
+        causes = "; ".join(f"{problem} ({num})" for problem, num in sorted(totals.items()))
         print(
             f"agent-census: warning: {sum(totals.values())} request(s) from {clients} client(s) "
             f"carried Signature-Input but no usable Web Bot Auth signature: {causes}. "
@@ -136,24 +139,48 @@ def warn_wba_unusable(result: AnalysisResult) -> None:
         )
 
 
-def warn_wba_key_skew(result: AnalysisResult) -> None:
-    """Warn, once per signature, when the operator's key couldn't be obtained.
+_KEY_EXAMPLES = 3
 
-    A ``keyid`` is content-addressed and immutable, so a key absent from a directory
-    that read fine was either rotated away (plausible only for an older log; the
-    permanent key store then helps if verification runs nearer collection) or never
-    published there. The note on each line is therefore conditioned on the request's
-    age (:func:`agent_census.wba.key_failure_note`). Other causes (offline, unreachable or malformed
-    directory) are named as such rather than lumped in as rotation.
+
+def warn_wba_key_skew(result: AnalysisResult, now: float | None = None) -> None:
+    """Warn, once per (cause, directory), when operators' keys couldn't be obtained.
+
+    Signed clients are grouped so a log with hundreds of them stays a handful of
+    lines; the per-client detail (key, dates, directory) is each client's
+    ``wba-unverified`` tag evidence in the report. A ``keyid`` is content-addressed
+    and immutable, so a key absent from a directory that read fine was either
+    rotated away (plausible only for an older log; the permanent key store then
+    helps if verification runs nearer collection) or never published there. The note
+    is therefore conditioned on the requests' age
+    (:func:`agent_census.wba.key_failure_note`). Other causes (offline, unreachable
+    or malformed directory) are named as such rather than lumped in as rotation.
     """
+    now = time.time() if now is None else now
+    groups: dict[tuple[str, str], list[WbaResult]] = {}
     for profile in result.profiles:
         wba = profile.wba
         if wba is None or wba.status is not WbaStatus.UNVERIFIABLE or wba.key_failure is None:
             continue
-        who = wba.operator or wba.signer_domain
-        hint = _WBA_KEY_HINTS.get(wba.key_failure, "")
+        groups.setdefault((wba.key_failure, wba.directory_url or ""), []).append(wba)
+    for (failure, directory), results in sorted(groups.items()):
+        keys = list(
+            dict.fromkeys(f"{r.keyid} ({r.operator or r.signer_domain or '?'})" for r in results)
+        )
+        shown = ", ".join(keys[:_KEY_EXAMPLES]) + (
+            f", +{len(keys) - _KEY_EXAMPLES} more" if len(keys) > _KEY_EXAMPLES else ""
+        )
+        requests = sorted(r.request_time for r in results if r.request_time is not None)
+        facts = [f"{count(len(keys), 'key')}: {shown}"]
+        if directory:
+            facts.insert(0, f"directory {directory}")
+        if requests:
+            facts.append(f"requests {format_stamp(requests[0])} to {format_stamp(requests[-1])}")
+        notes: dict[str, None] = {}
+        for when in requests[:1] + requests[-1:]:
+            notes[key_failure_note(replace(results[0], request_time=when), now)] = None
+        advice = " ".join(filter(None, [*notes, _WBA_KEY_HINTS.get(failure, "")]))
         print(
-            f"agent-census: warning: Web Bot Auth signature from {profile.client_id.ip}"
-            f"{f' ({who})' if who else ''} unverified: {key_failure_detail(wba)}. {hint}".rstrip(),
+            f"agent-census: warning: Web Bot Auth: {count(len(results), 'client')} unverified, "
+            f"{results[0].reason} [{'; '.join(facts)}]. {advice}".rstrip(),
             file=sys.stderr,
         )

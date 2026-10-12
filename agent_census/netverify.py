@@ -88,17 +88,25 @@ _T = TypeVar("_T")
 # "resolver error" (SERVFAIL and the like). Not persisted with the disk cache, so an
 # entry seeded from an earlier run carries no cause.
 _dns_failures: dict[str, tuple[str, str]] = {}
+_dns_lock = threading.Lock()  # guards _dns_failures against abandoned lookup threads
+
+
+def _set_failure(key: str, category: str, detail: str) -> None:
+    with _dns_lock:
+        # An abandoned lookup thread may finish later; its late error must not
+        # replace the "timed out" already recorded for the key.
+        existing = _dns_failures.get(key)
+        if existing is None or existing[0] != "timed out" or category == "timed out":
+            _dns_failures[key] = (category, detail)
 
 
 def _record_failure(key: str, exc: OSError) -> None:
     code = exc.args[0] if exc.args else None
-    if isinstance(exc, socket.gaierror) and code in (
-        socket.EAI_NONAME,
-        getattr(socket, "EAI_NODATA", None),
-    ):
-        _dns_failures[key] = ("no such host", str(exc))
+    nodata = getattr(socket, "EAI_NODATA", None)
+    if isinstance(exc, socket.gaierror) and code in (socket.EAI_NONAME, nodata):
+        _set_failure(key, "no such host", str(exc))
     else:
-        _dns_failures[key] = ("resolver error", str(exc))
+        _set_failure(key, "resolver error", str(exc))
 
 
 def _bounded(func: Callable[[], _T], key: str) -> _T | None:
@@ -117,7 +125,7 @@ def _bounded(func: Callable[[], _T], key: str) -> _T | None:
     thread.start()
     thread.join(_DNS_TIMEOUT)
     if thread.is_alive():
-        _dns_failures[key] = ("timed out", f"no answer within {_DNS_TIMEOUT:g}s")
+        _set_failure(key, "timed out", f"no answer within {_DNS_TIMEOUT:g}s")
         return None
     return box[0] if box else None
 
@@ -202,6 +210,9 @@ class BotVerifier:
         # When each entry was resolved, so the on-disk cache can expire per-entry.
         self._reverse_ts: dict[str, float] = {}
         self._forward_ts: dict[str, float] = {}
+        # Keys looked up (not seeded from the disk cache) by this verifier, so the
+        # failure report counts only what this run asked the resolver.
+        self._looked_up: set[str] = set()
         self._load_dns_cache()
 
     def _load_dns_cache(self) -> None:
@@ -281,20 +292,26 @@ class BotVerifier:
         return tuple(networks)
 
     def dns_failure_report(self) -> tuple[dict[str, int], int]:
-        """(failures by category, total lookups) for this run, to spot a sick resolver."""
-        counts: dict[str, int] = {}
-        for category, _detail in _dns_failures.values():
-            counts[category] = counts.get(category, 0) + 1
+        """(failures by category, total lookups) for this verifier's resolver queries,
+        to spot a sick resolver. Entries seeded from the disk cache don't count."""
         with self._lock:
-            return counts, len(self._reverse) + len(self._forward)
+            looked_up = set(self._looked_up)
+        with _dns_lock:
+            failures = {key: _dns_failures[key] for key in looked_up if key in _dns_failures}
+        counts: dict[str, int] = {}
+        for category, _detail in failures.values():
+            counts[category] = counts.get(category, 0) + 1
+        return counts, len(looked_up)
 
     def _cached_reverse(self, ip: str) -> tuple[str | None, bool]:
         with self._lock:
             if ip in self._reverse:
                 return self._reverse[ip]
-        _dns_failures.pop(f"ptr:{ip}", None)
+        with _dns_lock:
+            _dns_failures.pop(f"ptr:{ip}", None)
         result = _reverse_dns(ip)  # slow; resolved outside the lock
         with self._lock:
+            self._looked_up.add(f"ptr:{ip}")
             self._reverse[ip] = result
             self._reverse_ts[ip] = time.time()
         return result
@@ -303,9 +320,11 @@ class BotVerifier:
         with self._lock:
             if host in self._forward:
                 return self._forward[host]
-        _dns_failures.pop(f"fwd:{host}", None)
+        with _dns_lock:
+            _dns_failures.pop(f"fwd:{host}", None)
         ips = frozenset(_forward_ips(host))
         with self._lock:
+            self._looked_up.add(f"fwd:{host}")
             self._forward[host] = ips
             self._forward_ts[host] = time.time()
         return ips

@@ -62,6 +62,9 @@ def _header(
     if skips.reasons:
         detail = "; ".join(f"{count:,} {reason}" for reason, count in sorted(skips.reasons.items()))
         lines.append(f"  - Skips: {detail}")
+    if skips.first_skip is not None:
+        line_no, text = skips.first_skip
+        lines.append(f"  - First skipped line ({line_no}): `{text.replace(chr(96), chr(39))}`")
     if result.skipped_files:
         lines.append(
             f"- **Skipped:** {count(len(result.skipped_files), 'file')} entirely before --since"

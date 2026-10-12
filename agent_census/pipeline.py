@@ -264,6 +264,9 @@ class WbaVerifier(Protocol):
     def save(self) -> None: ...
 
 
+_SKIP_SAMPLE_CHARS = 160
+
+
 @dataclass(frozen=True, slots=True)
 class SkipStats:
     """How many lines parsed vs. were skipped, and why.
@@ -282,6 +285,9 @@ class SkipStats:
     reasons: dict[str, int] = field(default_factory=dict)
     excluded: int = 0
     out_of_window: int = 0
+    # The first line that failed to parse -- (1-based line number within its file,
+    # truncated text) -- so a wrong --log-format shows what it choked on.
+    first_skip: tuple[int, str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -593,6 +599,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
     collector = make_collector()
     seq = itertools.count()
     total = parsed = skipped = excluded = out_of_window = 0
+    first_skip: tuple[int, str] | None = None
     client_count = singleton_count = multi_ua_ips = declared_resident_count = 0
     host_counts: Counter[str] = Counter()  # served host -> line count, for the site label
     # Redirect-shadow gate, per registrable site: site-key -> [www_total, www_3xx,
@@ -866,6 +873,8 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         if entry is None:
             skipped += 1
             reasons[outcome.skip_reason or "unknown"] += 1
+            if first_skip is None:
+                first_skip = (outcome.line_no, outcome.raw_line.strip()[:_SKIP_SAMPLE_CHARS])
             continue
         if (
             window_start is not None
@@ -1046,7 +1055,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         site = top[0][0] if top else None
     return AnalysisResult(
         profiles=tuple(profiles),
-        skips=SkipStats(total, parsed, skipped, dict(reasons), excluded, out_of_window),
+        skips=SkipStats(total, parsed, skipped, dict(reasons), excluded, out_of_window, first_skip),
         identity_strategy=strategy.name,
         identity_stats=IdentityStats(client_count, singleton_count, multi_ua_ips),
         rollups={kind: acc.freeze() for kind, acc in rollups.items()},

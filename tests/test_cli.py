@@ -655,3 +655,36 @@ def test_failed_save_is_reported(capsys: pytest.CaptureFixture[str]) -> None:
     assert store.save() is False and store.save_error
     userconfig.report_save_failure(store)
     assert "could not save settings" in capsys.readouterr().err
+
+
+def _skip_result(**kw: object) -> object:
+    from types import SimpleNamespace
+
+    from agent_census.pipeline import SkipStats
+
+    return SimpleNamespace(skips=SkipStats(**kw))  # type: ignore[arg-type]
+
+
+def test_wrong_log_format_warns_with_first_bad_line(capsys: pytest.CaptureFixture[str]) -> None:
+    from agent_census import cli
+
+    result = _skip_result(
+        total_lines=100,
+        parsed=0,
+        skipped=100,
+        reasons={"no match for format": 100},
+        first_skip=(1, "203.0.113.1 - - garbage"),
+    )
+    cli._warn_skipped_lines(result)  # type: ignore[arg-type]
+    err = capsys.readouterr().err
+    assert "100 of 100" in err and "line 1" in err and "garbage" in err and "--log-format" in err
+
+
+def test_few_skipped_lines_do_not_warn(capsys: pytest.CaptureFixture[str]) -> None:
+    from agent_census import cli
+
+    cli._warn_skipped_lines(_skip_result(total_lines=1000, parsed=990, skipped=10))  # type: ignore[arg-type]
+    assert capsys.readouterr().err == ""
+    # Everything dropped by a deliberate --vhost filter isn't a parse failure.
+    cli._warn_skipped_lines(_skip_result(total_lines=10, parsed=0, skipped=0, excluded=10))  # type: ignore[arg-type]
+    assert capsys.readouterr().err == ""

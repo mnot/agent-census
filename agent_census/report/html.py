@@ -241,9 +241,16 @@ def _meta_list(
         f"({count(stats.client_count, 'client')}; {count(stats.singletons, 'singleton')}; "
         f"{count(stats.ips_with_multiple_uas, 'IP')} with multiple UAs)",
     ]
+    if skips.reasons:
+        detail = "; ".join(f"{num:,} {reason}" for reason, num in sorted(skips.reasons.items()))
+        example = ""
+        if skips.first_skip is not None:
+            line_no, text = skips.first_skip
+            example = f" · first at line {line_no}: <code>{_esc(text)}</code>"
+        items.insert(1, f"<strong>Skips:</strong> {_esc(detail)}{example}")
     if result.skipped_files:
         items.insert(
-            2,
+            3 if skips.reasons else 2,
             f"<strong>Skipped:</strong> {count(len(result.skipped_files), 'file')} "
             "entirely before --since",
         )

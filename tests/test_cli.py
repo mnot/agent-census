@@ -688,3 +688,31 @@ def test_few_skipped_lines_do_not_warn(capsys: pytest.CaptureFixture[str]) -> No
     # Everything dropped by a deliberate --vhost filter isn't a parse failure.
     cli._warn_skipped_lines(_skip_result(total_lines=10, parsed=0, skipped=0, excluded=10))  # type: ignore[arg-type]
     assert capsys.readouterr().err == ""
+
+
+def test_untimed_lines_warn_and_name_the_since_effect(capsys: pytest.CaptureFixture[str]) -> None:
+    from agent_census import cli
+
+    result = _skip_result(total_lines=100, parsed=100, skipped=0, untimed=100)
+    cli._warn_untimed_lines(result, None)  # type: ignore[arg-type]
+    assert "100 of 100" in capsys.readouterr().err
+    cli._warn_untimed_lines(result, 3600.0)  # type: ignore[arg-type]
+    assert "--since cannot window them" in capsys.readouterr().err
+    few = _skip_result(total_lines=1000, parsed=1000, skipped=0, untimed=3)
+    cli._warn_untimed_lines(few, None)  # type: ignore[arg-type]
+    assert capsys.readouterr().err == ""
+    cli._warn_untimed_lines(few, 3600.0)  # type: ignore[arg-type]  # any is too many with --since
+    assert "3 of 1,000" in capsys.readouterr().err
+
+
+def test_pipeline_counts_untimed_and_first_skipped_lines(tmp_path: Path) -> None:
+    from agent_census import identity, pipeline
+    from agent_census.parsing import resolve
+    from agent_census.parsing.apache import PRESETS
+
+    log = tmp_path / "x.log"
+    log.write_text("neither is this\nnot a log line at all\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    skips = pipeline.analyze(log, parser, identity.get_strategy("ip_ua")).skips
+    assert skips.untimed == 1 and skips.skipped == 1
+    assert skips.first_skip == (2, "not a log line at all")

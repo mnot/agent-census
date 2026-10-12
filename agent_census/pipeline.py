@@ -288,6 +288,10 @@ class SkipStats:
     # The first line that failed to parse -- (1-based line number within its file,
     # truncated text) -- so a wrong --log-format shows what it choked on.
     first_skip: tuple[int, str] | None = None
+    # Parsed lines whose timestamp couldn't be read: they pass a --since window
+    # unfiltered and contribute nothing to timing, so a date-format mismatch would
+    # otherwise be invisible.
+    untimed: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -598,7 +602,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
     rel_config = load_relative_tags()
     collector = make_collector()
     seq = itertools.count()
-    total = parsed = skipped = excluded = out_of_window = 0
+    total = parsed = skipped = excluded = out_of_window = untimed = 0
     first_skip: tuple[int, str] | None = None
     client_count = singleton_count = multi_ua_ips = declared_resident_count = 0
     host_counts: Counter[str] = Counter()  # served host -> line count, for the site label
@@ -889,6 +893,8 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
             excluded += 1
             continue
         parsed += 1
+        if entry.timestamp is None:
+            untimed += 1
         served = _vhost_of(entry)
         if served:
             host_counts[served] += 1
@@ -1055,7 +1061,9 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         site = top[0][0] if top else None
     return AnalysisResult(
         profiles=tuple(profiles),
-        skips=SkipStats(total, parsed, skipped, dict(reasons), excluded, out_of_window, first_skip),
+        skips=SkipStats(
+            total, parsed, skipped, dict(reasons), excluded, out_of_window, first_skip, untimed
+        ),
         identity_strategy=strategy.name,
         identity_stats=IdentityStats(client_count, singleton_count, multi_ua_ips),
         rollups={kind: acc.freeze() for kind, acc in rollups.items()},

@@ -36,7 +36,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Literal, NamedTuple, TypeVar
 
-from . import uas
+from . import iprange, uas
 from .dataload import KNOWN_AGENT_CATEGORIES, CrawlerSpec, load_tokens
 from .iprange import Network as _Network
 from .iprange import cache_dir
@@ -277,7 +277,11 @@ class BotVerifier:
         """Tri-state IP-range check. Unobtainable ranges are inconclusive, not a fail."""
         networks = self._networks_for(spec, substring)
         if not networks:
-            return _Check(_UNKNOWN, None, f"could not obtain the published {substring} IP ranges")
+            problems = sorted(
+                {prob for url in spec.ranges_urls if (prob := iprange.feed_problem(url))}
+            )
+            why = f"could not obtain the published {substring} IP ranges"
+            return _Check(_UNKNOWN, None, f"{why}: {'; '.join(problems)}" if problems else why)
         match = _ip_in(ip, networks)
         if match is not None:
             return _Check(

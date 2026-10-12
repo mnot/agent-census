@@ -269,6 +269,15 @@ def test_ranges_url_fetch_failure_is_unverified(monkeypatch: pytest.MonkeyPatch)
     assert BotVerifier().verify("192.0.2.7", "FetchBot/1.0").status is VerificationStatus.UNVERIFIED
 
 
+def test_unobtainable_ranges_evidence_names_the_cause(monkeypatch: pytest.MonkeyPatch) -> None:
+    url = "https://example.test/cause.json"
+    _patch_spec(monkeypatch, "FetchBot", CrawlerSpec(ranges_urls=(url,)))
+    monkeypatch.setattr(netverify, "_fetch_ranges_text", lambda url, name=None, fmt=None: None)
+    monkeypatch.setitem(netverify.iprange._feed_problems, url, "HTTP 404")
+    verification = BotVerifier().verify("192.0.2.7", "FetchBot/1.0")
+    assert "HTTP 404" in (verification.ip_evidence or "")
+
+
 def test_ranges_url_honours_declared_format(monkeypatch: pytest.MonkeyPatch) -> None:
     # A non-"prefixes" feed (here a plain text CIDR list) must be parsed with the
     # agent's declared format, not blindly as JSON -- otherwise a real client is

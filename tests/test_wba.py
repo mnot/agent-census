@@ -436,7 +436,7 @@ def test_key_warning_is_per_signature_and_names_key_and_dates(
 ) -> None:
     from types import SimpleNamespace
 
-    from agent_census import cli
+    from agent_census import diagnostics
     from agent_census.model import ClientId
 
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
@@ -444,7 +444,7 @@ def test_key_warning_is_per_signature_and_names_key_and_dates(
     profiles = [
         SimpleNamespace(client_id=ClientId(ip=ip), wba=verified) for ip in ("192.0.2.1", "192.0.2.2")
     ]
-    cli._warn_wba_key_skew(SimpleNamespace(profiles=profiles))  # type: ignore[arg-type]
+    diagnostics.warn_wba_key_skew(SimpleNamespace(profiles=profiles))  # type: ignore[arg-type]
     lines = capsys.readouterr().err.splitlines()
     assert len(lines) == 2
     assert "e3vpiy0B6M1Wdxnizw3dqRSgpqS6SXM2qiQ6HtUwZ5g" in lines[0]
@@ -674,7 +674,7 @@ def test_unverified_tag_evidence_carries_key_detail(
 def test_unusable_signature_headers_are_counted_and_warned(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from agent_census import cli
+    from agent_census import diagnostics
 
     fmt = '%h %t "%r" %>s %b "%{User-Agent}i" %{Host}i "%{Signature-Input}i" "%{Signature}i"'
     line = " ".join(
@@ -696,6 +696,6 @@ def test_unusable_signature_headers_are_counted_and_warned(
         log, resolve("apache", {"format": fmt}), identity.get_strategy("ip_ua")
     )
     assert all(p.wba is None for p in result.profiles)
-    cli._warn_wba_unusable(result)
+    diagnostics.warn_wba_unusable(result)
     err = capsys.readouterr().err
     assert "1 request(s) from 1 client(s)" in err and "Signature header not logged" in err

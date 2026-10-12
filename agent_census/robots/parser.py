@@ -100,6 +100,12 @@ class RobotsRules:
                 tokens.append(stripped.split(":", 1)[1].strip())
         return tokens
 
+    @property
+    def group_count(self) -> int:
+        """Number of ``User-agent`` groups found; 0 means nothing here is robots.txt
+        syntax (an HTML error page, say), as opposed to a deliberate allow-all."""
+        return len(self._rule_groups)
+
     def has_rules(self) -> bool:
         """True when the document contains at least one effective Disallow."""
         return self._has_disallow

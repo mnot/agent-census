@@ -82,22 +82,44 @@ def _dns_cache_path() -> Path:
 _T = TypeVar("_T")
 
 
-def _bounded(func: Callable[[], _T]) -> _T | None:
-    """Run ``func`` in a daemon thread, returning None if it errors or times out."""
+# Why each lookup last failed this run: key ("ptr:<ip>" / "fwd:<host>") -> (category,
+# detail). A side channel, so the lookup functions keep their simple return types.
+# Categories: "timed out", "no such host" (a definitive empty answer) and
+# "resolver error" (SERVFAIL and the like). Not persisted with the disk cache, so an
+# entry seeded from an earlier run carries no cause.
+_dns_failures: dict[str, tuple[str, str]] = {}
+
+
+def _record_failure(key: str, exc: OSError) -> None:
+    code = exc.args[0] if exc.args else None
+    if isinstance(exc, socket.gaierror) and code in (
+        socket.EAI_NONAME,
+        getattr(socket, "EAI_NODATA", None),
+    ):
+        _dns_failures[key] = ("no such host", str(exc))
+    else:
+        _dns_failures[key] = ("resolver error", str(exc))
+
+
+def _bounded(func: Callable[[], _T], key: str) -> _T | None:
+    """Run ``func`` in a daemon thread, returning None if it errors or times out
+    (recording which in ``_dns_failures`` under ``key``)."""
     box: list[_T | None] = []
 
     def runner() -> None:
         try:
             box.append(func())
-        except (OSError, socket.herror, socket.gaierror):
+        except OSError as exc:  # includes socket.herror / socket.gaierror
+            _record_failure(key, exc)
             box.append(None)
 
     thread = threading.Thread(target=runner, daemon=True)
     thread.start()
     thread.join(_DNS_TIMEOUT)
-    if thread.is_alive() or not box:
+    if thread.is_alive():
+        _dns_failures[key] = ("timed out", f"no answer within {_DNS_TIMEOUT:g}s")
         return None
-    return box[0]
+    return box[0] if box else None
 
 
 def _known_crawler(ua: str | None) -> tuple[str, CrawlerSpec] | None:
@@ -121,14 +143,18 @@ def _reverse_lookup(ip: str) -> tuple[str | None, bool]:
     try:
         return socket.gethostbyaddr(ip)[0], False
     except socket.herror as exc:
-        return None, bool(exc.args) and exc.args[0] in (_HOST_NOT_FOUND, _NO_DATA)
-    except OSError:
+        definitive = bool(exc.args) and exc.args[0] in (_HOST_NOT_FOUND, _NO_DATA)
+        if not definitive:
+            _record_failure(f"ptr:{ip}", exc)
+        return None, definitive
+    except OSError as exc:
+        _record_failure(f"ptr:{ip}", exc)
         return None, False
 
 
 def _reverse_dns(ip: str) -> tuple[str | None, bool]:
     """Reverse DNS bounded by a timeout; a timeout is transient, not a no-record."""
-    result = _bounded(lambda: _reverse_lookup(ip))
+    result = _bounded(lambda: _reverse_lookup(ip), f"ptr:{ip}")
     return result if result is not None else (None, False)
 
 
@@ -153,7 +179,8 @@ def _norm_ip(ip: str) -> str:
 
 def _forward_ips(host: str) -> set[str]:
     result = _bounded(
-        lambda: {_norm_ip(str(info[4][0])) for info in socket.getaddrinfo(host, None)}
+        lambda: {_norm_ip(str(info[4][0])) for info in socket.getaddrinfo(host, None)},
+        f"fwd:{host}",
     )
     return result if result is not None else set()
 
@@ -253,10 +280,19 @@ class BotVerifier:
             networks.extend(cached)
         return tuple(networks)
 
+    def dns_failure_report(self) -> tuple[dict[str, int], int]:
+        """(failures by category, total lookups) for this run, to spot a sick resolver."""
+        counts: dict[str, int] = {}
+        for category, _detail in _dns_failures.values():
+            counts[category] = counts.get(category, 0) + 1
+        with self._lock:
+            return counts, len(self._reverse) + len(self._forward)
+
     def _cached_reverse(self, ip: str) -> tuple[str | None, bool]:
         with self._lock:
             if ip in self._reverse:
                 return self._reverse[ip]
+        _dns_failures.pop(f"ptr:{ip}", None)
         result = _reverse_dns(ip)  # slow; resolved outside the lock
         with self._lock:
             self._reverse[ip] = result
@@ -267,6 +303,7 @@ class BotVerifier:
         with self._lock:
             if host in self._forward:
                 return self._forward[host]
+        _dns_failures.pop(f"fwd:{host}", None)
         ips = frozenset(_forward_ips(host))
         with self._lock:
             self._forward[host] = ips
@@ -297,7 +334,9 @@ class BotVerifier:
                 return _Check(
                     _FAIL, None, f"{ip} has no reverse-DNS record but its UA claims {substring}"
                 )
-            return _Check(_UNKNOWN, None, f"reverse DNS lookup of {ip} failed (transient)")
+            why = _dns_failures.get(f"ptr:{ip}")
+            cause = f"{why[0]}: {why[1]}" if why else "transient"
+            return _Check(_UNKNOWN, None, f"reverse DNS lookup of {ip} failed ({cause})")
         if not _domain_matches(host, spec.domains):
             return _Check(
                 _FAIL,
@@ -308,7 +347,9 @@ class BotVerifier:
             return _Check(_PASS, host, f"{ip} ↔ {host} confirmed for {substring}")
         if self._cached_forward(host):
             return _Check(_FAIL, host, f"{host} does not resolve back to {ip}")
-        return _Check(_UNKNOWN, host, f"forward DNS of {host} failed")
+        why = _dns_failures.get(f"fwd:{host}")
+        cause = f" ({why[0]}: {why[1]})" if why else ""
+        return _Check(_UNKNOWN, host, f"forward DNS of {host} failed{cause}")
 
     def verify(self, ip: str, ua: str | None) -> BotVerification:
         """Verify whether ``ip`` genuinely belongs to the crawler ``ua`` declares.

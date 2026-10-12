@@ -606,3 +606,52 @@ def test_help_flag_exits_zero() -> None:
     with pytest.raises(SystemExit) as exc:
         main(["-h"])
     assert exc.value.code == 0
+
+
+def test_invalid_json_config_warns_and_is_not_overwritten(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    path = userconfig.config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    original = '{"version": 1, "defaults": {"identity": "ip",}}'  # a stray comma
+    path.write_text(original, encoding="utf-8")
+    _apply_persisted_settings(_analyze_args([LOG, "--identity", "ip_ua_subnet"]))
+    assert "not valid JSON" in capsys.readouterr().err
+    assert path.read_text(encoding="utf-8") == original
+
+
+def test_missing_and_empty_config_are_not_errors(capsys: pytest.CaptureFixture[str]) -> None:
+    path = userconfig.config_path()
+    assert userconfig.load().warning is None  # no file yet
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("  \n", encoding="utf-8")
+    assert userconfig.load().warning is None
+
+
+def test_unrecognised_settings_are_named_before_they_are_dropped() -> None:
+    path = userconfig.config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        f'{{"version": {userconfig.CONFIG_VERSION}, "defaults": {{"identity": "ip", '
+        '"bogus": "x", "mm_db_dir": 3}, "sites": {"prod": {"logfiles": "not-a-list"}}}',
+        encoding="utf-8",
+    )
+    store = userconfig.load()
+    assert sorted(store.dropped) == ["defaults.bogus", "defaults.mm_db_dir", "sites.prod.logfiles"]
+    assert store.defaults == {"identity": "ip"}
+
+
+def test_failed_save_is_reported(capsys: pytest.CaptureFixture[str]) -> None:
+    path = userconfig.config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.mkdir()  # a directory where the file should be: open() fails with EISDIR
+    store = userconfig.load()
+    assert store.warning is not None  # unreadable, so refused and reported at load
+    path.rmdir()
+    path.write_text("{}", encoding="utf-8")
+    path.chmod(0o400)
+    store = userconfig.load()
+    store.defaults["identity"] = "ip"
+    assert store.save() is False and store.save_error
+    userconfig.report_save_failure(store)
+    assert "could not save settings" in capsys.readouterr().err

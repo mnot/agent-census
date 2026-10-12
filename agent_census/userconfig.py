@@ -83,9 +83,15 @@ def config_path(override: Path | None = None) -> Path:
     return Path(base) / "agent-census" / "config.json"
 
 
-def _clean_block(block: object) -> dict[str, object]:
-    """Keep only recognised keys with the right value type; drop the rest."""
+def _clean_block(block: object, where: str, dropped: list[str]) -> dict[str, object]:
+    """Keep only recognised keys with the right value type; drop the rest.
+
+    Each dropped key is appended to ``dropped`` as ``where.key`` so the CLI can say
+    so: the next save would otherwise remove it without a word.
+    """
     if not isinstance(block, dict):
+        if block not in ({}, None):
+            dropped.append(where)
         return {}
     out: dict[str, object] = {}
     for key, value in block.items():
@@ -97,6 +103,8 @@ def _clean_block(block: object) -> dict[str, object]:
             and all(isinstance(item, str) for item in value)
         ):
             out[key] = list(value)
+        else:
+            dropped.append(f"{where}.{key}")
     return out
 
 
@@ -113,6 +121,11 @@ class ConfigStore:
     # True when read from a pre-versioning flat file; the CLI rewrites it in the
     # current shape on the next run so the file doesn't stay legacy indefinitely.
     legacy: bool = False
+    # Settings (``defaults.key`` / ``site.key``) present in the file but not
+    # recognised or mistyped; they are lost on the next save, so the CLI names them.
+    dropped: list[str] = field(default_factory=list)
+    # Why the last save() failed (an OSError's text), else None.
+    save_error: str | None = None
 
     def effective(self, site: str | None) -> dict[str, object]:
         """Merged read-view for ``site``: defaults overlaid with the site's block."""
@@ -160,22 +173,46 @@ class ConfigStore:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 handle.write(payload)
             os.chmod(self.path, 0o600)
-        except OSError:
+        except OSError as exc:
+            self.save_error = exc.strerror or str(exc)
             return False
         return True
 
 
-def load(override: Path | None = None) -> ConfigStore:
-    """Return the parsed settings, or an empty store if none / unreadable."""
-    path = config_path(override)
+def _read_object(path: Path) -> dict[str, object] | ConfigStore:
+    """The file's JSON object, or the (possibly warning-carrying) store to use instead."""
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
         return ConfigStore(path=path)
+    except (OSError, ValueError) as exc:  # e.g. permission denied, not UTF-8
+        reason = (exc.strerror if isinstance(exc, OSError) else None) or str(exc)
+        return ConfigStore(path=path, warning=f"ignoring {path}: cannot read it ({reason})")
+    if not text.strip():
+        return ConfigStore(path=path)
+    try:
+        data = json.loads(text)
+    except ValueError as exc:
+        return ConfigStore(path=path, warning=f"ignoring {path}: not valid JSON ({exc})")
     if not isinstance(data, dict):
         # Valid JSON but not an object (a list, string, number, ...): a hand-edited
         # config shouldn't abort every run, so fall back to an empty store.
         return ConfigStore(path=path, warning=f"ignoring {path}: not a JSON object")
+    return data
+
+
+def load(override: Path | None = None) -> ConfigStore:
+    """Return the parsed settings, or an empty store if there is no file.
+
+    A file that exists but can't be read or parsed also yields an empty store, with
+    ``warning`` set: that makes ``save()`` refuse, so a hand-edit with a stray comma
+    (or an unreadable file) is reported rather than silently overwritten.
+    """
+    path = config_path(override)
+    data = _read_object(path)
+    if isinstance(data, ConfigStore):
+        return data
+    dropped: list[str] = []
     if "version" in data or "defaults" in data or "sites" in data:
         version = data.get("version")
         if version != CONFIG_VERSION:
@@ -186,17 +223,44 @@ def load(override: Path | None = None) -> ConfigStore:
             )
         sites_raw = data.get("sites", {})
         sites = (
-            {name: _clean_block(block) for name, block in sites_raw.items()}
+            {
+                name: _clean_block(block, f"sites.{name}", dropped)
+                for name, block in sites_raw.items()
+            }
             if isinstance(sites_raw, dict)
             else {}
         )
         return ConfigStore(
-            defaults=_clean_block(data.get("defaults", {})),
+            defaults=_clean_block(data.get("defaults", {}), "defaults", dropped),
             sites={name: block for name, block in sites.items() if block},
             path=path,
+            dropped=dropped,
         )
     # Legacy flat file: the whole object is the defaults block.
-    return ConfigStore(defaults=_clean_block(data), path=path, legacy=True)
+    return ConfigStore(
+        defaults=_clean_block(data, "defaults", dropped), path=path, legacy=True, dropped=dropped
+    )
+
+
+def report_problems(store: ConfigStore) -> None:
+    """Print, once per load, anything the user should know about the settings file."""
+    if store.warning:
+        print(f"warning: {store.warning}", file=sys.stderr)
+    if store.dropped:
+        print(
+            f"warning: {store.path}: ignoring unrecognised or mistyped setting(s) "
+            f"{', '.join(store.dropped)}; they will be removed the next time settings are saved",
+            file=sys.stderr,
+        )
+
+
+def report_save_failure(store: ConfigStore) -> None:
+    """Say so when settings couldn't be written (a refusal over ``warning`` was reported
+    at load time)."""
+    if store.warning is None:
+        print(
+            f"warning: could not save settings to {store.path}: {store.save_error}", file=sys.stderr
+        )
 
 
 # Human labels for persisted keys, used in the "remembered ..." note. The
@@ -258,8 +322,7 @@ def apply_persisted_settings(args: argparse.Namespace) -> None:
     """
     site = getattr(args, "site", None)
     store = load(getattr(args, "config", None))
-    if store.warning:
-        print(f"warning: {store.warning}", file=sys.stderr)
+    report_problems(store)
     cfg = store.effective(site)  # merged read-view: defaults overlaid with the site
     scope = store.site_scope(site)  # per-site keys persist here (defaults if no --site)
     gscope = store.defaults  # global keys always persist to the defaults block
@@ -324,6 +387,8 @@ def apply_persisted_settings(args: argparse.Namespace) -> None:
                 print(f"note: remembered {', '.join(labels)} for site {site!r}", file=sys.stderr)
             if labels := _persisted_labels(before_defaults, store.defaults):
                 print(f"note: remembered {', '.join(labels)} globally", file=sys.stderr)
+        else:
+            report_save_failure(store)
     if args.identity is None:
         args.identity = "ip_ua"  # the built-in default when nothing is set or saved
 

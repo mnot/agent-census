@@ -43,9 +43,11 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import time
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
@@ -309,6 +311,30 @@ def select_web_bot_auth(parsed: dict[str, SigParams]) -> tuple[str, SigParams] |
     return None
 
 
+def claim_problem(extra: dict[str, str]) -> str | None:
+    """Why a request carrying ``Signature-Input`` yields no usable claim, or ``None``.
+
+    ``None`` also covers a request signed only for some other application (a
+    ``Signature-Input`` with no ``web-bot-auth`` label), which isn't a fault. The
+    returned codes are those a site owner can act on, usually a LogFormat problem.
+    """
+    sig_input = extra.get(SIGNATURE_INPUT_HEADER)
+    if not sig_input:
+        return None
+    parsed = parse_signature_input(sig_input)
+    if not parsed:
+        return "Signature-Input does not parse"
+    selected = select_web_bot_auth(parsed)
+    if selected is None:
+        return None
+    sig = extra.get(SIGNATURE_HEADER)
+    if not sig:
+        return "Signature header not logged"
+    if selected[0] not in parse_signature(sig):
+        return "Signature has no value for the web-bot-auth label"
+    return None
+
+
 def build_claim(
     extra: dict[str, str],
     *,
@@ -544,6 +570,82 @@ def _http_get(url: str) -> str | None:
         return None
 
 
+_KEY_FAILURE_REASONS = {
+    "no-agent": "key not in the local store, and no Signature-Agent names where to fetch it",
+    "offline": "key not in the local store, and fetching is disabled",
+    "fetch-failed": "key not in the local store, and its directory could not be fetched",
+    "bad-directory": "key not in the local store, and its directory is not a usable key set",
+    "not-listed": "the key is no longer in the operator's directory (rotated or withdrawn)",
+}
+
+
+# How old a request must be before "the operator rotated since" is a live
+# explanation for a key missing from its directory. A judgement call, not a
+# measured rotation cadence: under it the key was almost certainly current when the
+# request was made, so absence points at the directory or the signer instead.
+_ROTATION_PLAUSIBLE_AFTER = 24 * 3600
+
+
+def _age_text(seconds: float) -> str:
+    if seconds >= 2 * 86400:
+        return f"{int(seconds // 86400)} days"
+    if seconds >= 3600:
+        return f"{int(seconds // 3600)} hours"
+    return f"{max(int(seconds // 60), 0)} minutes"
+
+
+def _stamp(epoch: float | int | None) -> str:
+    if epoch is None:
+        return "-"
+    return datetime.fromtimestamp(epoch, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+
+def key_failure_detail(result: WbaResult) -> str:
+    """One self-contained line on a missing-key result: cause, timing note, key, dates.
+
+    Shared by the stderr warning and the per-client tag evidence so the two agree.
+    """
+    parts = [result.reason or "key unavailable"]
+    if result.key_note:
+        parts.append(result.key_note)
+    facts = [
+        f"key {result.keyid}",
+        f"signed {_stamp(result.created)}",
+        f"expires {_stamp(result.expires)}",
+        f"request {_stamp(result.request_time)}",
+    ]
+    if result.directory_url:
+        facts.append(f"directory {result.directory_url}")
+    return "; ".join(parts) + " [" + "; ".join(facts) + "]"
+
+
+def key_failure_note(result: WbaResult, now: float) -> str:
+    """What the request's age implies about why the operator's key wasn't available.
+
+    Only ``not-listed`` depends on timing: a directory that reads fine but lacks the
+    key is rotation when the log is old, but the key *never being published there*
+    (a misconfigured or wrong ``Signature-Agent`` directory, or a signer not
+    entitled to the key) when the request is recent. With the store empty for a key
+    we can't tell the two apart for an old request, so say that rather than guess.
+    """
+    if result.key_failure != "not-listed" or result.request_time is None:
+        return ""
+    age = now - result.request_time
+    if age < 0:
+        return "the request is dated in the future, so the log's clock or timestamps are suspect"
+    if age < _ROTATION_PLAUSIBLE_AFTER:
+        return (
+            f"the request is only {_age_text(age)} old, so rotation is unlikely; the key was "
+            "probably never published in this directory, or Signature-Agent doesn't point at "
+            "the signer's directory"
+        )
+    return (
+        f"the request is {_age_text(age)} old: the operator may have rotated since (verifying "
+        "nearer collection time would capture the key), or never published it here -- the "
+        "store has no earlier copy to tell which"
+    )
+
+
 class WbaVerifier:
     """Verifies Web Bot Auth claims, resolving operator keys with a permanent cache.
 
@@ -563,7 +665,7 @@ class WbaVerifier:
     def __init__(self, *, allow_fetch: bool = True) -> None:
         self._allow_fetch = allow_fetch
         self._keys: dict[str, dict[str, Any]] = {}  # keyid (thumbprint) -> minimal JWK
-        self._fetched: set[str] = set()  # directory URLs tried this run (once each)
+        self._fetched: dict[str, str] = {}  # directory URL -> outcome, tried once each
         self._dirty = False
         self._load()
 
@@ -589,21 +691,25 @@ class WbaVerifier:
         except OSError:
             pass
 
-    def _fetch_directory(self, agent_url: str) -> None:
+    def _fetch_directory(self, agent_url: str) -> str:
+        """Fetch a directory once per run -> ``"ok"``, ``"fetch-failed"`` or ``"bad-directory"``."""
         url = _directory_url(agent_url)
         if url in self._fetched:
-            return
-        self._fetched.add(url)
+            return self._fetched[url]
+        outcome = self._fetched[url] = self._read_directory(url)
+        return outcome
+
+    def _read_directory(self, url: str) -> str:
         text = _http_get(url)
         if text is None:
-            return
+            return "fetch-failed"
         try:
             data = json.loads(text)
         except ValueError:
-            return
+            return "bad-directory"
         keys = data.get("keys") if isinstance(data, dict) else None
         if not isinstance(keys, list):
-            return
+            return "bad-directory"
         for jwk in keys:
             if not isinstance(jwk, dict):
                 continue
@@ -614,21 +720,36 @@ class WbaVerifier:
             if thumbprint is not None and thumbprint not in self._keys:
                 self._keys[thumbprint] = {"kty": "OKP", "crv": "Ed25519", "x": jwk.get("x")}
                 self._dirty = True
+        return "ok"
 
-    def _resolve_key(self, keyid: str, agent_url: str | None) -> dict[str, Any] | None:
+    def _resolve_key(
+        self, keyid: str, agent_url: str | None
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        """The stored/fetched key for ``keyid``, or ``(None, why-not)``."""
         if keyid in self._keys:
-            return self._keys[keyid]
-        if self._allow_fetch and remote_enabled() and agent_url:
-            self._fetch_directory(agent_url)
-        return self._keys.get(keyid)
+            return self._keys[keyid], None
+        if not agent_url:
+            return None, "no-agent"
+        if not (self._allow_fetch and remote_enabled()):
+            return None, "offline"
+        outcome = self._fetch_directory(agent_url)
+        if keyid in self._keys:
+            return self._keys[keyid], None
+        return None, "not-listed" if outcome == "ok" else outcome
 
-    def verify(self, claim: WbaClaim) -> WbaResult:
-        """Resolve the operator's key and verify ``claim`` -> a full :class:`WbaResult`."""
+    def verify(self, claim: WbaClaim, *, now: float | None = None) -> WbaResult:
+        """Resolve the operator's key and verify ``claim`` -> a full :class:`WbaResult`.
+
+        ``now`` (default: the wall clock) is the analysis time, against which the
+        request's age is judged when the operator's key can't be found.
+        """
         operator = resolve_operator(claim.agent_url, claim.params.keyid)
         domain = _domain_of(claim.agent_url)
         keyid = claim.params.keyid
 
-        def result(status: WbaStatus, reason: str) -> WbaResult:
+        directory = _directory_url(claim.agent_url) if claim.agent_url else None
+
+        def result(status: WbaStatus, reason: str, key_failure: str | None = None) -> WbaResult:
             who = f" by {operator or domain}" if (operator or domain) else ""
             return WbaResult(
                 status=status,
@@ -639,16 +760,19 @@ class WbaVerifier:
                 expires=claim.params.expires,
                 reason=reason,
                 evidence=(f"Web Bot Auth signature{who}: {reason}",),
+                key_failure=key_failure,
+                directory_url=directory,
+                request_time=claim.timestamp,
             )
 
         if keyid is None:
             return result(WbaStatus.UNVERIFIABLE, "signature names no keyid")
-        jwk = self._resolve_key(keyid, claim.agent_url)
+        jwk, failure = self._resolve_key(keyid, claim.agent_url)
         if jwk is None:
-            return result(
-                WbaStatus.UNVERIFIABLE,
-                "could not obtain the operator's key (rotated since, or directory unreachable)",
-            )
+            assert failure is not None
+            missing = result(WbaStatus.UNVERIFIABLE, _KEY_FAILURE_REASONS[failure], failure)
+            note = key_failure_note(missing, time.time() if now is None else now)
+            return replace(missing, key_note=note)
         public_key = public_key_from_jwk(jwk)
         if public_key is None:
             return result(WbaStatus.UNVERIFIABLE, "the operator's stored key is not usable")

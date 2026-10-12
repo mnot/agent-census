@@ -395,7 +395,7 @@ def test_verifier_offline_without_key_is_unverifiable(
     verifier = wba.WbaVerifier(allow_fetch=False)  # empty store, never fetches
     result = verifier.verify(_ahrefs_claim(1782543551.0))
     assert result.status is WbaStatus.UNVERIFIABLE
-    assert "could not obtain" in (result.reason or "")
+    assert result.key_failure == "offline"
 
 
 def test_verifier_thumbprint_mismatch_does_not_poison(
@@ -413,6 +413,43 @@ def test_verifier_thumbprint_mismatch_does_not_poison(
     monkeypatch.setattr(wba, "_http_get", lambda url: wrong)
     result = wba.WbaVerifier(allow_fetch=True).verify(_ahrefs_claim(1782543551.0))
     assert result.status is WbaStatus.UNVERIFIABLE
+    assert result.key_failure == "not-listed"  # directory read fine; key absent -> rotated
+    assert result.directory_url and result.directory_url.endswith(wba.WELL_KNOWN_DIRECTORY)
+    assert result.request_time == 1782543551.0
+
+
+@pytest.mark.parametrize(
+    ("body", "failure"), [(None, "fetch-failed"), ("not json", "bad-directory"), ("{}", "bad-directory")]
+)
+def test_verifier_distinguishes_directory_failures(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, body: str | None, failure: str
+) -> None:
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    monkeypatch.setattr(wba, "remote_enabled", lambda: True)
+    monkeypatch.setattr(wba, "_http_get", lambda url: body)
+    result = wba.WbaVerifier(allow_fetch=True).verify(_ahrefs_claim(1782543551.0))
+    assert result.key_failure == failure
+
+
+def test_key_warning_is_per_signature_and_names_key_and_dates(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from types import SimpleNamespace
+
+    from agent_census import cli
+    from agent_census.model import ClientId
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    verified = wba.WbaVerifier(allow_fetch=False).verify(_ahrefs_claim(1782543551.0))
+    profiles = [
+        SimpleNamespace(client_id=ClientId(ip=ip), wba=verified) for ip in ("192.0.2.1", "192.0.2.2")
+    ]
+    cli._warn_wba_key_skew(SimpleNamespace(profiles=profiles))  # type: ignore[arg-type]
+    lines = capsys.readouterr().err.splitlines()
+    assert len(lines) == 2
+    assert "e3vpiy0B6M1Wdxnizw3dqRSgpqS6SXM2qiQ6HtUwZ5g" in lines[0]
+    assert "192.0.2.1" in lines[0] and "192.0.2.2" in lines[1]
+    assert "signed 2026-" in lines[0] and "expires 2026-" in lines[0]
 
 
 def test_pipeline_verifies_wba_end_to_end(
@@ -603,3 +640,62 @@ def test_pipeline_flags_same_origin_nonce_reuse(tmp_path: Path) -> None:
     tags = wba_profiles[0].classification.tags
     assert "wba-nonce-reuse" in tags
     assert "wba-replay" not in tags
+
+
+def test_key_failure_note_depends_on_request_age() -> None:
+    result = WbaResult(
+        WbaStatus.UNVERIFIABLE, key_failure="not-listed", request_time=1_000_000.0
+    )
+    recent = wba.key_failure_note(result, 1_000_000.0 + 3 * 3600)
+    assert "rotation is unlikely" in recent and "3 hours" in recent
+    old = wba.key_failure_note(result, 1_000_000.0 + 30 * 86400)
+    assert "30 days" in old and "may have rotated" in old and "never published" in old
+    assert "future" in wba.key_failure_note(result, 1_000_000.0 - 5)
+    # No timing claim without a request time, or for causes that don't depend on it.
+    assert wba.key_failure_note(replace(result, request_time=None), 1.0) == ""
+    assert wba.key_failure_note(replace(result, key_failure="offline"), 2e6) == ""
+
+
+def test_unverified_tag_evidence_carries_key_detail(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from agent_census.classify.tags import _wba_tag
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    monkeypatch.setattr(wba, "remote_enabled", lambda: True)
+    monkeypatch.setattr(wba, "_http_get", lambda url: '{"keys":[]}')
+    verifier = wba.WbaVerifier(allow_fetch=True)
+    result = verifier.verify(_ahrefs_claim(1782543551.0), now=1782543551.0 + 600)
+    why = _wba_tag(result)["wba-unverified"]
+    assert "only 10 minutes old" in why  # recent request: rotation is unlikely
+    assert "e3vpiy0B6M1Wdxnizw3dqRSgpqS6SXM2qiQ6HtUwZ5g" in why and "directory https://" in why
+
+
+def test_unusable_signature_headers_are_counted_and_warned(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from agent_census import cli
+
+    fmt = '%h %t "%r" %>s %b "%{User-Agent}i" %{Host}i "%{Signature-Input}i" "%{Signature}i"'
+    line = " ".join(
+        [
+            "203.0.113.10",
+            "[27/Jun/2026:06:59:11 +0000]",
+            '"GET /?uri=x HTTP/2.0"',
+            "200",
+            "461",
+            _log_quote("AhrefsBot/7.0"),
+            "redbot.org",
+            _log_quote(AHREFS_SIGNATURE_INPUT),
+            _log_quote("-"),  # the Signature header wasn't logged
+        ]
+    )
+    log = tmp_path / "wba.log"
+    log.write_text(line + "\n", encoding="utf-8")
+    result = pipeline.analyze(
+        log, resolve("apache", {"format": fmt}), identity.get_strategy("ip_ua")
+    )
+    assert all(p.wba is None for p in result.profiles)
+    cli._warn_wba_unusable(result)
+    err = capsys.readouterr().err
+    assert "1 request(s) from 1 client(s)" in err and "Signature header not logged" in err

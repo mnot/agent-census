@@ -192,13 +192,22 @@ def _http_get(url: str) -> str | None:
         return None
 
 
-def fetch_ranges_text(url: str, name: str | None = None) -> str | None:
+def fetch_ranges_text(url: str, name: str | None = None, fmt: str | None = None) -> str | None:
     """Return the range list for ``url``, backed by a weekly on-disk cache.
 
     On a failed fetch, warn on stderr naming ``name`` (the provider/agent) and the
     URL -- noting whether a stale cached copy is being used instead, or whether
     there's nothing to fall back on.
+
+    With ``fmt``, text that yields no prefixes in that format (a 200 HTML error
+    page, a changed feed layout) counts as a failed fetch: it is neither cached nor
+    returned, and a poisoned cache entry from an earlier run is refetched, so a bad
+    response can't masquerade as "the feed lists no ranges" for a week.
     """
+
+    def usable(text: str) -> bool:
+        return fmt is None or bool(extract_cidrs(text, fmt))
+
     path = _ranges_cache_path(url)
     try:
         fresh = path.exists() and (time.time() - path.stat().st_mtime) < _RANGES_TTL
@@ -206,24 +215,35 @@ def fetch_ranges_text(url: str, name: str | None = None) -> str | None:
         fresh = False
     if fresh:
         try:
-            return path.read_text(encoding="utf-8")
+            cached = path.read_text(encoding="utf-8")
+            if usable(cached):
+                return cached
         except OSError:
             pass
+    label = name or "external"
     text = _http_get(url)
+    problem = f"could not fetch {label} ranges from {url}"
+    if text is not None and not usable(text):
+        problem = (
+            f"{label} ranges from {url}: fetched {len(text)} bytes but no prefixes parsed "
+            f"(format {fmt}); the feed may have moved or changed layout"
+        )
+        text = None
     if text is not None:
         try:
             path.write_text(text, encoding="utf-8")
         except OSError:
             pass
         return text
-    label = name or "external"
     try:  # fetch failed -- fall back to a stale cached copy if we have one
         stale = path.read_text(encoding="utf-8")
-        _warn(f"could not refresh {label} ranges from {url}; using a cached copy")
-        return stale
     except OSError:
-        _warn(f"could not fetch {label} ranges from {url}")
-        return None
+        stale = None
+    if stale is not None and usable(stale):
+        _warn(f"{problem}; using a cached copy")
+        return stale
+    _warn(problem)
+    return None
 
 
 def _as_list(value: object) -> list[object]:
@@ -433,13 +453,15 @@ def fetch_range_intervals(url: str, fmt: str, name: str | None = None) -> Interv
         cached = _read_intervals(path)
         if cached is not None:
             return cached
-    text = fetch_ranges_text(url, name)
+    text = fetch_ranges_text(url, name, fmt)
     if text is not None:
         v4, v6 = network_intervals(extract_cidrs(text, fmt))
-        try:
-            path.write_text(json.dumps({"v4": v4, "v6": v6}), encoding="utf-8")
-        except OSError:
-            pass
-        return v4, v6
+        if v4 or v6:  # never cache an empty parse: it would stick for a week
+            try:
+                path.write_text(json.dumps({"v4": v4, "v6": v6}), encoding="utf-8")
+            except OSError:
+                pass
+            return v4, v6
+        _warn(f"{name or 'external'} ranges from {url}: no valid prefixes (format {fmt})")
     stale = _read_intervals(path)  # fetch failed -- fall back to a stale parse if we have one
     return stale if stale is not None else ([], [])

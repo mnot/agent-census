@@ -175,3 +175,37 @@ def test_ip_in_respects_version_and_membership() -> None:
     assert ip_in("1.2.3.4", nets) is not None
     assert ip_in("9.9.9.9", nets) is None
     assert ip_in("not-an-ip", nets) is None
+
+
+def test_unparseable_feed_is_not_cached_and_warns(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path
+) -> None:
+    # A 200 error page must not be cached as "the feed lists nothing" for a week.
+    monkeypatch.setattr(iprange, "cache_dir", lambda: tmp_path)
+    monkeypatch.setattr(iprange, "_http_get", lambda url: "<html>Service unavailable</html>")
+    url = "https://example.com/ranges.json"
+    assert fetch_ranges_text(url, "Amazonbot", "prefixes") is None
+    err = capsys.readouterr().err
+    assert "Amazonbot" in err and "no prefixes parsed" in err and "prefixes" in err
+    assert not list((tmp_path / "ranges").glob("*.json"))  # nothing cached
+
+
+def test_poisoned_cache_entry_is_refetched(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    monkeypatch.setattr(iprange, "cache_dir", lambda: tmp_path)
+    url = "https://example.com/ranges.json"
+    iprange._ranges_cache_path(url).write_text("<html>oops</html>", encoding="utf-8")
+    monkeypatch.setattr(iprange, "_http_get", lambda u: '{"prefixes": ["203.0.113.0/24"]}')
+    assert fetch_ranges_text(url, "X", "prefixes") == '{"prefixes": ["203.0.113.0/24"]}'
+
+
+def test_stale_unparseable_cache_is_not_used_as_fallback(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path
+) -> None:
+    monkeypatch.setattr(iprange, "cache_dir", lambda: tmp_path)
+    monkeypatch.setattr(iprange, "_http_get", lambda url: None)
+    url = "https://example.com/ranges.json"
+    iprange._ranges_cache_path(url).write_text("<html>oops</html>", encoding="utf-8")
+    assert fetch_ranges_text(url, "X", "prefixes") is None
+    assert "using a cached copy" not in capsys.readouterr().err

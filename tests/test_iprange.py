@@ -8,6 +8,11 @@ from agent_census import iprange
 from agent_census.iprange import RangeIndex, extract_cidrs, fetch_ranges_text, ip_in, parse_networks
 
 
+@pytest.fixture(autouse=True)
+def _remote_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(iprange._remote, "enabled", True)
+
+
 def test_failed_fetch_warns_with_name_and_url(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path
 ) -> None:
@@ -209,3 +214,36 @@ def test_stale_unparseable_cache_is_not_used_as_fallback(
     iprange._ranges_cache_path(url).write_text("<html>oops</html>", encoding="utf-8")
     assert fetch_ranges_text(url, "X", "prefixes") is None
     assert "using a cached copy" not in capsys.readouterr().err
+
+
+def test_fetch_cause_is_named_and_kept(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path
+) -> None:
+    import io
+    import urllib.error
+
+    monkeypatch.setattr(iprange, "cache_dir", lambda: tmp_path)
+    url = "https://example.com/ranges.json"
+
+    def boom(*_a: object, **_k: object) -> None:
+        raise urllib.error.HTTPError(url, 503, "unavailable", {}, io.BytesIO(b""))  # type: ignore[arg-type]
+
+    monkeypatch.setattr(iprange.urllib.request, "urlopen", boom)
+    assert fetch_ranges_text(url, "X", "prefixes") is None
+    assert "HTTP 503" in capsys.readouterr().err
+    assert iprange.feed_problem(url) == "HTTP 503"
+
+
+def test_offline_never_fetches_but_uses_a_cached_copy(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    monkeypatch.setattr(iprange, "cache_dir", lambda: tmp_path)
+    monkeypatch.setitem(iprange._remote, "enabled", False)
+    monkeypatch.setattr(iprange, "_http_get", lambda url: pytest.fail("fetched while offline"))
+    url = "https://example.com/ranges.json"
+    assert fetch_ranges_text(url, "X", "prefixes") is None
+    assert "disabled" in (iprange.feed_problem(url) or "")
+    cached = '{"prefixes": ["203.0.113.0/24"]}'
+    iprange._ranges_cache_path(url).write_text(cached, encoding="utf-8")
+    assert fetch_ranges_text(url, "X", "prefixes") == cached
+    assert iprange.feed_problem(url) is None

@@ -18,8 +18,9 @@ import os
 import re
 import sys
 import time
+import urllib.error
 import urllib.request
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 
 from . import USER_AGENT
@@ -183,21 +184,51 @@ def _warn(message: str) -> None:
     print(f"agent-census: warning: {message}", file=sys.stderr)
 
 
+# Why each feed URL last failed to yield ranges this run (cleared on success), so a
+# verdict that rests on it can say *what* went wrong rather than just "unobtainable".
+_feed_problems: dict[str, str] = {}
+_last_fetch_error: dict[str, str] = {}
+
+
+def feed_problem(url: str) -> str | None:
+    """Why ``url``'s range list couldn't be used this run, or ``None`` if it could
+    (or hasn't been tried)."""
+    return _feed_problems.get(url)
+
+
 def _http_get(url: str) -> str | None:
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=_FETCH_TIMEOUT) as response:  # noqa: S310
             return str(response.read(_MAX_FETCH_BYTES).decode("utf-8", "replace"))
-    except (OSError, ValueError):
+    except urllib.error.HTTPError as exc:
+        _last_fetch_error[url] = f"HTTP {exc.code}"
+    except TimeoutError:
+        _last_fetch_error[url] = "timed out"
+    except (OSError, ValueError) as exc:
+        reason = getattr(exc, "reason", None) or exc
+        _last_fetch_error[url] = f"{type(exc).__name__}: {reason}"
+    return None
+
+
+def _read_cached(path: Path, usable: Callable[[str], bool]) -> str | None:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
         return None
+    return text if usable(text) else None
 
 
 def fetch_ranges_text(url: str, name: str | None = None, fmt: str | None = None) -> str | None:
     """Return the range list for ``url``, backed by a weekly on-disk cache.
 
-    On a failed fetch, warn on stderr naming ``name`` (the provider/agent) and the
-    URL -- noting whether a stale cached copy is being used instead, or whether
-    there's nothing to fall back on.
+    On a failed fetch, warn on stderr naming ``name`` (the provider/agent), the URL
+    and the cause (HTTP status, timeout, ...) -- noting whether a stale cached copy
+    is being used instead, or whether there's nothing to fall back on. The cause is
+    also kept for :func:`feed_problem`.
+
+    With remote lookups disabled (``--no-fetch-ranges``) nothing is fetched: a
+    cached copy of any age is used if there is one.
 
     With ``fmt``, text that yields no prefixes in that format (a 200 HTML error
     page, a changed feed layout) counts as a failed fetch: it is neither cached nor
@@ -209,40 +240,48 @@ def fetch_ranges_text(url: str, name: str | None = None, fmt: str | None = None)
         return fmt is None or bool(extract_cidrs(text, fmt))
 
     path = _ranges_cache_path(url)
+    label = name or "external"
+    if not remote_enabled():
+        cached = _read_cached(path, usable)
+        if cached is None:
+            _feed_problems[url] = (
+                "remote lookups are disabled (--no-fetch-ranges) and nothing is cached"
+            )
+        else:
+            _feed_problems.pop(url, None)
+        return cached
     try:
         fresh = path.exists() and (time.time() - path.stat().st_mtime) < _RANGES_TTL
     except OSError:
         fresh = False
     if fresh:
-        try:
-            cached = path.read_text(encoding="utf-8")
-            if usable(cached):
-                return cached
-        except OSError:
-            pass
-    label = name or "external"
+        cached = _read_cached(path, usable)
+        if cached is not None:
+            _feed_problems.pop(url, None)
+            return cached
     text = _http_get(url)
-    problem = f"could not fetch {label} ranges from {url}"
+    cause = _last_fetch_error.pop(url, "fetch failed")
     if text is not None and not usable(text):
-        problem = (
-            f"{label} ranges from {url}: fetched {len(text)} bytes but no prefixes parsed "
-            f"(format {fmt}); the feed may have moved or changed layout"
+        cause = (
+            f"fetched {len(text)} bytes but no prefixes parsed (format {fmt}); feed may have moved"
         )
         text = None
     if text is not None:
+        _feed_problems.pop(url, None)
         try:
             path.write_text(text, encoding="utf-8")
         except OSError:
             pass
         return text
-    try:  # fetch failed -- fall back to a stale cached copy if we have one
-        stale = path.read_text(encoding="utf-8")
-    except OSError:
-        stale = None
-    if stale is not None and usable(stale):
-        _warn(f"{problem}; using a cached copy")
+    problem = f"could not fetch {label} ranges from {url}: {cause}"
+    stale = _read_cached(path, usable)  # fall back to a stale cached copy if we have one
+    if stale is not None:
+        age_days = int((time.time() - path.stat().st_mtime) // 86400)
+        _warn(f"{problem}; using a cached copy ({age_days} days old)")
+        _feed_problems.pop(url, None)
         return stale
     _warn(problem)
+    _feed_problems[url] = cause
     return None
 
 

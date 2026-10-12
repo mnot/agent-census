@@ -663,6 +663,28 @@ def _warn_skipped_lines(result: AnalysisResult) -> None:
     )
 
 
+_DNS_WARN_FRACTION = 0.10
+
+
+def _warn_dns_failures(verifier: BotVerifier) -> None:
+    """Warn when many reverse/forward DNS lookups timed out or errored.
+
+    Each such client is merely ``dns-unverified``, so a dead or throttled resolver
+    would otherwise look like a log full of unverifiable crawlers.
+    """
+    counts, total = verifier.dns_failure_report()
+    failed = counts.get("timed out", 0) + counts.get("resolver error", 0)
+    if total == 0 or failed / total <= _DNS_WARN_FRACTION:
+        return
+    detail = ", ".join(f"{num:,} {category}" for category, num in sorted(counts.items()))
+    print(
+        f"agent-census: warning: {failed:,} of {total:,} DNS lookups during bot verification "
+        f"timed out or errored ({detail}); the affected clients are dns-unverified. "
+        "Check the resolver is reachable and not rate-limiting.",
+        file=sys.stderr,
+    )
+
+
 def _warn_untimed_lines(result: AnalysisResult, since: float | None) -> None:
     """Warn when parsed lines carry no readable timestamp.
 
@@ -795,6 +817,8 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
             asn_resolver.close()
     if asn_resolver is not None:
         _warn_maxmind_skew(asn_resolver, result, "AS attributions")
+    if verifier is not None:
+        _warn_dns_failures(verifier)
     _warn_skipped_lines(result)
     _warn_untimed_lines(result, args.since)
     _warn_wba_key_skew(result)

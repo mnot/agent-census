@@ -442,3 +442,39 @@ def test_reverse_dns_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
     start = time.time()
     assert netverify._reverse_dns("1.2.3.4") == (None, False)  # timeout -> transient
     assert time.time() - start < 1.0  # bounded by the timeout, not the 5s sleep
+
+
+def test_dns_failure_causes_are_recorded_and_summarised(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import socket
+
+    from agent_census import cli
+
+    monkeypatch.setattr(netverify, "_DNS_TIMEOUT", 0.05)
+    netverify._dns_failures.clear()
+
+    def slow(ip: str) -> tuple[str | None, bool]:
+        import time as _t
+
+        _t.sleep(0.5)
+        return None, False
+
+    monkeypatch.setattr(netverify, "_reverse_lookup", slow)
+    assert netverify._reverse_dns("192.0.2.1") == (None, False)
+    assert netverify._dns_failures["ptr:192.0.2.1"][0] == "timed out"
+
+    def nxdomain(*_a: object) -> None:
+        raise socket.gaierror(socket.EAI_NONAME, "Name or service not known")
+
+    monkeypatch.setattr(socket, "getaddrinfo", nxdomain)
+    assert netverify._forward_ips("gone.example") == set()
+    assert netverify._dns_failures["fwd:gone.example"][0] == "no such host"
+
+    verifier = BotVerifier()
+    verifier._reverse = {"192.0.2.1": (None, False)}
+    counts, total = verifier.dns_failure_report()
+    assert counts == {"timed out": 1, "no such host": 1} and total == 1
+    cli._warn_dns_failures(verifier)  # 1 timeout of 1 lookup: well over the threshold
+    assert "1 of 1 DNS lookups" in capsys.readouterr().err
+    netverify._dns_failures.clear()

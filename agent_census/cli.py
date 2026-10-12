@@ -635,6 +635,34 @@ _WBA_KEY_HINTS = {
 }
 
 
+# Share of unparseable lines above which a run warns: a few malformed lines are
+# normal in a busy log, but beyond this the --log-format is the likelier culprit.
+_SKIP_WARN_FRACTION = 0.05
+
+
+def _warn_skipped_lines(result: AnalysisResult) -> None:
+    """Warn when many lines (or all of them) failed to parse -- the classic symptom of
+    a wrong ``--log-format``, which otherwise yields a plausible-looking empty report."""
+    skips = result.skips
+    if skips.total_lines == 0 or skips.skipped == 0:
+        return
+    kept = skips.parsed + skips.excluded + skips.out_of_window
+    if kept and skips.skipped / skips.total_lines <= _SKIP_WARN_FRACTION:
+        return
+    top = sorted(skips.reasons.items(), key=lambda item: -item[1])[:3]
+    why = "; ".join(f"{count:,} {reason}" for reason, count in top)
+    first = ""
+    if skips.first_skip is not None:
+        line_no, text = skips.first_skip
+        first = f" First at line {line_no}: {text!r}."
+    print(
+        f"agent-census: warning: {skips.skipped:,} of {skips.total_lines:,} log lines "
+        f"({skips.skipped / skips.total_lines:.0%}) could not be parsed ({why}).{first} "
+        "Check --log-format / --log-format-preset.",
+        file=sys.stderr,
+    )
+
+
 def _warn_wba_unusable(result: AnalysisResult) -> None:
     """Warn when requests carried Web Bot Auth ``Signature-Input`` but no usable claim.
 
@@ -746,6 +774,7 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
             asn_resolver.close()
     if asn_resolver is not None:
         _warn_maxmind_skew(asn_resolver, result, "AS attributions")
+    _warn_skipped_lines(result)
     _warn_wba_key_skew(result)
     _warn_wba_unusable(result)
 

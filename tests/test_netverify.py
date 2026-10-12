@@ -457,24 +457,24 @@ def test_dns_failure_causes_are_recorded_and_summarised(
     def slow(ip: str) -> tuple[str | None, bool]:
         import time as _t
 
-        _t.sleep(0.5)
-        return None, False
-
-    monkeypatch.setattr(netverify, "_reverse_lookup", slow)
-    assert netverify._reverse_dns("192.0.2.1") == (None, False)
-    assert netverify._dns_failures["ptr:192.0.2.1"][0] == "timed out"
+        _t.sleep(0.3)
+        raise OSError("late failure")  # an abandoned thread must not overwrite "timed out"
 
     def nxdomain(*_a: object) -> None:
         raise socket.gaierror(socket.EAI_NONAME, "Name or service not known")
 
+    monkeypatch.setattr(netverify, "_reverse_lookup", slow)
     monkeypatch.setattr(socket, "getaddrinfo", nxdomain)
-    assert netverify._forward_ips("gone.example") == set()
-    assert netverify._dns_failures["fwd:gone.example"][0] == "no such host"
-
     verifier = BotVerifier()
-    verifier._reverse = {"192.0.2.1": (None, False)}
+    verifier._reverse["198.51.100.9"] = (None, False)  # seeded from disk: no cause, not counted
+    assert verifier._cached_reverse("192.0.2.1") == (None, False)
+    assert verifier._cached_forward("gone.example") == frozenset()
+    import time as _t
+
+    _t.sleep(0.4)  # let the abandoned thread finish and attempt its late write
+    assert netverify._dns_failures["ptr:192.0.2.1"][0] == "timed out"
     counts, total = verifier.dns_failure_report()
-    assert counts == {"timed out": 1, "no such host": 1} and total == 1
-    diagnostics.warn_dns_failures(verifier)  # 1 timeout of 1 lookup: well over the threshold
-    assert "1 of 1 DNS lookups" in capsys.readouterr().err
+    assert counts == {"timed out": 1, "no such host": 1} and total == 2
+    diagnostics.warn_dns_failures(verifier)  # 1 timeout of 2 lookups: over the threshold
+    assert "1 of 2 DNS lookups" in capsys.readouterr().err
     netverify._dns_failures.clear()

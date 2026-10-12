@@ -431,7 +431,7 @@ def test_verifier_distinguishes_directory_failures(
     assert result.key_failure == failure
 
 
-def test_key_warning_is_per_signature_and_names_key_and_dates(
+def test_key_warning_groups_clients_and_names_keys_and_dates(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     from types import SimpleNamespace
@@ -440,17 +440,17 @@ def test_key_warning_is_per_signature_and_names_key_and_dates(
     from agent_census.model import ClientId
 
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
-    verified = wba.WbaVerifier(allow_fetch=False).verify(_ahrefs_claim(1782543551.0))
+    unverified = wba.WbaVerifier(allow_fetch=False).verify(_ahrefs_claim(1782543551.0))
+    other = replace(unverified, keyid="otherkey", directory_url="https://other.example/dir")
     profiles = [
-        SimpleNamespace(client_id=ClientId(ip=ip), wba=verified) for ip in ("192.0.2.1", "192.0.2.2")
+        SimpleNamespace(client_id=ClientId(ip=ip), wba=res)
+        for ip, res in (("192.0.2.1", unverified), ("192.0.2.2", unverified), ("192.0.2.3", other))
     ]
     diagnostics.warn_wba_key_skew(SimpleNamespace(profiles=profiles))  # type: ignore[arg-type]
     lines = capsys.readouterr().err.splitlines()
-    assert len(lines) == 2
-    assert "e3vpiy0B6M1Wdxnizw3dqRSgpqS6SXM2qiQ6HtUwZ5g" in lines[0]
-    assert "192.0.2.1" in lines[0] and "192.0.2.2" in lines[1]
-    assert "signed 2026-" in lines[0] and "expires 2026-" in lines[0]
-
+    assert len(lines) == 2  # one per (cause, directory), not per client
+    grouped = next(line for line in lines if "2 clients" in line)
+    assert "e3vpiy0B6M1Wdxnizw3dqRSgpqS6SXM2qiQ6HtUwZ5g" in grouped and "requests 2026-" in grouped
 
 def test_pipeline_verifies_wba_end_to_end(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -699,3 +699,20 @@ def test_unusable_signature_headers_are_counted_and_warned(
     diagnostics.warn_wba_unusable(result)
     err = capsys.readouterr().err
     assert "1 request(s) from 1 client(s)" in err and "Signature header not logged" in err
+
+
+def test_unusable_claims_are_counted_past_the_sample_cap() -> None:
+    from agent_census.features import _WBA_SAMPLE_CAP, FeatureAccumulator
+    from agent_census.model import LogEntry
+
+    assert _WBA_SAMPLE_CAP > 0
+    acc = FeatureAccumulator()
+    for _ in range(_WBA_SAMPLE_CAP):
+        acc.wba_claims.append(_ahrefs_claim(1.0))  # sample already full
+    bad = LogEntry(
+        line_no=1,
+        remote_host="203.0.113.1",
+        extra={wba.SIGNATURE_INPUT_HEADER: AHREFS_SIGNATURE_INPUT},  # no Signature header
+    )
+    acc._sample_wba(bad)
+    assert acc.wba_unusable == {"Signature header not logged": 1}

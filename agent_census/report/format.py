@@ -235,7 +235,8 @@ _TAG_HELP: dict[str, str] = {
     "wba-expired": "A valid Web Bot Auth signature whose `expires` was already past at request "
     "time — the key genuinely signed it, but outside the signature's freshness window.",
     "wba-unverified": "Presented a Web Bot Auth signature that couldn't be checked — the key "
-    "was unobtainable (e.g. rotated since), a covered field wasn't logged, or the body was "
+    "was unobtainable (rotated, never published, or the directory unreachable — the "
+    "detail says which), a covered field wasn't logged, or the body was "
     "signed. Never read as forgery: that requires a signature that fails against a fetched key.",
     "wba-violation": "A Web Bot Auth signature that failed against the operator's authentic, "
     "fetched key — cryptographic proof of a forged identity. Drives the 'impersonator' kind; "

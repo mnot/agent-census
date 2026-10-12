@@ -202,6 +202,9 @@ class ClientFeatures:  # pylint: disable=too-many-instance-attributes
 
     # feed polling: requests for an RSS/Atom resource (by URL or response media type)
     feed_requests: int = 0
+    # Requests that carried Signature-Input for Web Bot Auth but yielded no usable
+    # claim, by cause (usually a LogFormat problem); see ``wba.claim_problem``.
+    wba_unusable: dict[str, int] = field(default_factory=dict)
     feed_ratio: float = 0.0
 
     # politeness (behavioral; robots-rule compliance lives in ComplianceReport)
@@ -420,6 +423,15 @@ class WbaResult:
     expires: int | None = None  # signature `expires` (unix seconds), if present
     reason: str | None = None  # why UNVERIFIABLE / FORGED, for the report
     evidence: tuple[str, ...] = ()
+    # Why the operator's key couldn't be had (UNVERIFIABLE only): one of "offline",
+    # "no-agent", "fetch-failed", "bad-directory" or "not-listed" (the directory was
+    # read and no longer carries the key -- the only one that means rotation).
+    key_failure: str | None = None
+    directory_url: str | None = None  # the key directory consulted, if any
+    request_time: float | None = None  # the signed request's time (unix seconds)
+    # What the request's age implies about the missing key (see ``key_failure_note``),
+    # fixed at verification time; empty when timing says nothing.
+    key_note: str = ""
     # A sparse sample of this client's signed requests disagreed: some verified,
     # some didn't (the headline status is the representative request's). Surfaced as
     # ``wba-mixed`` -- one identity presenting both valid and non-valid signatures.

@@ -411,6 +411,14 @@ flags layered on when present: `wba-mixed` (some of the client's signatures
 verified and some did not), `wba-replay` (a nonce also seen from a different
 origin — a captured signature replayed), and `wba-nonce-reuse` (a nonce reused
 across the client's own requests). A request with no signature emits nothing.
+`wba-unverified` records *why* the key was unavailable (`WbaResult.key_failure`):
+`not-listed` (directory read fine, key absent), `fetch-failed`, `bad-directory`,
+`offline` or `no-agent`. Only `not-listed` suggests rotation, and only when the
+request is older than a day at analysis time (`wba._ROTATION_PLAUSIBLE_AFTER`);
+a younger request points at a never-published key or a wrong `Signature-Agent`
+directory instead. Requests that carry `Signature-Input` but yield no claim
+(unparseable, `Signature` not logged, no value for the label) get no tag; they are
+counted per cause in `ClientFeatures.wba_unusable` and reported on stderr.
 *Bearing:* this channel **outranks** the network one in the impersonation verdict
 (§2.3, step 4): `wba-violation` forces `impersonator`, while `wba-verified`/
 `wba-expired` clear a network impersonator verdict (unless the UA names a

@@ -27,6 +27,7 @@ from ..model import (
     WbaResult,
     WbaStatus,
 )
+from ..wba import key_failure_detail
 from .feed_reader import ua_is_feed_reader
 
 # Numeric knobs: the tags' own thresholds in data/tuning/tags.toml, and the ones
@@ -526,7 +527,8 @@ def _wba_tag(wba: WbaResult | None) -> dict[str, str]:
     status_tag = _WBA_TAGS.get(wba.status)
     if status_tag is not None:
         tags[status_tag] = (
-            wba.reason
+            (key_failure_detail(wba) if wba.key_failure else None)
+            or wba.reason
             or (wba.evidence[0] if wba.evidence else None)
             or _WBA_TAG_DEFAULT[status_tag]
         )

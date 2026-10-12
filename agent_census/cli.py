@@ -44,7 +44,7 @@ from .report.inspect_data import write_inspect_bundle
 from .robots import from_file, from_network
 from .robots.parser import RobotsRules
 from .robots.source import RobotsDoc, url_for_host
-from .wba import WbaVerifier
+from .wba import WbaVerifier, key_failure_detail
 from .wba_check import run as run_wba_check
 
 _ANALYZE_EXAMPLES = """\
@@ -628,28 +628,55 @@ def _warn_maxmind_skew(
         )
 
 
-def _warn_wba_key_skew(result: AnalysisResult) -> None:
-    """Warn when signed requests couldn't be verified for want of the operator's key.
+_WBA_KEY_HINTS = {
+    "fetch-failed": "Check the directory is reachable from here, then re-run.",
+    "bad-directory": "The directory may be misconfigured (see `agent-census wba-check`).",
+    "offline": "Re-run with remote lookups enabled.",
+}
 
-    A Web Bot Auth ``keyid`` is content-addressed and immutable, so the only reason
-    a signature goes ``unverifiable`` for a missing key is that the operator has
-    rotated and the old key is gone from the live directory -- which is exactly what
-    happens when a log is analysed long after collection. The permanent key store
-    accrues coverage, so the fix is to verify nearer collection time (a regular
-    pass or a small cron); flag it rather than let it read as a quiet non-result.
+
+def _warn_wba_unusable(result: AnalysisResult) -> None:
+    """Warn when requests carried Web Bot Auth ``Signature-Input`` but no usable claim.
+
+    Such clients get no ``wba`` tag at all, so without this a mis-set LogFormat
+    reads as "nobody signs".
     """
-    rotated = sum(
-        1
-        for profile in result.profiles
-        if profile.wba is not None
-        and profile.wba.status is WbaStatus.UNVERIFIABLE
-        and (profile.wba.reason or "").startswith("could not obtain")
-    )
-    if rotated:
+    totals: dict[str, int] = {}
+    clients = 0
+    for profile in result.profiles:
+        if profile.features.wba_unusable:
+            clients += 1
+        for problem, count in profile.features.wba_unusable.items():
+            totals[problem] = totals.get(problem, 0) + count
+    if totals:
+        causes = "; ".join(f"{problem} ({count})" for problem, count in sorted(totals.items()))
         print(
-            f"agent-census: warning: {rotated} Web Bot Auth signature(s) could not be verified "
-            "because the operator's key is no longer published (likely rotated since the log was "
-            "collected). Run verification nearer collection time so the key store captures it.",
+            f"agent-census: warning: {sum(totals.values())} request(s) from {clients} client(s) "
+            f"carried Signature-Input but no usable Web Bot Auth signature: {causes}. "
+            "Check the log format captures the Signature and Signature-Input headers intact.",
+            file=sys.stderr,
+        )
+
+
+def _warn_wba_key_skew(result: AnalysisResult) -> None:
+    """Warn, once per signature, when the operator's key couldn't be obtained.
+
+    A ``keyid`` is content-addressed and immutable, so a key absent from a directory
+    that read fine was either rotated away (plausible only for an older log; the
+    permanent key store then helps if verification runs nearer collection) or never
+    published there. The note on each line is therefore conditioned on the request's
+    age (:func:`agent_census.wba.key_failure_note`). Other causes (offline, unreachable or malformed
+    directory) are named as such rather than lumped in as rotation.
+    """
+    for profile in result.profiles:
+        wba = profile.wba
+        if wba is None or wba.status is not WbaStatus.UNVERIFIABLE or wba.key_failure is None:
+            continue
+        who = wba.operator or wba.signer_domain
+        hint = _WBA_KEY_HINTS.get(wba.key_failure, "")
+        print(
+            f"agent-census: warning: Web Bot Auth signature from {profile.client_id.ip}"
+            f"{f' ({who})' if who else ''} unverified: {key_failure_detail(wba)}. {hint}".rstrip(),
             file=sys.stderr,
         )
 
@@ -720,6 +747,7 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
     if asn_resolver is not None:
         _warn_maxmind_skew(asn_resolver, result, "AS attributions")
     _warn_wba_key_skew(result)
+    _warn_wba_unusable(result)
 
     flags = CountryFlags()
     if country_path:

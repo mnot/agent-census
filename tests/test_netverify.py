@@ -214,7 +214,7 @@ def test_internet_archive_verified_by_published_range(monkeypatch: pytest.Monkey
     # domain, so by default both must check out. In-feed + matching rDNS verifies;
     # the same UA elsewhere fails the range check and impersonates.
     monkeypatch.setattr(
-        netverify, "_fetch_ranges_text", lambda url, name=None: '{"prefixes": [{"ipv4Prefix": "207.241.224.0/20"}]}'
+        netverify, "_fetch_ranges_text", lambda url, name=None, fmt=None: '{"prefixes": [{"ipv4Prefix": "207.241.224.0/20"}]}'
     )
     monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: ("crawl.archive.org", False))
     monkeypatch.setattr(netverify, "_forward_ips", lambda host: {"207.241.224.5"})
@@ -236,7 +236,7 @@ def test_internet_archive_verified_by_published_range(monkeypatch: pytest.Monkey
 def test_ranges_url_fetched_and_used(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_spec(monkeypatch, "FetchBot", CrawlerSpec(ranges_urls=("https://example.test/r.json",)))
     monkeypatch.setattr(
-        netverify, "_fetch_ranges_text", lambda url, name=None: '{"prefixes": [{"ipv4Prefix": "192.0.2.0/24"}]}'
+        netverify, "_fetch_ranges_text", lambda url, name=None, fmt=None: '{"prefixes": [{"ipv4Prefix": "192.0.2.0/24"}]}'
     )
     verifier = BotVerifier()
     assert verifier.verify("192.0.2.7", "FetchBot/1.0").status is VerificationStatus.VERIFIED
@@ -254,7 +254,7 @@ def test_out_of_fetched_range_is_impostor_even_when_dns_confirms(
         "BothBot",
         CrawlerSpec(domains=("example.com",), ranges_urls=("https://example.test/r.json",)),
     )
-    monkeypatch.setattr(netverify, "_fetch_ranges_text", lambda url, name=None: '{"prefixes": [{"ipv4Prefix": "192.0.2.0/24"}]}')
+    monkeypatch.setattr(netverify, "_fetch_ranges_text", lambda url, name=None, fmt=None: '{"prefixes": [{"ipv4Prefix": "192.0.2.0/24"}]}')
     monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: ("host.example.com", False))
     monkeypatch.setattr(netverify, "_forward_ips", lambda host: {"198.51.100.1"})
     verification = BotVerifier().verify("198.51.100.1", "BothBot/1.0")
@@ -265,7 +265,7 @@ def test_out_of_fetched_range_is_impostor_even_when_dns_confirms(
 
 def test_ranges_url_fetch_failure_is_unverified(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_spec(monkeypatch, "FetchBot", CrawlerSpec(ranges_urls=("https://example.test/r.json",)))
-    monkeypatch.setattr(netverify, "_fetch_ranges_text", lambda url, name=None: None)
+    monkeypatch.setattr(netverify, "_fetch_ranges_text", lambda url, name=None, fmt=None: None)
     assert BotVerifier().verify("192.0.2.7", "FetchBot/1.0").status is VerificationStatus.UNVERIFIED
 
 
@@ -279,7 +279,7 @@ def test_ranges_url_honours_declared_format(monkeypatch: pytest.MonkeyPatch) -> 
         CrawlerSpec(ranges_urls=("https://example.test/ips.txt",), fmt="text"),
     )
     monkeypatch.setattr(
-        netverify, "_fetch_ranges_text", lambda url, name=None: "192.0.2.0/24\n# comment\n"
+        netverify, "_fetch_ranges_text", lambda url, name=None, fmt=None: "192.0.2.0/24\n# comment\n"
     )
     verifier = BotVerifier()
     assert verifier.verify("192.0.2.7", "TextBot/1.0").status is VerificationStatus.VERIFIED
@@ -300,7 +300,7 @@ def test_multiple_ranges_url_feeds_are_merged(monkeypatch: pytest.MonkeyPatch) -
         "MultiBot",
         CrawlerSpec(ranges_urls=tuple(feeds), fmt="text"),
     )
-    monkeypatch.setattr(netverify, "_fetch_ranges_text", lambda url, name=None: feeds[url])
+    monkeypatch.setattr(netverify, "_fetch_ranges_text", lambda url, name=None, fmt=None: feeds[url])
     verifier = BotVerifier()
     assert verifier.verify("192.0.2.7", "MultiBot/1.0").status is VerificationStatus.VERIFIED
     assert verifier.verify("2001:db8::1", "MultiBot/1.0").status is VerificationStatus.VERIFIED
@@ -373,7 +373,7 @@ def test_rdns_fallback_uses_dns_when_ranges_unobtainable(monkeypatch: pytest.Mon
         "BothBot",
         CrawlerSpec(domains=("example.com",), ranges_urls=("https://x/r.json",), rdns_fallback=True),
     )
-    monkeypatch.setattr(netverify, "_fetch_ranges_text", lambda url, name=None: "")  # ranges unavailable
+    monkeypatch.setattr(netverify, "_fetch_ranges_text", lambda url, name=None, fmt=None: "")  # ranges unavailable
     monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: ("c.example.com", False))
     monkeypatch.setattr(netverify, "_forward_ips", lambda host: {"203.0.113.5"})
     verification = BotVerifier().verify("203.0.113.5", "BothBot/1.0")
@@ -390,7 +390,7 @@ def test_rdns_fallback_impostor_when_dns_also_fails(monkeypatch: pytest.MonkeyPa
         "BothBot",
         CrawlerSpec(domains=("example.com",), ranges_urls=("https://x/r.json",), rdns_fallback=True),
     )
-    monkeypatch.setattr(netverify, "_fetch_ranges_text", lambda url, name=None: "")
+    monkeypatch.setattr(netverify, "_fetch_ranges_text", lambda url, name=None, fmt=None: "")
     monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: (None, True))  # definitive no PTR
     verification = BotVerifier().verify("203.0.113.5", "BothBot/1.0")
     assert verification.status is VerificationStatus.IMPERSONATOR
@@ -403,7 +403,7 @@ def test_verified_bot_ips_merge_into_one_entry(monkeypatch: pytest.MonkeyPatch) 
     # Googlebot declares both ranges and domains, so strict verification also runs
     # reverse/forward DNS -- stub it so the test never touches the live network.
     monkeypatch.setattr(
-        netverify, "_fetch_ranges_text", lambda url, name=None: '{"prefixes": [{"ipv4Prefix": "66.249.66.0/24"}]}'
+        netverify, "_fetch_ranges_text", lambda url, name=None, fmt=None: '{"prefixes": [{"ipv4Prefix": "66.249.66.0/24"}]}'
     )
     monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: ("crawl.googlebot.com", False))
     monkeypatch.setattr(netverify, "_forward_ips", lambda host: {f"66.249.66.{i}" for i in range(4)})

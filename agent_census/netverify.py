@@ -246,7 +246,7 @@ class BotVerifier:
             with self._lock:
                 cached = self._ranges.get(url)
             if cached is None:
-                text = _fetch_ranges_text(url, name)
+                text = _fetch_ranges_text(url, name, spec.fmt)
                 cached = _parse_networks(_extract_cidrs(text, spec.fmt)) if text else ()
                 with self._lock:
                     self._ranges[url] = cached

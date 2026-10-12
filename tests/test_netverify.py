@@ -449,7 +449,7 @@ def test_dns_failure_causes_are_recorded_and_summarised(
 ) -> None:
     import socket
 
-    from agent_census import cli
+    from agent_census import diagnostics
 
     monkeypatch.setattr(netverify, "_DNS_TIMEOUT", 0.05)
     netverify._dns_failures.clear()
@@ -475,6 +475,6 @@ def test_dns_failure_causes_are_recorded_and_summarised(
     verifier._reverse = {"192.0.2.1": (None, False)}
     counts, total = verifier.dns_failure_report()
     assert counts == {"timed out": 1, "no such host": 1} and total == 1
-    cli._warn_dns_failures(verifier)  # 1 timeout of 1 lookup: well over the threshold
+    diagnostics.warn_dns_failures(verifier)  # 1 timeout of 1 lookup: well over the threshold
     assert "1 of 1 DNS lookups" in capsys.readouterr().err
     netverify._dns_failures.clear()

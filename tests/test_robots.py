@@ -123,6 +123,7 @@ def test_compliance_unknown_without_rules() -> None:
 def test_from_network_caps_the_response_size(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     # A hostile/misconfigured origin serving an enormous robots.txt must not be
     # buffered whole: from_network reads at most _MAX_ROBOTS_BYTES.
+    import email.message
     import urllib.request
 
     from agent_census.robots import source
@@ -135,12 +136,33 @@ def test_from_network_caps_the_response_size(monkeypatch) -> None:  # type: igno
             return None
 
         def read(self, size: int = -1) -> bytes:
-            assert size == source._MAX_ROBOTS_BYTES  # capped, not an unbounded read
+            assert size == source._MAX_ROBOTS_BYTES + 1  # capped, not an unbounded read
             return b"a" * size
+
+        def geturl(self) -> str:
+            return "https://example.invalid/other"
+
+        headers = email.message.Message()
+        headers["Content-Type"] = "text/html"
 
     monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: _Resp())
     doc = source.from_network("https://example.invalid/robots.txt")
     assert len(doc.text) == source._MAX_ROBOTS_BYTES
+    assert any("redirected to https://example.invalid/other" in c for c in doc.caveats)
+    assert any("text/html" in c for c in doc.caveats)
+    assert any("truncated" in c for c in doc.caveats)
+    assert "truncated" in doc.note()
+
+
+def test_robots_without_groups_is_flagged(capsys) -> None:  # type: ignore[no-untyped-def]
+    from agent_census import diagnostics
+
+    html = RobotsDoc("<html><body>Not found</body></html>", "https://e/robots.txt")
+    diagnostics.warn_robots_doc(html, RobotsRules(html.text))
+    assert "no User-agent groups" in capsys.readouterr().err
+    real = RobotsDoc("User-agent: *\nDisallow:\n", "robots.txt")  # deliberate allow-all
+    diagnostics.warn_robots_doc(real, RobotsRules(real.text))
+    assert capsys.readouterr().err == ""
 
 
 def test_url_for_host_variants() -> None:

@@ -663,6 +663,27 @@ def _warn_skipped_lines(result: AnalysisResult) -> None:
     )
 
 
+def _warn_untimed_lines(result: AnalysisResult, since: float | None) -> None:
+    """Warn when parsed lines carry no readable timestamp.
+
+    Such lines slip past ``--since`` and add nothing to timing, so a log whose date
+    format the parser can't read otherwise yields a report with no time range and no
+    hint why.
+    """
+    skips = result.skips
+    if not skips.untimed or not skips.parsed:
+        return
+    if since is None and skips.untimed / skips.parsed <= _SKIP_WARN_FRACTION:
+        return
+    effect = "--since cannot window them and " if since is not None else ""
+    print(
+        f"agent-census: warning: {skips.untimed:,} of {skips.parsed:,} parsed log lines have no "
+        f"readable timestamp; {effect}timing and cadence signals ignore them. "
+        "Check the log format's time field.",
+        file=sys.stderr,
+    )
+
+
 def _warn_wba_unusable(result: AnalysisResult) -> None:
     """Warn when requests carried Web Bot Auth ``Signature-Input`` but no usable claim.
 
@@ -775,6 +796,7 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
     if asn_resolver is not None:
         _warn_maxmind_skew(asn_resolver, result, "AS attributions")
     _warn_skipped_lines(result)
+    _warn_untimed_lines(result, args.since)
     _warn_wba_key_skew(result)
     _warn_wba_unusable(result)
 

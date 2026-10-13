@@ -188,6 +188,30 @@ def _warn(message: str) -> None:
 # verdict that rests on it can say *what* went wrong rather than just "unobtainable".
 _feed_problems: dict[str, str] = {}
 _last_fetch_error: dict[str, str] = {}
+# Per feed URL: its provider label, the cause and age of a stale copy used in place
+# of a failed fetch, and which fetches were attempted / failed at the connection
+# level (as opposed to an HTTP error or an unparseable body, which are the
+# provider's, not this machine's, fault).
+_feed_labels: dict[str, str] = {}
+_feed_stale: dict[str, tuple[str, int]] = {}
+_feed_attempted: set[str] = set()
+_feed_unreachable: set[str] = set()
+
+
+def feed_issues() -> tuple[tuple[str, str], ...]:
+    """(provider, what happened) for every feed that failed this run, for the report."""
+    issues = [(_feed_labels.get(url, url), cause) for url, cause in _feed_problems.items()]
+    issues += [
+        (_feed_labels.get(url, url), f"{cause}; used a copy {age} days old")
+        for url, (cause, age) in _feed_stale.items()
+    ]
+    return tuple(sorted(issues))
+
+
+def feed_fetch_summary() -> tuple[int, int]:
+    """(feeds fetched from the network this run, those unreachable at the connection
+    level)."""
+    return len(_feed_attempted), len(_feed_unreachable)
 
 
 def feed_problem(url: str) -> str | None:
@@ -222,10 +246,12 @@ def _read_cached(path: Path, usable: Callable[[str], bool]) -> str | None:
 def fetch_ranges_text(url: str, name: str | None = None, fmt: str | None = None) -> str | None:
     """Return the range list for ``url``, backed by a weekly on-disk cache.
 
-    On a failed fetch, warn on stderr naming ``name`` (the provider/agent), the URL
-    and the cause (HTTP status, timeout, ...) -- noting whether a stale cached copy
-    is being used instead, or whether there's nothing to fall back on. The cause is
-    also kept for :func:`feed_problem`.
+    A failed fetch isn't printed: it is the provider's fault (or, if every feed
+    fails, a network fault the run reports once -- see :func:`feed_fetch_summary`).
+    The cause (HTTP status, timeout, ...) is kept for :func:`feed_problem` and
+    :func:`feed_issues`, and a stale cached copy is used in its place when there is
+    one. A feed that arrives but parses to nothing does warn: our format spec for it
+    is out of date.
 
     With remote lookups disabled (``--no-fetch-ranges``) nothing is fetched: a
     cached copy of any age is used if there is one.
@@ -241,6 +267,7 @@ def fetch_ranges_text(url: str, name: str | None = None, fmt: str | None = None)
 
     path = _ranges_cache_path(url)
     label = name or "external"
+    _feed_labels[url] = label
     if not remote_enabled():
         cached = _read_cached(path, usable)
         if cached is None:
@@ -259,28 +286,35 @@ def fetch_ranges_text(url: str, name: str | None = None, fmt: str | None = None)
         if cached is not None:
             _feed_problems.pop(url, None)
             return cached
+    _feed_attempted.add(url)
     text = _http_get(url)
     cause = _last_fetch_error.pop(url, "fetch failed")
-    if text is not None and not usable(text):
+    unparseable = text is not None and not usable(text)
+    if text is not None and unparseable:
         cause = (
             f"fetched {len(text)} bytes but no prefixes parsed (format {fmt}); feed may have moved"
         )
         text = None
     if text is not None:
         _feed_problems.pop(url, None)
+        _feed_stale.pop(url, None)
         try:
             path.write_text(text, encoding="utf-8")
         except OSError:
             pass
         return text
-    problem = f"could not fetch {label} ranges from {url}: {cause}"
+    if not unparseable and not cause.startswith("HTTP "):
+        _feed_unreachable.add(url)
+    # A provider's feed being down is that provider's fault and shows in the report; a
+    # feed that arrives but no longer parses means our format spec is out of date.
+    if unparseable:
+        _warn(f"{label} ranges from {url}: {cause}")
     stale = _read_cached(path, usable)  # fall back to a stale cached copy if we have one
     if stale is not None:
         age_days = int((time.time() - path.stat().st_mtime) // 86400)
-        _warn(f"{problem}; using a cached copy ({age_days} days old)")
+        _feed_stale[url] = (cause, age_days)
         _feed_problems.pop(url, None)
         return stale
-    _warn(problem)
     _feed_problems[url] = cause
     return None
 

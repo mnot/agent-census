@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+import time
+
 import pytest
 
 from agent_census import iprange
@@ -11,17 +14,25 @@ from agent_census.iprange import RangeIndex, extract_cidrs, fetch_ranges_text, i
 @pytest.fixture(autouse=True)
 def _remote_on(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(iprange._remote, "enabled", True)
+    for state in (
+        iprange._feed_problems,
+        iprange._feed_stale,
+        iprange._feed_labels,
+        iprange._feed_attempted,
+        iprange._feed_unreachable,
+    ):
+        state.clear()
 
 
-def test_failed_fetch_warns_with_name_and_url(
+def test_failed_fetch_is_recorded_not_printed(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path
 ) -> None:
     monkeypatch.setattr(iprange, "cache_dir", lambda: tmp_path)  # no cached copy to fall back on
     monkeypatch.setattr(iprange, "_http_get", lambda url: None)  # the fetch fails
     url = "https://example.com/ranges.json"
     assert fetch_ranges_text(url, "AhrefsBot") is None
-    err = capsys.readouterr().err
-    assert "warning" in err and "AhrefsBot" in err and url in err
+    assert capsys.readouterr().err == ""  # the provider's fault: report only
+    assert iprange.feed_issues() == (("AhrefsBot", "fetch failed"),)
 
 
 def test_parse_prefixes_gcp_schema() -> None:
@@ -230,8 +241,9 @@ def test_fetch_cause_is_named_and_kept(
 
     monkeypatch.setattr(iprange.urllib.request, "urlopen", boom)
     assert fetch_ranges_text(url, "X", "prefixes") is None
-    assert "HTTP 503" in capsys.readouterr().err
+    assert capsys.readouterr().err == ""
     assert iprange.feed_problem(url) == "HTTP 503"
+    assert iprange.feed_fetch_summary() == (1, 0)  # an HTTP status isn't a network fault
 
 
 def test_offline_never_fetches_but_uses_a_cached_copy(
@@ -247,3 +259,30 @@ def test_offline_never_fetches_but_uses_a_cached_copy(
     iprange._ranges_cache_path(url).write_text(cached, encoding="utf-8")
     assert fetch_ranges_text(url, "X", "prefixes") == cached
     assert iprange.feed_problem(url) is None
+
+
+def test_stale_copy_is_reported_as_an_issue(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    monkeypatch.setattr(iprange, "cache_dir", lambda: tmp_path)
+    monkeypatch.setattr(iprange, "_http_get", lambda url: None)
+    url = "https://example.com/ranges.json"
+    path = iprange._ranges_cache_path(url)
+    path.write_text('{"prefixes": ["203.0.113.0/24"]}', encoding="utf-8")
+    old = time.time() - 10 * 86400
+    os.utime(path, (old, old))
+    assert fetch_ranges_text(url, "Amazonbot", "prefixes") is not None
+    ((who, what),) = iprange.feed_issues()
+    assert who == "Amazonbot" and "10 days old" in what
+
+
+def test_range_feed_warning_only_when_every_feed_is_unreachable(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from agent_census import diagnostics
+
+    iprange._feed_attempted.update({"a", "b"})
+    iprange._feed_unreachable.update({"a"})
+    diagnostics.warn_range_feeds()  # b answered with an HTTP error: its provider's fault
+    assert capsys.readouterr().err == ""
+    iprange._feed_unreachable.add("b")
+    diagnostics.warn_range_feeds()
+    assert "none of 2" in capsys.readouterr().err

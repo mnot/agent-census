@@ -56,12 +56,15 @@ class _Check(NamedTuple):
     state: str  # _PASS | _FAIL | _UNKNOWN
     host: str | None  # resolved host or matched range, for the report
     why: str  # human-readable evidence line
+    broken: bool = False  # inconclusive because the range feed itself was unusable
 
 
 def _channel_verdict(check: _Check) -> ChannelVerdict:
     """The independent per-channel verdict for one check, for the ``dns``/``ip``
     tags -- distinct from the merged :class:`VerificationStatus` these checks also
     feed into."""
+    if check.broken:
+        return ChannelVerdict.FEED_BROKEN
     return {
         _PASS: ChannelVerdict.VERIFIED,
         _FAIL: ChannelVerdict.VIOLATION,
@@ -349,17 +352,24 @@ class BotVerifier:
     def _check_range(self, ip: str, spec: CrawlerSpec, substring: str) -> _Check:
         """Tri-state IP-range check. Unobtainable ranges are inconclusive, not a fail."""
         networks = self._networks_for(spec, substring)
+        problems = sorted({prob for url in spec.ranges_urls if (prob := iprange.feed_problem(url))})
         if not networks:
-            problems = sorted(
-                {prob for url in spec.ranges_urls if (prob := iprange.feed_problem(url))}
-            )
             why = f"could not obtain the published {substring} IP ranges"
-            return _Check(_UNKNOWN, None, f"{why}: {'; '.join(problems)}" if problems else why)
+            if problems:
+                why += f": {'; '.join(problems)}"
+            return _Check(_UNKNOWN, None, why, broken=bool(problems))
         match = _ip_in(ip, networks)
         if match is not None:
             return _Check(
                 _PASS, str(match), f"{ip} is within {match}, a published {substring} range"
             )
+        if problems:
+            # Only the inline ranges were available; absence from a partial list
+            # proves nothing, so it must not read as impersonation.
+            why = (
+                f"{ip} is not in the {substring} ranges available, but part of the list is missing"
+            )
+            return _Check(_UNKNOWN, None, f"{why}: {'; '.join(problems)}", broken=True)
         return _Check(_FAIL, None, f"{ip} is not in any published {substring} range")
 
     def _check_rdns(self, ip: str, spec: CrawlerSpec, substring: str) -> _Check:

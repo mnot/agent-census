@@ -559,6 +559,7 @@ _CHANNEL_NAMES = {"dns": "reverse/forward DNS", "ip": "the published IP ranges"}
 _CHANNEL_DEFAULT: dict[ChannelVerdict, str] = {
     ChannelVerdict.VERIFIED: "confirmed the declared crawler",
     ChannelVerdict.UNVERIFIED: "was inconclusive (a timeout, or unfetchable data)",
+    ChannelVerdict.FEED_BROKEN: "could not be checked: the published range feed was unusable",
     ChannelVerdict.VIOLATION: "did not confirm the declared crawler",
 }
 

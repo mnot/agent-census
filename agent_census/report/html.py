@@ -78,6 +78,7 @@ _TAG_TOKENS: dict[str, str] = {
     "wba-unverified": "doubt",  # signature present but couldn't be checked
     "dns-unverified": "doubt",
     "ip-unverified": "doubt",
+    "ip-feed-broken": "doubt",  # the operator's range feed was unusable: not the client's doing
     "wba-violation": "danger-deep",  # cryptographic forgery -- the strongest hostile signal
     "wba-replay": "danger-deep",  # a captured signature replayed from elsewhere
     "wba-mixed": "doubt",  # some of this client's signed requests verified, some didn't
@@ -253,6 +254,11 @@ def _meta_list(
             3 if skips.reasons else 2,
             f"<strong>Skipped:</strong> {count(len(result.skipped_files), 'file')} "
             "entirely before --since",
+        )
+    if result.feed_issues:
+        detail = "; ".join(f"{who}: {what}" for who, what in result.feed_issues)
+        items.append(
+            f'<strong>Range feeds unusable:</strong> <span class="warn">{_esc(detail)}</span>'
         )
     if robots_note:
         cls = "warn" if "differ" in robots_note else ""

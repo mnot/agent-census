@@ -23,7 +23,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
-from . import egress, uas
+from . import egress, iprange, uas
 from .classify import DEFAULT_UNKNOWN_THRESHOLD, classify_client
 from .classify.relative import (
     ReferenceCalibration,
@@ -423,6 +423,10 @@ class AnalysisResult:
     # silent: its lines are in none of the counts above precisely because it was
     # never read. Empty without --since.
     skipped_files: tuple[str, ...] = ()
+    # Published IP-range feeds that couldn't be used this run, as (provider, what
+    # happened). Clients on those networks go unattributed (hosting / egress) or
+    # unchecked (a declared crawler: ``ip-feed-broken``), so the report says so.
+    feed_issues: tuple[tuple[str, str], ...] = ()
     # The site analysed: the first --vhost if one was given, else the most common
     # served host (logged %v, else the Host header). None if the log carries none.
     site: str | None = None
@@ -1078,6 +1082,7 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         },
         network_categories=dict(net_categories),
         skipped_files=skipped_files,
+        feed_issues=iprange.feed_issues(),
         site=site,
         reference_calibration=calibration,
     )

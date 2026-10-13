@@ -345,7 +345,10 @@ behind a spoofed browser UA (matching on AS when the UA doesn't name it).
 
 #### Identity-channel verdicts
 *Emits `dns-verified` / `dns-unverified` / `dns-violation` and `ip-verified` /
-`ip-unverified` / `ip-violation`.*
+`ip-unverified` / `ip-violation`, plus `ip-feed-broken` when the declared
+crawler's published range feed couldn't be used (unreachable, an error status, or
+no longer parseable) so nothing could be checked. The verdict is then never a
+violation, even when only part of the range list (the inline ranges) was available.*
 One tag per independent channel that was actually checked (a channel never checked
 emits nothing), surfaced separately so a reader can see *which* channel confirmed
 or disagreed.

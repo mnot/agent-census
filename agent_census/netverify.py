@@ -91,6 +91,11 @@ _dns_failures: dict[str, tuple[str, str]] = {}
 _dns_lock = threading.Lock()  # guards _dns_failures against abandoned lookup threads
 
 
+# A name that exists and resolves reliably, used to tell a sick local resolver from
+# individual clients' (or their operators') broken DNS.
+_CANARY_HOST = "a.root-servers.net"
+
+
 def _set_failure(key: str, category: str, detail: str) -> None:
     with _dns_lock:
         # An abandoned lookup thread may finish later; its late error must not
@@ -291,22 +296,29 @@ class BotVerifier:
             networks.extend(cached)
         return tuple(networks)
 
-    def dns_failure_report(self) -> tuple[dict[str, int], int, dict[str, tuple[str, int]]]:
-        """(failures by category, total lookups, commonest message per category) for
-        this verifier's resolver queries, to spot a sick resolver. Entries seeded from
-        the disk cache don't count."""
+    def resolver_problem(self) -> str | None:
+        """Probe the local resolver with a stable name; the failure text, or ``None``
+        when it answers. Tells a broken resolver from remote zones that fail."""
+        key = f"fwd:{_CANARY_HOST}"
+        with _dns_lock:
+            _dns_failures.pop(key, None)
+        if _forward_ips(_CANARY_HOST):
+            return None
+        with _dns_lock:
+            category, detail = _dns_failures.pop(key, ("resolver error", "no answer"))
+        return f"{category}: {detail}"
+
+    def dns_failure_report(self) -> tuple[dict[str, int], int]:
+        """(failures by category, total lookups) for this verifier's resolver queries.
+        Entries seeded from the disk cache don't count."""
         with self._lock:
             looked_up = set(self._looked_up)
         with _dns_lock:
             failures = [_dns_failures[key] for key in looked_up if key in _dns_failures]
         counts: dict[str, int] = {}
-        details: dict[str, dict[str, int]] = {}
-        for category, detail in failures:
+        for category, _detail in failures:
             counts[category] = counts.get(category, 0) + 1
-            by_detail = details.setdefault(category, {})
-            by_detail[detail] = by_detail.get(detail, 0) + 1
-        top = {cat: max(by.items(), key=lambda item: item[1]) for cat, by in details.items()}
-        return counts, len(looked_up), top
+        return counts, len(looked_up)
 
     def _cached_reverse(self, ip: str) -> tuple[str | None, bool]:
         with self._lock:

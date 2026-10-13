@@ -80,17 +80,23 @@ def warn_dns_failures(verifier: BotVerifier) -> None:
     """Warn when many reverse/forward DNS lookups timed out or errored.
 
     Each such client is merely ``dns-unverified``, so a dead or throttled resolver
-    would otherwise look like a log full of unverifiable crawlers.
+    would otherwise look like a log full of unverifiable crawlers. The commonest
+    message per cause is shown: the same error on most lookups (e.g. "Temporary
+    failure in name resolution") points at the resolver, whereas a mix is usually
+    the remote reverse zones of individual clients failing.
     """
-    counts, total = verifier.dns_failure_report()
+    counts, total, top = verifier.dns_failure_report()
     failed = counts.get("timed out", 0) + counts.get("resolver error", 0)
     if total == 0 or failed / total <= _DNS_WARN_FRACTION:
         return
-    detail = ", ".join(f"{num:,} {category}" for category, num in sorted(counts.items()))
+    detail = ", ".join(
+        f"{num:,} {category} (commonest: {top[category][0]} x{top[category][1]:,})"
+        for category, num in sorted(counts.items())
+    )
     print(
         f"agent-census: warning: {failed:,} of {total:,} DNS lookups during bot verification "
-        f"timed out or errored ({detail}); the affected clients are dns-unverified. "
-        "Check the resolver is reachable and not rate-limiting.",
+        f"timed out or errored: {detail}. The affected clients are dns-unverified. "
+        "If most share one error, check the resolver is reachable and not rate-limiting.",
         file=sys.stderr,
     )
 

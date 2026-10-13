@@ -473,8 +473,9 @@ def test_dns_failure_causes_are_recorded_and_summarised(
 
     _t.sleep(0.4)  # let the abandoned thread finish and attempt its late write
     assert netverify._dns_failures["ptr:192.0.2.1"][0] == "timed out"
-    counts, total = verifier.dns_failure_report()
+    counts, total, top = verifier.dns_failure_report()
     assert counts == {"timed out": 1, "no such host": 1} and total == 2
+    assert top["no such host"] == ("Name or service not known", 1) or top["no such host"][1] == 1
     diagnostics.warn_dns_failures(verifier)  # 1 timeout of 2 lookups: over the threshold
     assert "1 of 2 DNS lookups" in capsys.readouterr().err
     netverify._dns_failures.clear()

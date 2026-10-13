@@ -44,6 +44,7 @@ import base64
 import hashlib
 import json
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, replace
@@ -548,6 +549,11 @@ def _directory_url(agent_url: str) -> str:
     return url if url.endswith(WELL_KNOWN_DIRECTORY) else url + WELL_KNOWN_DIRECTORY
 
 
+# Why each directory URL last failed to fetch, for the key-failure reason. A side
+# channel so ``_http_get`` keeps its simple ``str | None`` return.
+_last_fetch_error: dict[str, str] = {}
+
+
 def _http_get(url: str) -> str | None:
     # Refuse any non-http(s) scheme before a request is made: the URL derives from
     # the untrusted Signature-Agent header, so file://, ftp://, etc. must not reach
@@ -556,8 +562,10 @@ def _http_get(url: str) -> str | None:
     try:
         scheme = urllib.parse.urlsplit(url).scheme.lower()
     except ValueError:
+        _last_fetch_error[url] = "malformed URL"
         return None
     if scheme not in _ALLOWED_SCHEMES:
+        _last_fetch_error[url] = f"scheme {scheme!r} not allowed"
         return None
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
@@ -566,8 +574,14 @@ def _http_get(url: str) -> str | None:
             # huge/endless response must not exhaust memory. A JWK directory is a
             # few keys; 4 MiB is ample.
             return str(response.read(_MAX_DIRECTORY_BYTES).decode("utf-8", "replace"))
-    except (OSError, ValueError):
-        return None
+    except urllib.error.HTTPError as exc:
+        _last_fetch_error[url] = f"HTTP {exc.code}"
+    except TimeoutError:
+        _last_fetch_error[url] = "timed out"
+    except (OSError, ValueError) as exc:
+        reason = getattr(exc, "reason", None) or exc
+        _last_fetch_error[url] = f"{type(exc).__name__}: {reason}"
+    return None
 
 
 _KEY_FAILURE_REASONS = {
@@ -666,6 +680,7 @@ class WbaVerifier:
         self._allow_fetch = allow_fetch
         self._keys: dict[str, dict[str, Any]] = {}  # keyid (thumbprint) -> minimal JWK
         self._fetched: dict[str, str] = {}  # directory URL -> outcome, tried once each
+        self._causes: dict[str, str] = {}  # directory URL -> why it failed, if it did
         self._dirty = False
         self._load()
 
@@ -702,13 +717,16 @@ class WbaVerifier:
     def _read_directory(self, url: str) -> str:
         text = _http_get(url)
         if text is None:
+            self._causes[url] = _last_fetch_error.pop(url, "no response")
             return "fetch-failed"
         try:
             data = json.loads(text)
         except ValueError:
+            self._causes[url] = f"{len(text)} bytes that aren't JSON"
             return "bad-directory"
         keys = data.get("keys") if isinstance(data, dict) else None
         if not isinstance(keys, list):
+            self._causes[url] = 'JSON without a "keys" array'
             return "bad-directory"
         for jwk in keys:
             if not isinstance(jwk, dict):
@@ -770,7 +788,10 @@ class WbaVerifier:
         jwk, failure = self._resolve_key(keyid, claim.agent_url)
         if jwk is None:
             assert failure is not None
-            missing = result(WbaStatus.UNVERIFIABLE, _KEY_FAILURE_REASONS[failure], failure)
+            reason = _KEY_FAILURE_REASONS[failure]
+            if cause := self._causes.get(directory or ""):
+                reason += f" ({cause})"
+            missing = result(WbaStatus.UNVERIFIABLE, reason, failure)
             note = key_failure_note(missing, time.time() if now is None else now)
             return replace(missing, key_note=note)
         public_key = public_key_from_jwk(jwk)

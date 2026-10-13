@@ -716,3 +716,24 @@ def test_unusable_claims_are_counted_past_the_sample_cap() -> None:
     )
     acc._sample_wba(bad)
     assert acc.wba_unusable == {"Signature header not logged": 1}
+
+
+def test_directory_fetch_failure_names_its_cause(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import io
+    import urllib.error
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    monkeypatch.setattr(wba, "remote_enabled", lambda: True)
+
+    def not_found(request: object, **_k: object) -> None:
+        raise urllib.error.HTTPError("u", 404, "Not Found", {}, io.BytesIO(b""))  # type: ignore[arg-type]
+
+    monkeypatch.setattr(wba.urllib.request, "urlopen", not_found)
+    result = wba.WbaVerifier(allow_fetch=True).verify(_ahrefs_claim(1782543551.0))
+    assert result.key_failure == "fetch-failed" and "HTTP 404" in (result.reason or "")
+
+    monkeypatch.setattr(wba, "_http_get", lambda url: "<html>nope</html>")
+    result = wba.WbaVerifier(allow_fetch=True).verify(_ahrefs_claim(1782543551.0))
+    assert result.key_failure == "bad-directory" and "aren't JSON" in (result.reason or "")

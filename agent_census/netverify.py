@@ -291,17 +291,22 @@ class BotVerifier:
             networks.extend(cached)
         return tuple(networks)
 
-    def dns_failure_report(self) -> tuple[dict[str, int], int]:
-        """(failures by category, total lookups) for this verifier's resolver queries,
-        to spot a sick resolver. Entries seeded from the disk cache don't count."""
+    def dns_failure_report(self) -> tuple[dict[str, int], int, dict[str, tuple[str, int]]]:
+        """(failures by category, total lookups, commonest message per category) for
+        this verifier's resolver queries, to spot a sick resolver. Entries seeded from
+        the disk cache don't count."""
         with self._lock:
             looked_up = set(self._looked_up)
         with _dns_lock:
-            failures = {key: _dns_failures[key] for key in looked_up if key in _dns_failures}
+            failures = [_dns_failures[key] for key in looked_up if key in _dns_failures]
         counts: dict[str, int] = {}
-        for category, _detail in failures.values():
+        details: dict[str, dict[str, int]] = {}
+        for category, detail in failures:
             counts[category] = counts.get(category, 0) + 1
-        return counts, len(looked_up)
+            by_detail = details.setdefault(category, {})
+            by_detail[detail] = by_detail.get(detail, 0) + 1
+        top = {cat: max(by.items(), key=lambda item: item[1]) for cat, by in details.items()}
+        return counts, len(looked_up), top
 
     def _cached_reverse(self, ip: str) -> tuple[str | None, bool]:
         with self._lock:

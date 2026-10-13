@@ -353,11 +353,12 @@ class BotVerifier:
         """Tri-state IP-range check. Unobtainable ranges are inconclusive, not a fail."""
         networks = self._networks_for(spec, substring)
         problems = sorted({prob for url in spec.ranges_urls if (prob := iprange.feed_problem(url))})
+        broken = any(iprange.feed_broken(url) for url in spec.ranges_urls)
         if not networks:
             why = f"could not obtain the published {substring} IP ranges"
             if problems:
                 why += f": {'; '.join(problems)}"
-            return _Check(_UNKNOWN, None, why, broken=bool(problems))
+            return _Check(_UNKNOWN, None, why, broken=broken)
         match = _ip_in(ip, networks)
         if match is not None:
             return _Check(

@@ -506,3 +506,19 @@ def test_feed_broken_verdict_emits_its_own_tag() -> None:
     from agent_census.classify.tags import _channel_tags
 
     assert _channel_tags("ip", ChannelVerdict.FEED_BROKEN, "why") == {"ip-feed-broken": "why"}
+
+
+def test_offline_ranges_are_not_a_broken_feed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    url = "https://example.test/offline.json"
+    _patch_spec(monkeypatch, "FetchBot", CrawlerSpec(ranges_urls=(url,)))
+    monkeypatch.setitem(netverify.iprange._remote, "enabled", False)
+    monkeypatch.setattr(
+        netverify, "_fetch_ranges_text", netverify.iprange.fetch_ranges_text
+    )  # the real thing: offline, nothing cached
+    monkeypatch.setattr(netverify.iprange, "cache_dir", lambda: tmp_path)
+    verification = BotVerifier().verify("192.0.2.7", "FetchBot/1.0")
+    assert verification.ip is ChannelVerdict.UNVERIFIED  # the user's choice, not feed-broken
+    assert url not in dict(netverify.iprange.feed_issues())
+    assert all("disabled" not in cause for _who, cause in netverify.iprange.feed_issues())

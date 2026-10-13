@@ -13,7 +13,7 @@ from .netverify import BotVerifier
 from .pipeline import AnalysisResult
 from .robots.parser import RobotsRules
 from .robots.source import RobotsDoc
-from .wba import WbaVerifier
+from .wba import PROBLEM_SIGNATURE_NOT_LOGGED, WbaVerifier
 
 
 def warn_robots_doc(doc: RobotsDoc, rules: RobotsRules) -> None:
@@ -112,24 +112,23 @@ def warn_untimed_lines(result: AnalysisResult, since: float | None) -> None:
 
 
 def warn_wba_unusable(result: AnalysisResult) -> None:
-    """Warn when requests carried Web Bot Auth ``Signature-Input`` but no usable claim.
+    """Warn when signed requests can't be verified for want of the ``Signature`` header.
 
-    Such clients get no ``wba`` tag at all, so without this a mis-set LogFormat
-    reads as "nobody signs".
+    That is the site's log format, not any client: every signed request loses it
+    alike, so a mis-set LogFormat would read as "nobody signs". Other unusable
+    claims (a header that doesn't parse, say) are per client and show on its
+    ``wba-unverified`` tag.
     """
-    totals: dict[str, int] = {}
-    clients = 0
+    requests = clients = 0
     for profile in result.profiles:
-        if profile.features.wba_unusable:
-            clients += 1
-        for problem, num in profile.features.wba_unusable.items():
-            totals[problem] = totals.get(problem, 0) + num
-    if totals:
-        causes = "; ".join(f"{problem} ({num})" for problem, num in sorted(totals.items()))
+        hits = profile.features.wba_unusable.get(PROBLEM_SIGNATURE_NOT_LOGGED, 0)
+        requests += hits
+        clients += bool(hits)
+    if requests:
         print(
-            f"agent-census: warning: {sum(totals.values())} request(s) from {clients} client(s) "
-            f"carried Signature-Input but no usable Web Bot Auth signature: {causes}. "
-            "Check the log format captures the Signature and Signature-Input headers intact.",
+            f"agent-census: warning: {requests} request(s) from {clients} client(s) carried "
+            "Signature-Input but no Signature header was logged, so they can't be verified. "
+            "Check the log format captures the Signature header.",
             file=sys.stderr,
         )
 

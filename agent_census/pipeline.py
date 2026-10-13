@@ -60,6 +60,7 @@ from .robots import RobotsRules, report_from_signals
 from .wba import SIGNATURE_INPUT_HEADER, WbaClaim, WbaNonceTracker
 from .wba import detect_result as _wba_detect
 from .wba import extract_nonce as _wba_nonce
+from .wba import unusable_result as _wba_unusable
 
 # Default inactivity gap after which a client is considered finished and evicted.
 DEFAULT_QUIESCENT_SECONDS = 24 * 60 * 60
@@ -723,8 +724,12 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         # signatures are checked against the operator's key (and disagreement flagged
         # mixed), else their presence is just recorded. Suppressed on an egress fold
         # -- a representative signed request belongs to one folded client, not the row.
-        if aggregate or not acc.wba_claims:
+        if aggregate:
             wba_result = None
+        elif not acc.wba_claims:
+            # Signed requests with no usable claim still count as an (unverifiable)
+            # signature attempt, so the client shows it rather than passing as unsigned.
+            wba_result = _wba_unusable(acc.wba_unusable) if acc.wba_unusable else None
         elif wba_verifier is not None:
             wba_result = wba_verifier.verify_sample(acc.wba_claims)
         else:

@@ -694,10 +694,13 @@ def test_unusable_signature_headers_are_counted_and_warned(
     result = pipeline.analyze(
         log, resolve("apache", {"format": fmt}), identity.get_strategy("ip_ua")
     )
-    assert all(p.wba is None for p in result.profiles)
+    (profile,) = [p for p in result.profiles if p.wba is not None]
+    assert profile.wba is not None and profile.wba.status is WbaStatus.UNVERIFIABLE
+    assert "Signature header not logged" in (profile.wba.reason or "")
+    assert "wba-unverified" in profile.classification.tags  # evident in the report
     diagnostics.warn_wba_unusable(result)
     err = capsys.readouterr().err
-    assert "1 request(s) from 1 client(s)" in err and "Signature header not logged" in err
+    assert "1 request(s) from 1 client(s)" in err and "no Signature header was logged" in err
 
 
 def test_unusable_claims_are_counted_past_the_sample_cap() -> None:
@@ -736,3 +739,33 @@ def test_directory_fetch_failure_names_its_cause(
     monkeypatch.setattr(wba, "_http_get", lambda url: "<html>nope</html>")
     result = wba.WbaVerifier(allow_fetch=True).verify(_ahrefs_claim(1782543551.0))
     assert result.key_failure == "bad-directory" and "aren't JSON" in (result.reason or "")
+
+
+def test_per_client_unusable_claims_do_not_reach_stderr(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from agent_census import diagnostics
+
+    fmt = '%h %t "%r" %>s %b "%{User-Agent}i" %{Host}i "%{Signature-Input}i" "%{Signature}i"'
+    line = " ".join(
+        [
+            "203.0.113.10",
+            "[27/Jun/2026:06:59:11 +0000]",
+            '"GET / HTTP/2.0"',
+            "200",
+            "461",
+            _log_quote("SomeBot/1.0"),
+            "example.org",
+            _log_quote("sig=(not a valid structured field"),  # this client's own garbage
+            _log_quote(AHREFS_SIGNATURE),
+        ]
+    )
+    log = tmp_path / "x.log"
+    log.write_text(line + "\n", encoding="utf-8")
+    result = pipeline.analyze(
+        log, resolve("apache", {"format": fmt}), identity.get_strategy("ip_ua")
+    )
+    (profile,) = [p for p in result.profiles if p.wba is not None]
+    assert "does not parse" in (profile.wba.reason or "")  # type: ignore[union-attr]
+    diagnostics.warn_wba_unusable(result)
+    assert capsys.readouterr().err == ""

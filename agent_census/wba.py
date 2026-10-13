@@ -312,6 +312,19 @@ def select_web_bot_auth(parsed: dict[str, SigParams]) -> tuple[str, SigParams] |
     return None
 
 
+# The claim problems that are the site's own log setup, not the client's: every
+# signed request hits them alike, so they're worth a stderr line (the rest are per
+# client and show on that client's tag).
+PROBLEM_SIGNATURE_NOT_LOGGED = "Signature header not logged"
+LOG_CONFIG_PROBLEMS = frozenset({PROBLEM_SIGNATURE_NOT_LOGGED})
+
+
+def unusable_result(problems: dict[str, int]) -> WbaResult:
+    """The result for a client whose signed requests all lacked a usable claim."""
+    reason = "Signature-Input present but unusable: " + "; ".join(sorted(problems))
+    return WbaResult(WbaStatus.UNVERIFIABLE, reason=reason, evidence=(reason,))
+
+
 def claim_problem(extra: dict[str, str]) -> str | None:
     """Why a request carrying ``Signature-Input`` yields no usable claim, or ``None``.
 
@@ -330,7 +343,7 @@ def claim_problem(extra: dict[str, str]) -> str | None:
         return None
     sig = extra.get(SIGNATURE_HEADER)
     if not sig:
-        return "Signature header not logged"
+        return PROBLEM_SIGNATURE_NOT_LOGGED
     if selected[0] not in parse_signature(sig):
         return "Signature has no value for the web-bot-auth label"
     return None

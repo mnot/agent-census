@@ -77,6 +77,9 @@ def _header(
             f"{count(stats.ips_with_multiple_uas, 'IP')} with multiple UAs)",
         ]
     )
+    if result.feed_issues:
+        detail = "; ".join(f"{who}: {what}" for who, what in result.feed_issues)
+        lines.append(f"- **Range feeds unusable:** {detail}")
     if robots_note:
         lines.append(f"- **robots.txt:** {robots_note}")
     calibration = result.reference_calibration

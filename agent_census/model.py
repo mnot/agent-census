@@ -351,6 +351,10 @@ class ChannelVerdict(str, Enum):
     VERIFIED = "verified"
     UNVERIFIED = "unverified"  # checked, inconclusive
     VIOLATION = "violation"  # checked, definitively failed
+    # The IP-range channel's data (the operator's published feed) couldn't be had, so
+    # nothing could be checked. Distinct from UNVERIFIED so a broken feed reads as
+    # that, not as a client that failed to confirm itself.
+    FEED_BROKEN = "feed-broken"
     NOT_CHECKED = "not_checked"  # nothing declared for this channel, or skipped
 
 

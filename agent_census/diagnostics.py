@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sys
 
+from . import iprange
 from .netverify import BotVerifier
 from .pipeline import AnalysisResult
 from .robots.parser import RobotsRules
@@ -123,6 +124,24 @@ def warn_wba_unusable(result: AnalysisResult) -> None:
             f"agent-census: warning: {requests} request(s) from {clients} client(s) carried "
             "Signature-Input but no Signature header was logged, so they can't be verified. "
             "Check the log format captures the Signature header.",
+            file=sys.stderr,
+        )
+
+
+def warn_range_feeds() -> None:
+    """Warn when no published IP-range feed could be reached at all.
+
+    One provider's feed being down, an error status or a layout change is that
+    provider's problem and shows in the report (``ip-feed-broken``, the header note).
+    Every feed failing at the connection level, across at least two, points at this
+    machine's network instead.
+    """
+    attempted, unreachable = iprange.feed_fetch_summary()
+    if 2 <= attempted == unreachable:
+        print(
+            f"agent-census: warning: none of {attempted} published IP-range feeds could be "
+            "reached (timeouts or connection errors); check this machine's network. "
+            "Range-based verification and hosting / egress attribution are incomplete.",
             file=sys.stderr,
         )
 

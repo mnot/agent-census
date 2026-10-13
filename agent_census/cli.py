@@ -17,6 +17,7 @@ from .audit import run as run_audit
 from .classify import DEFAULT_UNKNOWN_THRESHOLD
 from .diagnostics import (
     warn_dns_failures,
+    warn_range_feeds,
     warn_robots_doc,
     warn_skipped_lines,
     warn_untimed_lines,
@@ -704,6 +705,7 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
         _warn_maxmind_skew(asn_resolver, result, "AS attributions")
     if verifier is not None:
         warn_dns_failures(verifier)
+    warn_range_feeds()
     warn_skipped_lines(result)
     warn_untimed_lines(result, args.since)
     if wba_verifier is not None:

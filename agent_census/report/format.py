@@ -134,6 +134,7 @@ _TAG_ORDER = {
             "ip-violation",
             "dns-unverified",
             "ip-unverified",
+            "ip-feed-broken",
             "declares-known-bot",
             "declares-app-client",
             "fetches-feeds",
@@ -227,6 +228,9 @@ _TAG_HELP: dict[str, str] = {
     "check was inconclusive (a timeout) rather than a pass or a definitive fail.",
     "ip-unverified": "Declared a crawler with IP ranges to check, but they could not be "
     "obtained (e.g. the published range feed was unreachable).",
+    "ip-feed-broken": "Declared a crawler whose published IP-range feed couldn't be used "
+    "(unreachable, an error status, or no longer parseable), so its address couldn't be "
+    "checked. The evidence names the cause. A fault in the feed, not a mark against the client.",
     "wba": "Presented a Web Bot Auth signature (a cryptographically signed request), "
     "not yet checked against the operator's key — run with --verify-bots to verify it.",
     "wba-verified": "A valid, fresh Web Bot Auth signature, checked against the operator's "

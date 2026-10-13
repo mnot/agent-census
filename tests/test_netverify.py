@@ -484,3 +484,25 @@ def test_dns_failure_causes_are_recorded_and_summarised(
     diagnostics.warn_dns_failures(verifier)
     assert "resolver isn't answering" in capsys.readouterr().err
     netverify._dns_failures.clear()
+
+
+def test_broken_range_feed_is_a_feed_fault_not_a_violation(monkeypatch: pytest.MonkeyPatch) -> None:
+    url = "https://example.test/broken.json"
+    # Inline ranges plus a feed that's down: an address outside the inline part proves
+    # nothing, so it must be neither a violation nor a plain "unverified".
+    spec = CrawlerSpec(ranges=("198.51.100.0/24",), ranges_urls=(url,))
+    _patch_spec(monkeypatch, "FetchBot", spec)
+    monkeypatch.setattr(netverify, "_fetch_ranges_text", lambda url, name=None, fmt=None: None)
+    monkeypatch.setitem(netverify.iprange._feed_problems, url, "HTTP 503")
+    verification = BotVerifier().verify("192.0.2.7", "FetchBot/1.0")
+    assert verification.status is VerificationStatus.UNVERIFIED
+    assert verification.ip is ChannelVerdict.FEED_BROKEN
+    assert "HTTP 503" in (verification.ip_evidence or "")
+    # Whereas an address inside the inline ranges still verifies.
+    assert BotVerifier().verify("198.51.100.5", "FetchBot/1.0").ip is ChannelVerdict.VERIFIED
+
+
+def test_feed_broken_verdict_emits_its_own_tag() -> None:
+    from agent_census.classify.tags import _channel_tags
+
+    assert _channel_tags("ip", ChannelVerdict.FEED_BROKEN, "why") == {"ip-feed-broken": "why"}

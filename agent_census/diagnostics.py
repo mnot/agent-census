@@ -8,16 +8,12 @@ would otherwise read as a quiet non-result.
 from __future__ import annotations
 
 import sys
-import time
-from dataclasses import replace
 
-from .model import WbaResult, WbaStatus
 from .netverify import BotVerifier
 from .pipeline import AnalysisResult
-from .report.format import count
 from .robots.parser import RobotsRules
 from .robots.source import RobotsDoc
-from .wba import format_stamp, key_failure_note
+from .wba import WbaVerifier
 
 
 def warn_robots_doc(doc: RobotsDoc, rules: RobotsRules) -> None:
@@ -36,13 +32,6 @@ def warn_robots_doc(doc: RobotsDoc, rules: RobotsRules) -> None:
             f"agent-census: warning: robots.txt ({doc.provenance}): {'; '.join(problems)}.",
             file=sys.stderr,
         )
-
-
-_WBA_KEY_HINTS = {
-    "fetch-failed": "Check the directory is reachable from here, then re-run.",
-    "bad-directory": "The directory may be misconfigured (see `agent-census wba-check`).",
-    "offline": "Re-run with remote lookups enabled.",
-}
 
 
 # Share of unparseable lines above which a run warns: a few malformed lines are
@@ -145,48 +134,19 @@ def warn_wba_unusable(result: AnalysisResult) -> None:
         )
 
 
-_KEY_EXAMPLES = 3
+def warn_wba_directories(verifier: WbaVerifier) -> None:
+    """Warn when no Web Bot Auth key directory could be reached at all.
 
-
-def warn_wba_key_skew(result: AnalysisResult, now: float | None = None) -> None:
-    """Warn, once per (cause, directory), when operators' keys couldn't be obtained.
-
-    Signed clients are grouped so a log with hundreds of them stays a handful of
-    lines; the per-client detail (key, dates, directory) is each client's
-    ``wba-unverified`` tag evidence in the report. A ``keyid`` is content-addressed
-    and immutable, so a key absent from a directory that read fine was either
-    rotated away (plausible only for an older log; the permanent key store then
-    helps if verification runs nearer collection) or never published there. The note
-    is therefore conditioned on the requests' age
-    (:func:`agent_census.wba.key_failure_note`). Other causes (offline, unreachable
-    or malformed directory) are named as such rather than lumped in as rotation.
+    A single operator's directory being down, absent or malformed is that operator's
+    fault and shows per client in the report (``wba-unverified``). Every directory
+    failing at the connection level, across at least two operators, points at this
+    machine's network instead.
     """
-    now = time.time() if now is None else now
-    groups: dict[tuple[str, str], list[WbaResult]] = {}
-    for profile in result.profiles:
-        wba = profile.wba
-        if wba is None or wba.status is not WbaStatus.UNVERIFIABLE or wba.key_failure is None:
-            continue
-        groups.setdefault((wba.key_failure, wba.directory_url or ""), []).append(wba)
-    for (failure, directory), results in sorted(groups.items()):
-        keys = list(
-            dict.fromkeys(f"{r.keyid} ({r.operator or r.signer_domain or '?'})" for r in results)
-        )
-        shown = ", ".join(keys[:_KEY_EXAMPLES]) + (
-            f", +{len(keys) - _KEY_EXAMPLES} more" if len(keys) > _KEY_EXAMPLES else ""
-        )
-        requests = sorted(r.request_time for r in results if r.request_time is not None)
-        facts = [f"{count(len(keys), 'key')}: {shown}"]
-        if directory:
-            facts.insert(0, f"directory {directory}")
-        if requests:
-            facts.append(f"requests {format_stamp(requests[0])} to {format_stamp(requests[-1])}")
-        notes: dict[str, None] = {}
-        for when in requests[:1] + requests[-1:]:
-            notes[key_failure_note(replace(results[0], request_time=when), now)] = None
-        advice = " ".join(filter(None, [*notes, _WBA_KEY_HINTS.get(failure, "")]))
+    attempted, unreachable = verifier.directory_fetch_summary()
+    if 2 <= attempted == unreachable:
         print(
-            f"agent-census: warning: Web Bot Auth: {count(len(results), 'client')} unverified, "
-            f"{results[0].reason} [{'; '.join(facts)}]. {advice}".rstrip(),
+            f"agent-census: warning: none of {attempted} Web Bot Auth key directories could be "
+            "reached (timeouts or connection errors); check this machine's network. "
+            "Signed clients are wba-unverified.",
             file=sys.stderr,
         )

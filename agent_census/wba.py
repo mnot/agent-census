@@ -706,6 +706,19 @@ class WbaVerifier:
         except OSError:
             pass
 
+    def directory_fetch_summary(self) -> tuple[int, int]:
+        """(directories tried, those unreachable at the connection level) this run.
+
+        An HTTP error status or a malformed body is the operator's fault, not a
+        reachability problem here, so only timeouts and connection errors count.
+        """
+        unreachable = sum(
+            1
+            for url, outcome in self._fetched.items()
+            if outcome == "fetch-failed" and not self._causes.get(url, "").startswith("HTTP ")
+        )
+        return len(self._fetched), unreachable
+
     def _fetch_directory(self, agent_url: str) -> str:
         """Fetch a directory once per run -> ``"ok"``, ``"fetch-failed"`` or ``"bad-directory"``."""
         url = _directory_url(agent_url)

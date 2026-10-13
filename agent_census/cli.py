@@ -20,7 +20,7 @@ from .diagnostics import (
     warn_robots_doc,
     warn_skipped_lines,
     warn_untimed_lines,
-    warn_wba_key_skew,
+    warn_wba_directories,
     warn_wba_unusable,
 )
 from .errors import AgentCensusError
@@ -706,7 +706,8 @@ def _run_pipeline(args: argparse.Namespace) -> _RunContext:
         warn_dns_failures(verifier)
     warn_skipped_lines(result)
     warn_untimed_lines(result, args.since)
-    warn_wba_key_skew(result)
+    if wba_verifier is not None:
+        warn_wba_directories(wba_verifier)
     warn_wba_unusable(result)
 
     flags = CountryFlags()

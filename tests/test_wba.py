@@ -431,26 +431,25 @@ def test_verifier_distinguishes_directory_failures(
     assert result.key_failure == failure
 
 
-def test_key_warning_groups_clients_and_names_keys_and_dates(
+def test_directory_warning_only_when_every_directory_is_unreachable(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from types import SimpleNamespace
-
     from agent_census import diagnostics
-    from agent_census.model import ClientId
 
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
-    unverified = wba.WbaVerifier(allow_fetch=False).verify(_ahrefs_claim(1782543551.0))
-    other = replace(unverified, keyid="otherkey", directory_url="https://other.example/dir")
-    profiles = [
-        SimpleNamespace(client_id=ClientId(ip=ip), wba=res)
-        for ip, res in (("192.0.2.1", unverified), ("192.0.2.2", unverified), ("192.0.2.3", other))
-    ]
-    diagnostics.warn_wba_key_skew(SimpleNamespace(profiles=profiles))  # type: ignore[arg-type]
-    lines = capsys.readouterr().err.splitlines()
-    assert len(lines) == 2  # one per (cause, directory), not per client
-    grouped = next(line for line in lines if "2 clients" in line)
-    assert "e3vpiy0B6M1Wdxnizw3dqRSgpqS6SXM2qiQ6HtUwZ5g" in grouped and "requests 2026-" in grouped
+    monkeypatch.setattr(wba, "remote_enabled", lambda: True)
+    verifier = wba.WbaVerifier(allow_fetch=True)
+    verifier._fetched = {"https://a/d": "fetch-failed", "https://b/d": "fetch-failed"}
+    verifier._causes = {"https://a/d": "timed out", "https://b/d": "URLError: refused"}
+    diagnostics.warn_wba_directories(verifier)
+    assert "none of 2" in capsys.readouterr().err
+    # One operator's 404 (or junk) is that operator's problem: no stderr, report only.
+    verifier._causes["https://b/d"] = "HTTP 404"
+    diagnostics.warn_wba_directories(verifier)
+    assert capsys.readouterr().err == ""
+    verifier._fetched = {"https://a/d": "fetch-failed"}  # a single directory proves nothing
+    diagnostics.warn_wba_directories(verifier)
+    assert capsys.readouterr().err == ""
 
 def test_pipeline_verifies_wba_end_to_end(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path

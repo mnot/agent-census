@@ -416,9 +416,12 @@ across the client's own requests). A request with no signature emits nothing.
 `offline` or `no-agent`. Only `not-listed` suggests rotation, and only when the
 request is older than a day at analysis time (`wba._ROTATION_PLAUSIBLE_AFTER`);
 a younger request points at a never-published key or a wrong `Signature-Agent`
-directory instead. Requests that carry `Signature-Input` but yield no claim
-(unparseable, `Signature` not logged, no value for the label) get no tag; they are
-counted per cause in `ClientFeatures.wba_unusable` and reported on stderr.
+directory instead. A client whose `Signature-Input` requests all yield no claim
+(unparseable, `Signature` not logged, no value for the label) is tagged
+`wba-unverified` with that reason; the causes are counted in
+`ClientFeatures.wba_unusable`. stderr is reserved for faults in the tool's own
+setup (e.g. `Signature` not logged, or no key directory reachable at all); an
+operator's or client's fault appears only in the report.
 *Bearing:* this channel **outranks** the network one in the impersonation verdict
 (§2.3, step 4): `wba-violation` forces `impersonator`, while `wba-verified`/
 `wba-expired` clear a network impersonator verdict (unless the UA names a

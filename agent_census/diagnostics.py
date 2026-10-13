@@ -62,32 +62,26 @@ def warn_skipped_lines(result: AnalysisResult) -> None:
     )
 
 
-_DNS_WARN_FRACTION = 0.10
-
-
 def warn_dns_failures(verifier: BotVerifier) -> None:
-    """Warn when many reverse/forward DNS lookups timed out or errored.
+    """Warn when the local resolver itself is failing during bot verification.
 
-    Each such client is merely ``dns-unverified``, so a dead or throttled resolver
-    would otherwise look like a log full of unverifiable crawlers. The commonest
-    message per cause is shown: the same error on most lookups (e.g. "Temporary
-    failure in name resolution") points at the resolver, whereas a mix is usually
-    the remote reverse zones of individual clients failing.
+    A client with no or broken reverse DNS, or an operator whose zone times out, is
+    that party's fault and shows on the client as ``dns-unverified`` with the cause;
+    it isn't a tool fault. So when some lookups timed out or errored, probe the
+    resolver with a stable name and warn only if that fails too.
     """
-    counts, total, top = verifier.dns_failure_report()
+    counts, total = verifier.dns_failure_report()
     failed = counts.get("timed out", 0) + counts.get("resolver error", 0)
-    if total == 0 or failed / total <= _DNS_WARN_FRACTION:
+    if not failed:
         return
-    detail = ", ".join(
-        f"{num:,} {category} (commonest: {top[category][0]} x{top[category][1]:,})"
-        for category, num in sorted(counts.items())
-    )
-    print(
-        f"agent-census: warning: {failed:,} of {total:,} DNS lookups during bot verification "
-        f"timed out or errored: {detail}. The affected clients are dns-unverified. "
-        "If most share one error, check the resolver is reachable and not rate-limiting.",
-        file=sys.stderr,
-    )
+    problem = verifier.resolver_problem()
+    if problem is not None:
+        print(
+            f"agent-census: warning: the local DNS resolver isn't answering ({problem}); "
+            f"{failed:,} of {total:,} lookups during bot verification failed, so those "
+            "clients are dns-unverified.",
+            file=sys.stderr,
+        )
 
 
 def warn_untimed_lines(result: AnalysisResult, since: float | None) -> None:

@@ -64,8 +64,9 @@ How they combine for a `ua_substring` agent that presents its token:
 **`dns` and `ip` are independent tags**, one pair per channel, since an agent can
 verify on one and disagree on the other: `dns-verified` / `ip-verified` (that
 channel confirmed), `dns-unverified` / `ip-unverified` (checked, but inconclusive
--- a timeout), `ip-feed-broken` (the published range feed was unusable, so nothing could be checked), or `dns-violation` / `ip-violation` (checked,
-and it definitively disagreed -- also the `impersonator` kind). `asn-associated`
+-- a timeout), `ip-feed-broken` (the published range feed was unusable, so nothing
+could be checked), or `dns-violation` / `ip-violation` (checked, and it definitively
+disagreed -- also the `impersonator` kind). `asn-associated`
 is its own, separate tag (AS corroboration). With `--no-verify-bots` the DNS/range
 tiers don't run at all, so only `asns` can confirm or impeach.
 

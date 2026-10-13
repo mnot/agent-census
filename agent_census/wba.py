@@ -59,7 +59,7 @@ from http_sf import Token
 
 from . import USER_AGENT
 from .dataload import load_wba_operators
-from .iprange import cache_dir, remote_enabled
+from .iprange import cache_dir, describe_fetch_error, local_network_fault, remote_enabled
 from .model import WbaResult, WbaStatus
 
 # The signature parameter (and value) that marks the label as a Web Bot Auth one;
@@ -319,10 +319,12 @@ PROBLEM_SIGNATURE_NOT_LOGGED = "Signature header not logged"
 LOG_CONFIG_PROBLEMS = frozenset({PROBLEM_SIGNATURE_NOT_LOGGED})
 
 
-def unusable_result(problems: dict[str, int]) -> WbaResult:
-    """The result for a client whose signed requests all lacked a usable claim."""
+def unusable_result(problems: dict[str, int], *, verified: bool) -> WbaResult:
+    """The result for a client whose signed requests all lacked a usable claim:
+    unverifiable when verification ran, else just present (like any unchecked signature)."""
     reason = "Signature-Input present but unusable: " + "; ".join(sorted(problems))
-    return WbaResult(WbaStatus.UNVERIFIABLE, reason=reason, evidence=(reason,))
+    status = WbaStatus.UNVERIFIABLE if verified else WbaStatus.PRESENT
+    return WbaResult(status, reason=reason, evidence=(reason,))
 
 
 def claim_problem(extra: dict[str, str]) -> str | None:
@@ -562,9 +564,11 @@ def _directory_url(agent_url: str) -> str:
     return url if url.endswith(WELL_KNOWN_DIRECTORY) else url + WELL_KNOWN_DIRECTORY
 
 
-# Why each directory URL last failed to fetch, for the key-failure reason. A side
-# channel so ``_http_get`` keeps its simple ``str | None`` return.
+# Why each directory URL last failed to fetch, for the key-failure reason, and which
+# failures look like this machine's network. A side channel so ``_http_get`` keeps its
+# simple ``str | None`` return.
 _last_fetch_error: dict[str, str] = {}
+_last_fetch_local: set[str] = set()
 
 
 def _http_get(url: str) -> str | None:
@@ -587,13 +591,10 @@ def _http_get(url: str) -> str | None:
             # huge/endless response must not exhaust memory. A JWK directory is a
             # few keys; 4 MiB is ample.
             return str(response.read(_MAX_DIRECTORY_BYTES).decode("utf-8", "replace"))
-    except urllib.error.HTTPError as exc:
-        _last_fetch_error[url] = f"HTTP {exc.code}"
-    except TimeoutError:
-        _last_fetch_error[url] = "timed out"
     except (OSError, ValueError) as exc:
-        reason = getattr(exc, "reason", None) or exc
-        _last_fetch_error[url] = f"{type(exc).__name__}: {reason}"
+        _last_fetch_error[url] = describe_fetch_error(exc)
+        if local_network_fault(exc):
+            _last_fetch_local.add(url)
     return None
 
 
@@ -694,6 +695,7 @@ class WbaVerifier:
         self._keys: dict[str, dict[str, Any]] = {}  # keyid (thumbprint) -> minimal JWK
         self._fetched: dict[str, str] = {}  # directory URL -> outcome, tried once each
         self._causes: dict[str, str] = {}  # directory URL -> why it failed, if it did
+        self._local_faults: set[str] = set()  # failures that look like our own network
         self._dirty = False
         self._load()
 
@@ -720,16 +722,15 @@ class WbaVerifier:
             pass
 
     def directory_fetch_summary(self) -> tuple[int, int]:
-        """(directories tried, those unreachable at the connection level) this run.
+        """(directories tried, those that failed in a way that points at this machine's
+        network) this run.
 
-        An HTTP error status or a malformed body is the operator's fault, not a
-        reachability problem here, so only timeouts and connection errors count.
+        An HTTP error, a malformed body, a TLS failure or a name that doesn't exist is
+        the operator's fault; only timeouts, no route and a resolver that can't answer
+        count. The URL comes from the client's ``Signature-Agent``, so a bad one must
+        never be mistaken for a local fault.
         """
-        unreachable = sum(
-            1
-            for url, outcome in self._fetched.items()
-            if outcome == "fetch-failed" and not self._causes.get(url, "").startswith("HTTP ")
-        )
+        unreachable = sum(1 for url in self._fetched if url in self._local_faults)
         return len(self._fetched), unreachable
 
     def _fetch_directory(self, agent_url: str) -> str:
@@ -744,6 +745,9 @@ class WbaVerifier:
         text = _http_get(url)
         if text is None:
             self._causes[url] = _last_fetch_error.pop(url, "no response")
+            if url in _last_fetch_local:
+                _last_fetch_local.discard(url)
+                self._local_faults.add(url)
             return "fetch-failed"
         try:
             data = json.loads(text)

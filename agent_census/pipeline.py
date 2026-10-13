@@ -733,7 +733,11 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         elif not acc.wba_claims:
             # Signed requests with no usable claim still count as an (unverifiable)
             # signature attempt, so the client shows it rather than passing as unsigned.
-            wba_result = _wba_unusable(acc.wba_unusable) if acc.wba_unusable else None
+            wba_result = (
+                _wba_unusable(acc.wba_unusable, verified=wba_verifier is not None)
+                if acc.wba_unusable
+                else None
+            )
         elif wba_verifier is not None:
             wba_result = wba_verifier.verify_sample(acc.wba_claims)
         else:

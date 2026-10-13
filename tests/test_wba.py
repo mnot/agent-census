@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import urllib.request
 from dataclasses import replace
 from pathlib import Path
 
@@ -440,11 +441,13 @@ def test_directory_warning_only_when_every_directory_is_unreachable(
     monkeypatch.setattr(wba, "remote_enabled", lambda: True)
     verifier = wba.WbaVerifier(allow_fetch=True)
     verifier._fetched = {"https://a/d": "fetch-failed", "https://b/d": "fetch-failed"}
-    verifier._causes = {"https://a/d": "timed out", "https://b/d": "URLError: refused"}
+    verifier._causes = {"https://a/d": "timed out", "https://b/d": "URLError: no route"}
+    verifier._local_faults = {"https://a/d", "https://b/d"}
     diagnostics.warn_wba_directories(verifier)
     assert "none of 2" in capsys.readouterr().err
     # One operator's 404 (or junk) is that operator's problem: no stderr, report only.
     verifier._causes["https://b/d"] = "HTTP 404"
+    verifier._local_faults = {"https://a/d"}
     diagnostics.warn_wba_directories(verifier)
     assert capsys.readouterr().err == ""
     verifier._fetched = {"https://a/d": "fetch-failed"}  # a single directory proves nothing
@@ -695,9 +698,19 @@ def test_unusable_signature_headers_are_counted_and_warned(
         log, resolve("apache", {"format": fmt}), identity.get_strategy("ip_ua")
     )
     (profile,) = [p for p in result.profiles if p.wba is not None]
-    assert profile.wba is not None and profile.wba.status is WbaStatus.UNVERIFIABLE
+    # Without --verify-bots it's just a present, unchecked signature, like any other.
+    assert profile.wba is not None and profile.wba.status is WbaStatus.PRESENT
     assert "Signature header not logged" in (profile.wba.reason or "")
-    assert "wba-unverified" in profile.classification.tags  # evident in the report
+    assert "wba" in profile.classification.tags
+    verified = pipeline.analyze(
+        log,
+        resolve("apache", {"format": fmt}),
+        identity.get_strategy("ip_ua"),
+        wba_verifier=wba.WbaVerifier(allow_fetch=False),
+    )
+    (vprofile,) = [p for p in verified.profiles if p.wba is not None]
+    assert vprofile.wba is not None and vprofile.wba.status is WbaStatus.UNVERIFIABLE
+    assert "wba-unverified" in vprofile.classification.tags  # evident in the report
     diagnostics.warn_wba_unusable(result)
     err = capsys.readouterr().err
     assert "1 request(s) from 1 client(s)" in err and "no Signature header was logged" in err
@@ -769,3 +782,33 @@ def test_per_client_unusable_claims_do_not_reach_stderr(
     assert "does not parse" in (profile.wba.reason or "")  # type: ignore[union-attr]
     diagnostics.warn_wba_unusable(result)
     assert capsys.readouterr().err == ""
+
+
+def test_only_local_network_faults_count_as_unreachable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import socket
+    import urllib.error
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    monkeypatch.setattr(wba, "remote_enabled", lambda: True)
+    failures = {
+        wba._directory_url("https://tls.example"): urllib.error.URLError(
+            OSError("certificate verify failed")
+        ),
+        wba._directory_url("https://gone.example"): urllib.error.URLError(
+            socket.gaierror(socket.EAI_NONAME, "Name or service not known")
+        ),
+        wba._directory_url("https://slow.example"): urllib.error.URLError(TimeoutError("timed out")),
+    }
+
+    def fail(request: urllib.request.Request, **_k: object) -> None:
+        raise failures[request.full_url]
+
+    monkeypatch.setattr(wba.urllib.request, "urlopen", fail)
+    verifier = wba.WbaVerifier(allow_fetch=True)
+    for base in ("https://tls.example", "https://gone.example", "https://slow.example"):
+        verifier._fetch_directory(base)
+    attempted, unreachable = verifier.directory_fetch_summary()
+    assert attempted == 3 and unreachable == 1  # only the timeout looks local
+    assert verifier._causes[wba._directory_url("https://slow.example")] == "timed out"

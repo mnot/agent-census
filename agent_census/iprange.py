@@ -10,12 +10,14 @@ dispatches on a declared format.
 from __future__ import annotations
 
 import bisect
+import errno
 import hashlib
 import html
 import ipaddress
 import json
 import os
 import re
+import socket
 import sys
 import time
 import urllib.error
@@ -196,11 +198,47 @@ _feed_labels: dict[str, str] = {}
 _feed_stale: dict[str, tuple[str, int]] = {}
 _feed_attempted: set[str] = set()
 _feed_unreachable: set[str] = set()
+_feed_offline: set[str] = set()  # unusable only because remote lookups are switched off
+_last_fetch_local: set[str] = set()  # fetches whose failure looks like this machine's network
+
+_LOCAL_ERRNOS = frozenset({errno.ENETUNREACH, errno.ENETDOWN, errno.EHOSTUNREACH})
+
+
+def describe_fetch_error(exc: BaseException) -> str:
+    """Short text for a failed fetch (HTTP status, timeout, or the exception)."""
+    if isinstance(exc, urllib.error.HTTPError):
+        return f"HTTP {exc.code}"
+    reason = getattr(exc, "reason", None) or exc
+    if isinstance(reason, TimeoutError):  # urllib wraps connect timeouts in URLError
+        return "timed out"
+    return f"{type(exc).__name__}: {reason}"
+
+
+def local_network_fault(exc: BaseException) -> bool:
+    """Whether a failed fetch points at this machine's network rather than the remote
+    host: a timeout, no route or network, or a resolver that can't answer at all.
+    A TLS failure, a refused connection or a name that doesn't exist is the host's."""
+    reason = getattr(exc, "reason", None) or exc
+    if isinstance(reason, TimeoutError):
+        return True
+    if isinstance(reason, socket.gaierror):
+        return reason.errno == socket.EAI_AGAIN
+    return isinstance(reason, OSError) and reason.errno in _LOCAL_ERRNOS
+
+
+def feed_broken(url: str) -> str | None:
+    """Like :func:`feed_problem`, but ``None`` when the feed is merely switched off
+    (``--no-fetch-ranges``): that's the user's choice, not a fault in the feed."""
+    return None if url in _feed_offline else _feed_problems.get(url)
 
 
 def feed_issues() -> tuple[tuple[str, str], ...]:
     """(provider, what happened) for every feed that failed this run, for the report."""
-    issues = [(_feed_labels.get(url, url), cause) for url, cause in _feed_problems.items()]
+    issues = [
+        (_feed_labels.get(url, url), cause)
+        for url, cause in _feed_problems.items()
+        if url not in _feed_offline
+    ]
     issues += [
         (_feed_labels.get(url, url), f"{cause}; used a copy {age} days old")
         for url, (cause, age) in _feed_stale.items()
@@ -225,13 +263,10 @@ def _http_get(url: str) -> str | None:
     try:
         with urllib.request.urlopen(request, timeout=_FETCH_TIMEOUT) as response:  # noqa: S310
             return str(response.read(_MAX_FETCH_BYTES).decode("utf-8", "replace"))
-    except urllib.error.HTTPError as exc:
-        _last_fetch_error[url] = f"HTTP {exc.code}"
-    except TimeoutError:
-        _last_fetch_error[url] = "timed out"
     except (OSError, ValueError) as exc:
-        reason = getattr(exc, "reason", None) or exc
-        _last_fetch_error[url] = f"{type(exc).__name__}: {reason}"
+        _last_fetch_error[url] = describe_fetch_error(exc)
+        if local_network_fault(exc):
+            _last_fetch_local.add(url)
     return None
 
 
@@ -274,8 +309,10 @@ def fetch_ranges_text(url: str, name: str | None = None, fmt: str | None = None)
             _feed_problems[url] = (
                 "remote lookups are disabled (--no-fetch-ranges) and nothing is cached"
             )
+            _feed_offline.add(url)
         else:
             _feed_problems.pop(url, None)
+            _feed_offline.discard(url)
         return cached
     try:
         fresh = path.exists() and (time.time() - path.stat().st_mtime) < _RANGES_TTL
@@ -287,6 +324,8 @@ def fetch_ranges_text(url: str, name: str | None = None, fmt: str | None = None)
             _feed_problems.pop(url, None)
             return cached
     _feed_attempted.add(url)
+    _feed_offline.discard(url)
+    _last_fetch_local.discard(url)
     text = _http_get(url)
     cause = _last_fetch_error.pop(url, "fetch failed")
     unparseable = text is not None and not usable(text)
@@ -303,7 +342,7 @@ def fetch_ranges_text(url: str, name: str | None = None, fmt: str | None = None)
         except OSError:
             pass
         return text
-    if not unparseable and not cause.startswith("HTTP "):
+    if url in _last_fetch_local:
         _feed_unreachable.add(url)
     # A provider's feed being down is that provider's fault and shows in the report; a
     # feed that arrives but no longer parses means our format spec is out of date.

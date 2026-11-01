@@ -171,6 +171,17 @@ user_triggered = true
 # https://www.lyrenth.com/bot
 ua_substring = "AIWebIndex"
 
+# Iframely's Processing agent does indexing, search and AI-assisted retrieval for its customers, and
+# the Training agent fetches for AI training where the publisher allows it. Its Preview agent is in
+# social_preview.toml.
+[[agent]]
+# https://iframely.com/docs/about-processing
+ua_substring = "Iframely-Processing"
+
+[[agent]]
+# https://iframely.com/docs/about-training
+ua_substring = "Iframely-Training"
+
 # Recognised by origin AS number, not a User-Agent token: this network crawls
 # behind rotating spoofed-browser UAs (HeadlessChrome, old Chrome), so there is
 # no stable token to match.

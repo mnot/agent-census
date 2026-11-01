@@ -18,8 +18,9 @@ from ..pipeline import OTHER_HOSTING, RESIDENTIAL_NETWORK, KindRollup
 # classification, not judgement). Reading top to bottom is a rough good -> can't-say
 # gradient, ending with the two unattributed buckets. Each label names the band's
 # common trait: Human-like traffic behaves the way a person would (a feed reader is
-# a person, just in other software) -- "-like" because a browser-shaped behaviour
-# profile and a self-declared app UA are both inferred, never confirmed; individual
+# a person, just in other software; so is a hosted web tool or an AI assistant fetching a
+# page at a person's request, on the operator's word) -- "-like" because a browser-shaped
+# behaviour profile and a self-declared app UA are both inferred, never confirmed; individual
 # kind blurbs below spell out what each one's evidence actually is. Utility bots
 # reference or observe content (index, snapshot, unfurl, ping) rather than ingest
 # it; Harvesters ingest content for a third party's reuse; Suspicious is defined by
@@ -34,10 +35,13 @@ class KindCluster:
 
 
 KIND_CLUSTERS: tuple[KindCluster, ...] = (
-    KindCluster("Human-like", (Kind.BROWSER, Kind.APP, Kind.FEED_READER)),
+    KindCluster(
+        "Human-like",
+        (Kind.BROWSER, Kind.APP, Kind.FEED_READER, Kind.WEB_TOOL, Kind.AI_USER),
+    ),
     KindCluster(
         "Utility bots",
-        (Kind.SEARCH_ENGINE, Kind.ARCHIVER, Kind.SOCIAL_PREVIEW, Kind.MONITOR),
+        (Kind.SEARCH_ENGINE, Kind.ARCHIVER, Kind.SOCIAL_PREVIEW, Kind.ADS, Kind.MONITOR),
     ),
     KindCluster(
         "Harvesters",
@@ -93,6 +97,12 @@ KIND_BLURB: dict[Kind, str] = {
     "Wayback Machine).",
     Kind.SOCIAL_PREVIEW: "Declared link-unfurl fetchers building share previews.",
     Kind.AI_CRAWLER: "Declared AI / LLM data-gathering crawlers.",
+    Kind.AI_USER: "Declared AI assistants fetching a page at a person's request, per the "
+    "operator -- not an autonomous crawl.",
+    Kind.WEB_TOOL: "Declared hosted tools fetching a page while a person uses them (read aloud, "
+    "translate, calendar, site-owner verification), per the operator. They run on the "
+    "provider's servers, unlike an app.",
+    Kind.ADS: "Declared ad-platform fetchers checking landing pages or matching ads to content.",
     Kind.SEO_MARKETING: "Declared SEO / marketing / brand-monitoring crawlers.",
     Kind.DATA_HARVESTER: "Declared crawlers whose stated purpose is building a private "
     "corpus or dataset (plagiarism indexes, data brokers) -- not public search, "

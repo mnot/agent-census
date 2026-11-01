@@ -99,6 +99,9 @@ CADENCE_BIN_SECONDS = 300
 
 # Declared-crawler categories, checked individually so per-UA matches cache.
 _CRAWLER_CATEGORIES = (
+    "ads",
+    "ai_user",
+    "web_tool",
     "search_engine",
     "social_preview",
     "archiver",

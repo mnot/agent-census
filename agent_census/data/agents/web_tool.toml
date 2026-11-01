@@ -1,0 +1,44 @@
+# Hosted web tools that fetch a page while a person uses them -- reading it aloud, translating
+# it, a calendar subscription -- and the tools a site owner uses (verification, extension, feed
+# and catalogue submission). They run on the provider's servers, not the person's machine
+# (that's `app`). Per the operator. Same [[agent]] format as the other files here; see README.md.
+
+# User-triggered fetchers: Google-owned fetchers resolve under gae.googleusercontent.com,
+# user-owned ones under google-proxy-*.google.com. Google's page doesn't say which feed
+# or reverse-DNS pattern goes with which fetcher, so these are recognised but unverified.
+# https://developers.google.com/crawling/docs/crawlers-fetchers/google-user-triggered-fetchers
+[[agent]]
+ua_substring = "Google-CWS"
+user_triggered = true
+
+[[agent]]
+ua_substring = "GoogleProducer"
+user_triggered = true
+
+[[agent]]
+ua_substring = "Google-Read-Aloud"
+user_triggered = true
+
+[[agent]]
+ua_substring = "Google-Site-Verification"
+user_triggered = true
+
+[[agent]]
+ua_substring = "YandexUserproxy"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+user_triggered = true
+
+[[agent]]
+ua_substring = "YandexCalendar"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+user_triggered = true
+
+[[agent]]
+ua_substring = "YandexSearchShop"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+user_triggered = true
+
+[[agent]]
+# https://www.diffbot.com/docs/crawl/faq/robots-txt
+ua_substring = "Diffbot-User"
+user_triggered = true

@@ -169,6 +169,9 @@ def parse_asn(value: str | None) -> int | None:
 # Declared-crawler data categories: a UA recognised in any of these belongs to that
 # category's classifier (search engine, AI crawler, …), not the generic crawler one.
 KNOWN_CRAWLER_CATEGORIES = (
+    "ads",
+    "ai_user",
+    "web_tool",
     "search_engine",
     "social_preview",
     "archiver",
@@ -194,7 +197,7 @@ def names_user_triggered_agent(ua: str | None) -> bool:
     user's action rather than autonomous crawling -- which we take on trust: whether
     a human actually prompted any given request isn't observable here, and identity
     verification (where available) confirms who the agent is, not that a user drove
-    it. Orthogonal to the kind: such an agent is still an ai_crawler or search_engine.
+    it. The kind comes from the data file (ai_user, web_tool), not from this flag.
     """
     for category in KNOWN_CRAWLER_CATEGORIES:
         match = match_category(ua, category)

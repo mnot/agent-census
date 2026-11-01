@@ -516,10 +516,10 @@ def test_asn_crawler_with_browser_behaviour_is_not_a_browser() -> None:
     assert "asn-attributed" in result.tags
 
 
-def test_claude_user_is_an_ai_crawler_not_a_spoofed_browser() -> None:
+def test_claude_user_is_an_ai_user_not_a_spoofed_browser() -> None:
     # Claude-User wears a KHTML/compatible browser shell; from a datacenter with
     # no browser behaviour it would read as spoofed_browser, but it is a declared
-    # agent and must classify as ai_crawler.
+    # agent and must classify as ai_user.
     feats = ClientFeatures(
         request_count=40,
         ua_looks_like_browser=True,  # the KHTML shell trips the browser-UA regex
@@ -529,7 +529,7 @@ def test_claude_user_is_an_ai_crawler_not_a_spoofed_browser() -> None:
         "Claude-User/1.0; +claude-user@anthropic.com)",
     )
     result = classify_client(feats, datacenter=True)
-    assert result.primary is Kind.AI_CRAWLER
+    assert result.primary is Kind.AI_USER
     assert result.primary is not Kind.SPOOFED_BROWSER
 
 
@@ -685,9 +685,9 @@ def test_bot_ua_only_for_unrecognised_bots() -> None:
     assert "bot-ua" in unknown.tags and "declares-known-bot" not in unknown.tags
 
 
-def test_user_triggered_proxy_is_tagged_without_changing_kind() -> None:
-    # A "-User" proxy fetches on behalf of a present user: it keeps its category's
-    # kind (ai_crawler / search_engine) and is marked with the user-triggered tag.
+def test_user_triggered_agents_land_in_the_user_kinds() -> None:
+    # A "-User" proxy fetches on behalf of a present user: an AI assistant is an
+    # ai_user, any other hosted tool a web_tool, and both carry the user-triggered tag.
     ai_user = classify_client(
         ClientFeatures(
             request_count=5,
@@ -696,14 +696,14 @@ def test_user_triggered_proxy_is_tagged_without_changing_kind() -> None:
             user_agent="Mozilla/5.0 (compatible; ChatGPT-User/1.0; +https://openai.com/bot)",
         )
     )
-    assert ai_user.primary is Kind.AI_CRAWLER
+    assert ai_user.primary is Kind.AI_USER
     assert "user-triggered" in ai_user.tags
-    search_user = classify_client(
+    web_tool = classify_client(
         ClientFeatures(request_count=5, ua_empty=False, user_agent="YandexUserproxy")
     )
-    assert search_user.primary is Kind.SEARCH_ENGINE
-    assert "user-triggered" in search_user.tags
-    # An autonomous crawler in the same category is not user-triggered.
+    assert web_tool.primary is Kind.WEB_TOOL
+    assert "user-triggered" in web_tool.tags
+    # An autonomous crawler from the same operator is not user-triggered.
     autonomous = classify_client(
         ClientFeatures(
             request_count=5,
@@ -1577,6 +1577,36 @@ def test_search_engine_and_social_preview_are_distinct() -> None:
         ClientFeatures(request_count=2, user_agent="facebookexternalhit/1.1")
     )
     assert facebook.primary is Kind.SOCIAL_PREVIEW
+
+
+def test_ad_fetchers_and_web_tools_get_their_own_kinds() -> None:
+    # AdIdxBot's UA ends in Bingbot's info URL, so it also matches the Bingbot token;
+    # `ads` outranks `search_engine` in the tie-break and it must not be read as Bingbot.
+    adidx = classify_client(
+        ClientFeatures(
+            request_count=3,
+            user_agent="Mozilla/5.0 (compatible; adidxbot/2.0; +http://www.bing.com/bingbot.htm)",
+        )
+    )
+    assert adidx.primary is Kind.ADS
+    bing = classify_client(
+        ClientFeatures(
+            request_count=3,
+            user_agent="Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)",
+        )
+    )
+    assert bing.primary is Kind.SEARCH_ENGINE
+    adsbot = classify_client(
+        ClientFeatures(request_count=3, user_agent="AdsBot-Google (+http://www.google.com/adsbot.html)")
+    )
+    assert adsbot.primary is Kind.ADS
+    read_aloud = classify_client(
+        ClientFeatures(
+            request_count=2,
+            user_agent="Mozilla/5.0 (compatible; Google-Read-Aloud; +https://support.google.com/webmasters/answer/1061943)",
+        )
+    )
+    assert read_aloud.primary is Kind.WEB_TOOL
 
 
 def test_known_bot_match_without_declared_name_carries_no_agent_name() -> None:

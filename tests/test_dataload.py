@@ -49,11 +49,32 @@ def test_ranges_url_list_loaded() -> None:
 
 
 def test_user_triggered_flag_loaded() -> None:
-    ai = dict(load_tokens("ai_crawler"))
-    assert ai["ChatGPT-User"].user_triggered is True
-    assert ai["Amzn-User"].user_triggered is True
-    assert ai["GPTBot"].user_triggered is False  # autonomous crawler, default
-    assert dict(load_tokens("search_engine"))["YandexUserproxy"].user_triggered is True
+    ai_user = dict(load_tokens("ai_user"))
+    assert ai_user["ChatGPT-User"].user_triggered is True
+    assert ai_user["Amzn-User"].user_triggered is True
+    assert dict(load_tokens("ai_crawler"))["GPTBot"].user_triggered is False  # autonomous, default
+    assert dict(load_tokens("web_tool"))["YandexUserproxy"].user_triggered is True
+
+
+def test_no_token_is_claimed_by_two_categories() -> None:
+    # A UA matching tokens in two categories ties in the combiner and is settled by a
+    # fixed priority, which is easy to get wrong silently; keep the data disjoint, or
+    # make any overlap a deliberate, reviewed exception.
+    reviewed = {
+        # "Diffbot" is a substring of "Diffbot-User"; web_tool outranks data_harvester in
+        # the combiner and is checked first for verification, so the tool entry wins.
+        ("Diffbot-User", "web_tool", "data_harvester"),
+    }
+    from agent_census.dataload import KNOWN_AGENT_CATEGORIES
+    from agent_census.uas import match_category
+
+    clashes = []
+    for category in KNOWN_AGENT_CATEGORIES:
+        for token, _spec in load_tokens(category):
+            for other in KNOWN_AGENT_CATEGORIES:
+                if other != category and match_category(token, other) is not None:
+                    clashes.append((token, category, other))
+    assert set(clashes) == reviewed
 
 
 def test_browser_releases_load() -> None:

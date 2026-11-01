@@ -4,7 +4,7 @@
 # ranges_url (JSON of published ranges, fetched + cached under --verify-bots).
 
 # Google. The first matching token wins, so one that is a substring of another
-# (Googlebot in Googlebot-Image, AdsBot-Google in AdsBot-Google-Mobile) comes after it.
+# (Googlebot in Googlebot-Image) comes after it.
 
 # Common crawlers: reverse DNS under googlebot.com, ranges in common-crawlers.json.
 # https://developers.google.com/crawling/docs/crawlers-fetchers/google-common-crawlers
@@ -39,26 +39,10 @@ ua_substring = "GoogleOther"
 domains = ["googlebot.com"]
 ranges_url = "https://developers.google.com/static/crawling/ipranges/common-crawlers.json"
 
-# Special-case crawlers: Google-operated for its own products (ads quality, push
-# delivery, safety), not for Search. Reverse DNS is rate-limited-proxy-*.google.com,
-# ranges in special-crawlers.json. Retired ones (DuplexWeb-Google, AdsBot-Google-Mobile-Apps,
-# googleweblight) are deliberately left out.
+# More of Google's special-case crawlers (the ad fetchers are in ads.toml): reverse DNS is
+# rate-limited-proxy-*.google.com, ranges in special-crawlers.json. The retired
+# DuplexWeb-Google and googleweblight are left out.
 # https://developers.google.com/crawling/docs/crawlers-fetchers/google-special-case-crawlers
-[[agent]]
-ua_substring = "AdsBot-Google-Mobile"
-domains = ["google.com"]
-ranges_url = "https://developers.google.com/static/crawling/ipranges/special-crawlers.json"
-
-[[agent]]
-ua_substring = "AdsBot-Google"
-domains = ["google.com"]
-ranges_url = "https://developers.google.com/static/crawling/ipranges/special-crawlers.json"
-
-[[agent]]
-ua_substring = "Mediapartners-Google"
-domains = ["google.com"]
-ranges_url = "https://developers.google.com/static/crawling/ipranges/special-crawlers.json"
-
 [[agent]]
 ua_substring = "APIs-Google"
 domains = ["google.com"]
@@ -69,39 +53,14 @@ ua_substring = "Google-Safety"
 domains = ["google.com"]
 ranges_url = "https://developers.google.com/static/crawling/ipranges/special-crawlers.json"
 
-# User-triggered fetchers: Google-owned fetchers resolve under gae.googleusercontent.com,
-# user-owned ones under google-proxy-*.google.com. Google's page doesn't say which feed
-# or reverse-DNS pattern goes with which fetcher, so these are recognised but unverified.
-# https://developers.google.com/crawling/docs/crawlers-fetchers/google-user-triggered-fetchers
-[[agent]]
-ua_substring = "Google-CWS"
-user_triggered = true
-
-[[agent]]
-ua_substring = "GoogleProducer"
-user_triggered = true
-
-[[agent]]
-ua_substring = "Google-Read-Aloud"
-user_triggered = true
-
-[[agent]]
-ua_substring = "Google-Site-Verification"
-user_triggered = true
-
 [[agent]]
 # https://developer.chrome.com/blog/private-prefetch-proxy/
 ua_substring = "Chrome Privacy Preserving Prefetch Proxy"
 
-# Bing. AdIdxBot's UA carries Bingbot's info URL (bingbot.htm), so it comes before
-# Bingbot or it would be read as one. Only Bingbot and BingPreview verify against
-# bingbot.json; Bing doesn't say whether that feed covers the others, so they
-# verify by reverse DNS alone.
+# Bing. Only Bingbot and BingPreview verify against bingbot.json; Bing doesn't say whether
+# that feed covers its other crawlers, so those verify by reverse DNS alone. AdIdxBot, its
+# ad crawler, is in ads.toml.
 # https://www.bing.com/webmasters/help/which-crawlers-does-bing-use-8c184ec0
-[[agent]]
-ua_substring = "AdIdxBot"
-domains = ["search.msn.com"]
-
 [[agent]]
 ua_substring = "Bingbot"
 domains = ["search.msn.com"]
@@ -190,38 +149,16 @@ domains = ["yandex.com", "yandex.net", "yandex.ru"]
 ua_substring = "YandexImageResizer"
 domains = ["yandex.com", "yandex.net", "yandex.ru"]
 
-[[agent]]
-ua_substring = "YandexUserproxy"
-domains = ["yandex.com", "yandex.net", "yandex.ru"]
-user_triggered = true
-
-# The remaining robots on Yandex's check page. YandexDirect also covers YandexDirectDyn,
-# and the existing YandexOntoDB and YandexVideo cover YandexOntoDBAPI and YandexVideoParser.
-# YandexCalendar and YandexSearchShop fetch by users' requests.
+# The remaining robots on Yandex's check page. YandexOntoDB and YandexVideo cover
+# YandexOntoDBAPI and YandexVideoParser. The advertising robots are in ads.toml; YandexUserproxy,
+# YandexCalendar and YandexSearchShop are in web_tool.toml.
 # https://yandex.com/support/webmaster/en/robot-workings/check-yandex-robots
 [[agent]]
 ua_substring = "YandexAccessibilityBot"
 domains = ["yandex.com", "yandex.net", "yandex.ru"]
 
 [[agent]]
-ua_substring = "YandexAdNet"
-domains = ["yandex.com", "yandex.net", "yandex.ru"]
-
-[[agent]]
-ua_substring = "YandexCalendar"
-domains = ["yandex.com", "yandex.net", "yandex.ru"]
-user_triggered = true
-
-[[agent]]
 ua_substring = "YandexCheckBot"
-domains = ["yandex.com", "yandex.net", "yandex.ru"]
-
-[[agent]]
-ua_substring = "YandexDirect"
-domains = ["yandex.com", "yandex.net", "yandex.ru"]
-
-[[agent]]
-ua_substring = "YaDirectFetcher"
 domains = ["yandex.com", "yandex.net", "yandex.ru"]
 
 [[agent]]
@@ -245,17 +182,8 @@ ua_substring = "YandexPagechecker"
 domains = ["yandex.com", "yandex.net", "yandex.ru"]
 
 [[agent]]
-ua_substring = "YandexPartner"
-domains = ["yandex.com", "yandex.net", "yandex.ru"]
-
-[[agent]]
 ua_substring = "YandexScreenshotBot"
 domains = ["yandex.com", "yandex.net", "yandex.ru"]
-
-[[agent]]
-ua_substring = "YandexSearchShop"
-domains = ["yandex.com", "yandex.net", "yandex.ru"]
-user_triggered = true
 
 [[agent]]
 ua_substring = "YandexSitelinks"

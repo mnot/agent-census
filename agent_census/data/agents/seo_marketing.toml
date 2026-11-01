@@ -86,7 +86,10 @@ ua_substring = "WebTrackrCrawler"
 ua_substring = "BLEXBot"
 
 [[agent]]
+# https://www.babbar.tech/crawler
 ua_substring = "Barkrowler"
+domains = ["babbar.eu"]
+ranges_url = "https://www.babbar.tech/barkrowler-ip-ranges.json"
 
 [[agent]]
 # https://serpstatbot.com

@@ -26,7 +26,9 @@ ua_substring = "Slackbot-LinkExpanding"
 ua_substring = "Slack-ImgProxy"
 
 [[agent]]
+# https://support.discord.com/hc/en-us/articles/42500550752919-About-Discord-Link-Previews-and-the-Discordbot
 ua_substring = "Discordbot"
+ranges_url = "https://cdn.discordapp.com/ipranges/discord.json"
 
 [[agent]]
 # https://developers.google.com/crawling/docs/crawlers-fetchers/google-user-triggered-fetchers
@@ -65,6 +67,10 @@ ranges = ["107.21.253.49", "54.204.20.249", "54.204.20.250", "54.221.198.105", "
 # https://iframely.com/docs/about -- the Preview Agent ("Iframely/<version>"). The "/" keeps the
 # Processing and Training agents, which are AI-related, out of this entry (see ai_crawler.toml).
 ua_substring = "Iframely/"
+domains = ["iframely.com"]
+ranges_url = ["https://iframely.com/ips-v4", "https://iframely.com/ips-v6"]
+format = "text"
+rdns_fallback = true
 wba_operator = "Iframely"
 
 [[agent]]

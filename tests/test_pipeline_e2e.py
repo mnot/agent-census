@@ -780,6 +780,47 @@ def test_verified_traffic_counted_per_kind(tmp_path: Path) -> None:
     assert sum(r.requests for r in result.rollups.values()) == 5
 
 
+def test_impersonator_with_a_verified_channel_is_not_counted_verified(tmp_path: Path) -> None:
+    # DNS passes but the IP range fails: the merged verdict is IMPERSONATOR while the
+    # passing channel still emits dns-verified. That client must not add to the
+    # verified totals.
+    from agent_census.model import BotVerification, ChannelVerdict, ClientId, VerificationStatus
+
+    class _MixedVerifier:
+        def needs(self, ua: str | None) -> bool:
+            return ua is not None and "MyBot" in ua
+
+        def verify_all(self, items: object) -> dict[ClientId, BotVerification]:
+            return {
+                cid: BotVerification(
+                    VerificationStatus.IMPERSONATOR,
+                    resolved_host="mybot.example",
+                    evidence=("ip range disagrees",),
+                    dns=ChannelVerdict.VERIFIED,
+                    ip=ChannelVerdict.VIOLATION,
+                )
+                for cid, _ua in items  # type: ignore[attr-defined]
+            }
+
+    lines = [
+        f'9.9.9.{i} - - [10/Oct/2023:12:00:0{i} +0000] "GET /p{i} HTTP/1.1" 200 100 '
+        '"-" "MyBot/1.0 (+https://mybot.example)"'
+        for i in range(3)
+    ]
+    log = tmp_path / "mixed.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    result = pipeline.analyze(
+        log, parser, identity.get_strategy("ip_ua"), verifier=_MixedVerifier()
+    )
+
+    profile = next(p for p in result.profiles if "dns-verified" in p.classification.tags)
+    assert profile.classification.primary is Kind.IMPERSONATOR
+    rollup = result.rollups[Kind.IMPERSONATOR]
+    assert rollup.requests == 3
+    assert (rollup.verified_clients, rollup.verified_requests, rollup.verified_bytes) == (0, 0, 0)
+
+
 def test_respect_counted_in_summary_without_per_client_tag(tmp_path: Path) -> None:
     # Dropping the respects-robots tag must not lose the summary's respect count:
     # it now comes from the compliance verdict, not the tag.

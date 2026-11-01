@@ -112,8 +112,9 @@ def combine(
     cadence tags (see :func:`~agent_census.classify.tags.derive_tags`).
 
     ``wba`` is the Web Bot Auth verdict -- the cryptographic-identity channel,
-    weighed alongside the network ``verification`` (phase 2 lets a definitive WBA
-    verdict drive the impersonator decision; phase 1 only contributes its tag).
+    weighed alongside the network ``verification``. A definitive verdict drives the
+    impersonator decision, and a confirmed signer is never a ``browser`` (nor, when
+    its operator is a registered one, a ``spoofed_browser``).
     """
     by_label: dict[Kind, float] = {}
     for signal in signals:
@@ -147,12 +148,15 @@ def combine(
 
     # A cryptographically confirmed signer is a declared bot, not a person at a browser,
     # however browser-shaped its UA and behaviour (an agentic browser renders pages and
-    # co-loads assets like one). Drop both browser votes; a purpose classifier still
-    # wins on confidence, and failing that the fallback names it automation.
+    # co-loads assets like one), so drop the browser vote; a purpose classifier still wins
+    # on confidence, and failing that the fallback names it automation. The costume verdict
+    # survives a signer we don't know: a key fetched from the client's own Signature-Agent
+    # URL verifies too, so any client can sign, and that must not erase a forgery signal.
     signed = wba is not None and wba.status in (WbaStatus.VERIFIED, WbaStatus.EXPIRED)
     if signed:
         by_label.pop(Kind.BROWSER, None)
-        by_label.pop(Kind.SPOOFED_BROWSER, None)
+        if wba is not None and wba.operator is not None:
+            by_label.pop(Kind.SPOOFED_BROWSER, None)
 
     # A client that probes attack paths is a vuln_scanner, whatever costume it wears: the
     # hostile activity is a more actionable, specific verdict than the disguise. So once
@@ -261,16 +265,17 @@ def _below_threshold(
             _T["fallback_scraper"],
             "generic HTTP client harvesting pages from a datacenter IP",
         )
-    # A positive machine tell with no purpose behind it: automation, kind
-    # unidentified. A self-declared bot / library / headless engine names itself;
-    # a hosting (datacenter) origin gives it away even on a single request -- a
-    # person rarely browses from infrastructure. Either way it is not a true unknown.
+    # A confirmed Web Bot Auth signer is a declared bot even when nothing says what for.
     if signed:
         return verdict(
             Kind.AUTOMATION,
             _T["fallback_automation"],
             "signs its requests with Web Bot Auth, but no purpose could be identified",
         )
+    # A positive machine tell with no purpose behind it: automation, kind
+    # unidentified. A self-declared bot / library / headless engine names itself;
+    # a hosting (datacenter) origin gives it away even on a single request -- a
+    # person rarely browses from infrastructure. Either way it is not a true unknown.
     if tags & _AUTOMATION_TELLS:
         return verdict(
             Kind.AUTOMATION,

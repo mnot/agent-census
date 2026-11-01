@@ -94,17 +94,33 @@ user_triggered = true
 ua_substring = "Chrome Privacy Preserving Prefetch Proxy"
 asns = [15169]
 
-[[agent]]
+# Bing. AdIdxBot's UA carries Bingbot's info URL (bingbot.htm), so it comes before
+# Bingbot or it would be read as one. Only Bingbot and BingPreview verify against
+# bingbot.json; Bing doesn't say whether that feed covers the others, so they
+# verify by reverse DNS alone.
 # https://www.bing.com/webmasters/help/which-crawlers-does-bing-use-8c184ec0
+[[agent]]
+ua_substring = "AdIdxBot"
+domains = ["search.msn.com"]
+
+[[agent]]
 ua_substring = "Bingbot"
 domains = ["search.msn.com"]
 ranges_url = "https://www.bing.com/toolbox/bingbot.json"
 
 [[agent]]
-# https://www.bing.com/webmasters/help/which-crawlers-does-bing-use-8c184ec0
+# Bing's current BingPreview UAs match Bingbot's; this catches the legacy BingPreview/1.0b.
 ua_substring = "BingPreview"
 domains = ["search.msn.com"]
 ranges_url = "https://www.bing.com/toolbox/bingbot.json"
+
+[[agent]]
+ua_substring = "MicrosoftPreview"
+domains = ["search.msn.com"]
+
+[[agent]]
+ua_substring = "BingVideoPreview"
+domains = ["search.msn.com"]
 
 [[agent]]
 # http://help.yahoo.com/help/us/ysearch/slurp

@@ -150,6 +150,21 @@ user_triggered = true
 # https://developers.facebook.com/docs/sharing/webmasters/web-crawlers/
 ua_substring = "Meta-ExternalAds"
 
+# Kimi (Moonshot). Its UAs link to the policy page below; the three feeds list the same four IPs.
+[[agent]]
+# https://www.kimi.com/policies/kimi-crawlers
+ua_substring = "KimiBot"
+ranges_url = "https://www.kimi.com/policies/kimibot.json"
+
+[[agent]]
+ua_substring = "Kimi-User"
+ranges_url = "https://www.kimi.com/policies/kimi-user.json"
+user_triggered = true
+
+[[agent]]
+ua_substring = "Kimi-SearchBot"
+ranges_url = "https://www.kimi.com/policies/kimi-searchbot.json"
+
 [[agent]]
 ua_substring = "kagi-fetcher"
 

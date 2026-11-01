@@ -46,6 +46,20 @@ def test_parse_prefixes_bare_string_list() -> None:
     assert extract_cidrs(text, "prefixes") == ("5.187.84.32/28", "2a02:6b8::/32")
 
 
+def test_parse_prefixes_both_families_in_one_object() -> None:
+    # ibou publishes an IPv4 and an IPv6 prefix in a single object; both must be kept,
+    # or its IPv6 crawler would fail the range check.
+    text = (
+        '{"prefixes": [{"ipv4Prefix": "188.241.38.0/24", "ipv6Prefix": "2a0e:6240:e000::/44"},'
+        ' {"ipv4Prefix": "8.8.8.0/24"}]}'
+    )
+    assert extract_cidrs(text, "prefixes") == (
+        "188.241.38.0/24",
+        "2a0e:6240:e000::/44",
+        "8.8.8.0/24",
+    )
+
+
 def test_parse_amazon_html_embedded_json() -> None:
     # Amazon serves the prefixes JSON inside an HTML <pre><code> block, with bare
     # IPs (no /mask) and HTML-escaped quotes -- both must come through cleanly.

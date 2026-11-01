@@ -83,3 +83,21 @@ keyids = [
     "ImfgehCo9CQ0CTvJyuAY3dt6p5xMvJVutWoGpHtmVME",
     "c8D-_KOv7e9F83sFV2aCQUY5EuDbEVp5_sN86S8bKTc",
 ]
+
+[[operator]]
+name = "Exa"
+agent_urls = ["https://crawler.exa.ai", "https://exauser.crawler.exa.ai"]
+keyids = [
+    "sDCpsJpgItYcmF_KhZozOUGIGL6a49yxE3f0yQR5SIA",
+    "fEcp7SI5JcfvpiZ1M638-CDmUFO6m0fTqc8_Outh7U4",
+]
+
+[[operator]]
+name = "Parallel"
+agent_urls = ["https://shapbot.parallel.ai", "https://shap-user.parallel.ai"]
+keyids = [
+    "tJSb9woOPrEJY9k_t6rmmW026ioVkoUtQddihFJ5fi4",
+    "wld1jLLbaJVtELqE7grF9QemKkmD9RGt-_CCF-qg6I8",
+    "9kBKG6CAwGclu7-NuEWz99RHbeGBntAxP_M_XXzGHcA",
+    "FWZGVYQijQwFWV_SbrP8ln24S_KTNmqnmhZA6Na6hr0",
+]

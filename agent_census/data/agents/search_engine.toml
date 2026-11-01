@@ -301,3 +301,89 @@ ua_substring = "Andi-SearchBot"
 # https://yacy.net/bot.html -- a peer-to-peer engine whose crawlers are run by its users, so
 # there are no IPs or reverse DNS to verify.
 ua_substring = "yacybot"
+
+# From calibrating against a week of mnot.net's access log: high-volume declared crawlers
+# whose operators document them.
+
+[[agent]]
+# https://crawler.exa.ai/ -- Exa signs its requests and publishes no IPs or reverse DNS.
+ua_substring = "ExaSearchBot"
+wba_operator = "Exa"
+
+[[agent]]
+# https://parallel.ai/parallel-web-systems-bots.md -- builds Parallel's search index; its
+# user-initiated fetcher, Shap-User, is in ai_user.toml.
+ua_substring = "ShapBot"
+ranges_url = "https://docs.parallel.ai/resources/shapbot.json"
+wba_operator = "Parallel"
+
+[[agent]]
+# https://cs.kakao.com/helps_html/1073213012 -- Kakao's published ranges, which it says can
+# change without notice; no reverse DNS.
+ua_substring = "KakaoBot"
+ranges = [
+    "121.53.90.224/27",
+    "121.53.91.224/27",
+    "121.53.92.224/27",
+    "121.53.93.224/27",
+    "121.53.220.224/27",
+    "121.53.221.224/27",
+    "203.133.184.224/27",
+    "203.133.185.224/27",
+    "121.53.91.107",
+    "121.53.91.108",
+    "121.53.91.109",
+    "121.53.92.107",
+    "121.53.92.108",
+    "211.249.246.105",
+    "211.249.246.122",
+    "211.249.246.136",
+    "211.249.246.152",
+    "211.249.246.168",
+    "211.183.208.241",
+    "211.183.208.242",
+    "211.183.208.243",
+    "211.183.208.244",
+    "211.183.208.245",
+]
+
+# ibou (https://www.ibou.com/crawlers.html): ibou-search and IbouBot verify by reverse DNS
+# under ibou.io and a range list; the discovery and news crawlers share a media list, and
+# ibou-images has none yet.
+[[agent]]
+# Reverse DNS only: ibousearch-ip-ranges.json puts an IPv4 and an IPv6 prefix in one object,
+# and iprange.parse_prefixes keeps only the first, so using the feed would flag its IPv6.
+ua_substring = "ibou-search"
+domains = ["ibou.io"]
+
+[[agent]]
+# https://www.ibou.com/iboubot.html
+ua_substring = "IbouBot"
+domains = ["ibou.io"]
+ranges_url = "https://www.ibou.com/iboubot-ip-ranges.json"
+
+[[agent]]
+ua_substring = "ibou-discovery"
+ranges_url = "https://www.ibou.com/iboumedia-ip-ranges.json"
+
+[[agent]]
+ua_substring = "ibou-news"
+ranges_url = "https://www.ibou.com/iboumedia-ip-ranges.json"
+
+[[agent]]
+ua_substring = "ibou-images"
+
+[[agent]]
+# https://app.keenable.ai/bot -- builds a search index for AI agents. Keenable plans to sign
+# requests but doesn't yet, so it verifies by its published IP list; no reverse DNS.
+ua_substring = "KeenableBot"
+ranges_url = "https://app.keenable.ai/bot/keenablebot.json"
+
+[[agent]]
+# https://help.naver.com/alias/search/site/site_11.naver -- Naver's general web-search robot.
+# Naver's verification page: reverse DNS ends in .naver.com, or the IP is in its published list
+# (which it says can change without notice). "Yeti/" keeps the token off unrelated "yeti" strings.
+ua_substring = "Yeti/"
+domains = ["naver.com"]
+ranges_url = "https://searchadvisor.naver.com/doc/naverbot.json"
+

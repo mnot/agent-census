@@ -55,3 +55,10 @@ domains = ["yandex.com", "yandex.net", "yandex.ru"]
 [[agent]]
 ua_substring = "YandexPartner"
 domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+# Naver's ad robot: collects extra information from advertiser pages. Naver's verification page
+# gives reverse DNS ending in .naver.com for its robots in general; the range list is for Yeti.
+# https://help.naver.com/alias/search/site/site_11.naver
+ua_substring = "Ads-Naver"
+domains = ["naver.com"]

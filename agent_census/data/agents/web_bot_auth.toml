@@ -39,6 +39,7 @@ name = "OpenAI"
 agent_urls = ["https://chatgpt.com"]
 keyids = [
     "otMqcjr17mGyruktGvJU8oojQTSMHlVm7uO-lrcqbdg",
+    "ArwjqcCqtA5oxEWkzXGC-To_0A9whHmajCHtfe8I9aY",
 ]
 
 [[operator]]

@@ -21,6 +21,19 @@ wba_operator = "Ahrefs"  # agents/web_bot_auth.toml
 ua_substring = "SemrushBot"
 # asns = [209366]
 
+# Semrush's other UAs that don't carry the SemrushBot token.
+[[agent]]
+# https://www.semrush.com/bot/
+ua_substring = "SiteAuditBot"
+
+[[agent]]
+# https://www.semrush.com/bot/
+ua_substring = "SplitSignalBot"
+
+[[agent]]
+# https://www.semrush.com/bot/
+ua_substring = "RyteBot"
+
 [[agent]]
 # https://mj12bot.com
 ua_substring = "MJ12bot"
@@ -28,6 +41,10 @@ ua_substring = "MJ12bot"
 [[agent]]
 # https://moz.com/help/moz-procedures/crawlers/dotbot
 ua_substring = "DotBot"
+
+[[agent]]
+# https://moz.com/help/moz-procedures/crawlers/rogerbot
+ua_substring = "rogerbot"
 
 [[agent]]
 # https://dataforseo.com/dataforseo-bot

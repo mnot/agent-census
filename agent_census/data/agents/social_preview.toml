@@ -45,6 +45,12 @@ ua_substring = "Pinterestbot"
 domains = ["pinterest.com", "pinterestcrawler.com"]
 
 [[agent]]
+# The page also documents a UA with no "Pinterestbot" in it. The version is kept in the
+# token because bare "Pinterest/" is broad enough to catch non-crawler UAs.
+ua_substring = "Pinterest/0.2"
+domains = ["pinterest.com", "pinterestcrawler.com"]
+
+[[agent]]
 ua_substring = "redditbot"
 
 [[agent]]

@@ -72,11 +72,11 @@ wba_operator = "Google"
 [[agent]]
 # https://docs.perplexity.ai/docs/resources/perplexity-crawlers
 ua_substring = "PerplexityBot"
-ranges_url = "https://www.perplexity.com/perplexitybot.json"
+ranges_url = "https://www.perplexity.ai/perplexitybot.json"
 
 [[agent]]
 ua_substring = "Perplexity-User"
-ranges_url = "https://www.perplexity.com/perplexity-user.json"
+ranges_url = "https://www.perplexity.ai/perplexity-user.json"
 user_triggered = true
 
 [[agent]]
@@ -144,6 +144,7 @@ ua_substring = "Meta-externalagent"
 [[agent]]
 # https://developers.facebook.com/docs/sharing/webmasters/web-crawlers/
 ua_substring = "Meta-externalfetcher"
+user_triggered = true
 
 [[agent]]
 # https://developers.facebook.com/docs/sharing/webmasters/web-crawlers/
@@ -153,7 +154,10 @@ ua_substring = "Meta-ExternalAds"
 ua_substring = "kagi-fetcher"
 
 [[agent]]
+# https://www.linkup.so/bot
 ua_substring = "LinkupBot"
+ranges_url = "https://www.linkup.so/linkupbot-ips.txt"
+format = "text"
 
 [[agent]]
 ua_substring = "Timpibot"
@@ -166,12 +170,16 @@ ua_substring = "SemanticScholarBot"
 # https://www.lyrenth.com/bot -- the on-demand fetcher, run when a customer asks the index for
 # a specific URL; before AIWebIndex, which would otherwise match it.
 ua_substring = "AIWebIndex-Agent"
+domains = ["lyrenth.com"]
+ranges_url = "https://www.lyrenth.com/bot/ip-ranges.json"
 user_triggered = true
 wba_operator = "Lyrenth"
 
 [[agent]]
 # https://www.lyrenth.com/bot
 ua_substring = "AIWebIndex"
+domains = ["lyrenth.com"]
+ranges_url = "https://www.lyrenth.com/bot/ip-ranges.json"
 wba_operator = "Lyrenth"
 
 # Iframely's Processing agent does indexing, search and AI-assisted retrieval for its customers, and
@@ -180,11 +188,19 @@ wba_operator = "Lyrenth"
 [[agent]]
 # https://iframely.com/docs/about-processing
 ua_substring = "Iframely-Processing"
+domains = ["iframely.com"]
+ranges_url = ["https://iframely.com/ips-v4", "https://iframely.com/ips-v6"]
+format = "text"
+rdns_fallback = true
 wba_operator = "Iframely"
 
 [[agent]]
 # https://iframely.com/docs/about-training
 ua_substring = "Iframely-Training"
+domains = ["iframely.com"]
+ranges_url = ["https://iframely.com/ips-v4", "https://iframely.com/ips-v6"]
+format = "text"
+rdns_fallback = true
 wba_operator = "Iframely"
 
 # Recognised by origin AS number, not a User-Agent token: this network crawls

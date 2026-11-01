@@ -137,7 +137,7 @@ ua_substring = "Baiduspider"
 domains = ["baidu.com", "baidu.jp"]
 
 [[agent]]
-# https://yandex.com/support/webmaster/en/robot-workings/check-yandex-robots.html
+# https://yandex.com/support/webmaster/en/robot-workings/check-yandex-robots
 ua_substring = "YandexBot"
 domains = ["yandex.com", "yandex.net", "yandex.ru"]
 
@@ -301,9 +301,10 @@ wba_operator = "Sogou"
 # https://o-seznam.cz/napoveda/vyhledavani/en/seznambot-crawler/
 ua_substring = "SeznamBot"
 domains = ["seznam.cz"]
+ranges_url = "https://search.seznam.cz/ipranges/seznambot.json"
 
 [[agent]]
-# https://aspiegel.com/petalbot
+# https://webmaster.petalsearch.com/site/petalbot
 ua_substring = "PetalBot"
 domains = ["petalsearch.com"]
 
@@ -332,7 +333,8 @@ domains = ["coccoc.com"]
 [[agent]]
 # https://bot.seekport.com
 ua_substring = "SeekportBot"
-# ranges_url = "https://bot.seekport.com/seekportbot_ips.txt"
+ranges_url = "https://bot.seekport.com/seekportbot_ips.txt"
+format = "text"
 
 [[agent]]
 ua_substring = "YisouSpider"
@@ -342,7 +344,7 @@ ua_substring = "YisouSpider"
 ua_substring = "mwmbl"
 
 [[agent]]
-# https://docs.aws.amazon.com/kendra/latest/dg/what-is-kendra.html
+# https://docs.aws.amazon.com/kendra/latest/dg/stop-web-crawler.html
 ua_substring = "amazon-kendra"
 
 [[agent]]

@@ -166,7 +166,7 @@ def _wba_block(profile: ClientProfile) -> list[str]:
     if wba.signer_domain and wba.signer_domain != who:
         lines.append(f"- **Signature-Agent host:** {md_escape(wba.signer_domain)}")
     if wba.keyid:
-        lines.append(f"- **Key id:** `{wba.keyid}`")
+        lines.append(f"- **Key id:** `{md_escape(wba.keyid).replace('`', '')}`")
     if wba.directory_url:
         lines.append(f"- **Key directory:** {md_escape(wba.directory_url)}")
     lines.append(

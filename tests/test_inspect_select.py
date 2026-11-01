@@ -231,7 +231,7 @@ def test_inspect_shows_the_web_bot_auth_detail() -> None:
             status=WbaStatus.UNVERIFIABLE,
             operator=None,
             signer_domain="signer.example",
-            keyid="abc123",
+            keyid="abc`12|3\n",
             created=1_700_000_000,
             key_failure="not-listed",
             directory_url="https://signer.example/.well-known/http-message-signatures-directory",
@@ -245,7 +245,7 @@ def test_inspect_shows_the_web_bot_auth_detail() -> None:
     assert "### Web Bot Auth" in out
     assert "- **Status:** unverifiable" in out
     assert "signer.example (not a registered operator)" in out
-    assert "`abc123`" in out
+    assert "`abc12\\|3 `" in out
     assert "2023-11-14 22:13 UTC" in out
     assert "**Key unavailable:** not-listed" in out
     assert "http-message-signatures-directory" in out

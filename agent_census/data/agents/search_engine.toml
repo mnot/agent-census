@@ -195,6 +195,96 @@ ua_substring = "YandexUserproxy"
 domains = ["yandex.com", "yandex.net", "yandex.ru"]
 user_triggered = true
 
+# The remaining robots on Yandex's check page. YandexDirect also covers YandexDirectDyn,
+# and the existing YandexOntoDB and YandexVideo cover YandexOntoDBAPI and YandexVideoParser.
+# YandexCalendar and YandexSearchShop fetch by users' requests.
+# https://yandex.com/support/webmaster/en/robot-workings/check-yandex-robots
+[[agent]]
+ua_substring = "YandexAccessibilityBot"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexAdNet"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexCalendar"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+user_triggered = true
+
+[[agent]]
+ua_substring = "YandexCheckBot"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexDirect"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YaDirectFetcher"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexFeed"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexMarket"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexMetrika"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexMobileScreenShotBot"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexPagechecker"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexPartner"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexScreenshotBot"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexSearchShop"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+user_triggered = true
+
+[[agent]]
+ua_substring = "YandexSitelinks"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexSpravBot"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexTracker"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexVertis"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexVerticals"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexWebmaster"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexAdditional"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
 [[agent]]
 # https://support.apple.com/en-us/119829
 ua_substring = "Applebot"

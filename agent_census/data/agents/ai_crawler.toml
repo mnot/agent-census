@@ -85,6 +85,15 @@ ranges_url = "https://mistral.ai/mistralai-user-ips.json"
 user_triggered = true
 
 [[agent]]
+# https://docs.mistral.ai/robots
+ua_substring = "MistralAI-Index"
+ranges_url = "https://mistral.ai/mistralai-index-ips.json"
+
+[[agent]]
+# https://docs.mistral.ai/robots (publishes no IPs for this one)
+ua_substring = "MistralAI-Training"
+
+[[agent]]
 # https://developer.amazon.com/amazonbot
 ua_substring = "Amazonbot"
 ranges_url = "https://developer.amazon.com/amazonbot/ip-addresses/"
@@ -136,6 +145,10 @@ ua_substring = "Meta-externalagent"
 ua_substring = "Meta-externalfetcher"
 
 [[agent]]
+# https://developers.facebook.com/docs/sharing/webmasters/web-crawlers/
+ua_substring = "Meta-ExternalAds"
+
+[[agent]]
 ua_substring = "kagi-fetcher"
 
 [[agent]]
@@ -149,8 +162,14 @@ ua_substring = "Timpibot"
 ua_substring = "SemanticScholarBot"
 
 [[agent]]
+# https://www.lyrenth.com/bot -- the on-demand fetcher, run when a customer asks the index for
+# a specific URL; before AIWebIndex, which would otherwise match it.
+ua_substring = "AIWebIndex-Agent"
+user_triggered = true
+
+[[agent]]
 # https://www.lyrenth.com/bot
-ua_substring ="AIWebIndex"
+ua_substring = "AIWebIndex"
 
 # Recognised by origin AS number, not a User-Agent token: this network crawls
 # behind rotating spoofed-browser UAs (HeadlessChrome, old Chrome), so there is

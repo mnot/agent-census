@@ -17,9 +17,15 @@ ranges = ["199.47.80.0/21"]
 ua_substring = "panscient"
 
 [[agent]]
+# https://www.diffbot.com/docs/crawl/faq/robots-txt
+ua_substring = "Diffbot-User"
+user_triggered = true
+
+[[agent]]
 # https://www.diffbot.com/
 ua_substring = "Diffbot"
 
 [[agent]]
-# Omgili / webz.io
+# Omgili / webz.io. Their page is unreadable (expired TLS cert); a Webz.io post says Omgilibot is
+# succeeded by Webzio, but no primary page gives the tokens, so none are added yet.
 ua_substring = "Omgilibot"

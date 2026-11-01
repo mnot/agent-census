@@ -12,7 +12,6 @@ from dataclasses import dataclass
 
 from ..model import Classification, ClientProfile, Kind
 from ..pipeline import AnalysisResult
-from ..wba import display_operator, format_stamp
 from .aggregate import group_actors
 from .format import (
     client_label,
@@ -27,6 +26,7 @@ from .format import (
     ordered_tags,
     rationale_rows,
     truncate,
+    wba_rows,
 )
 
 # Inspecting a single IP that carries at least this many distinct clients (a
@@ -155,45 +155,14 @@ def _tags_evidence_block(cls: Classification) -> list[str]:
 def _wba_block(profile: ClientProfile) -> list[str]:
     """The Web Bot Auth verdict behind the ``wba*`` tags: who signed, with which key,
     when, and -- for an unverifiable one -- why the key couldn't be had."""
-    wba = profile.wba
-    if wba is None:
+    rows = wba_rows(profile)
+    if not rows:
         return []
-    lines = ["### Web Bot Auth", "", f"- **Status:** {wba.status.value}"]
-    who = display_operator(wba)
-    if who:
-        known = "" if wba.operator else " (not a registered operator)"
-        lines.append(f"- **Signer:** {md_escape(who)}{known}")
-    if wba.signer_domain and wba.signer_domain != who:
-        lines.append(f"- **Signature-Agent host:** {md_escape(wba.signer_domain)}")
-    if wba.keyid:
-        lines.append(f"- **Key id:** `{md_escape(wba.keyid).replace('`', '')}`")
-    if wba.directory_url:
-        lines.append(f"- **Key directory:** {md_escape(wba.directory_url)}")
-    lines.append(
-        f"- **Signed:** {format_stamp(wba.created)} · **Expires:** {format_stamp(wba.expires)} · "
-        f"**Request:** {format_stamp(wba.request_time)}"
-    )
-    if wba.key_failure:
-        lines.append(f"- **Key unavailable:** {wba.key_failure}")
-    if wba.reason:
-        lines.append(f"- **Reason:** {md_escape(wba.reason)}")
-    if wba.key_note:
-        lines.append(f"- **Note:** {md_escape(wba.key_note)}")
-    flags = [
-        text
-        for text, on in (
-            ("some signed requests did not verify (`wba-mixed`)", wba.mixed),
-            ("a nonce also seen from another origin (`wba-replay`)", wba.replayed),
-            ("a nonce reused across its own requests (`wba-nonce-reuse`)", wba.nonce_reused),
-        )
-        if on
-    ]
-    if flags:
-        lines.append(f"- **Flags:** {'; '.join(flags)}")
-    unusable = profile.features.wba_unusable
-    if unusable:
-        detail = ", ".join(f"{n:,} {md_escape(why)}" for why, n in sorted(unusable.items()))
-        lines.append(f"- **Unusable signature requests:** {detail}")
+    lines = ["### Web Bot Auth", ""]
+    for label, value in rows:
+        # A keyid is the raw request parameter: keep it from breaking out of its code span.
+        shown = f"`{md_escape(value).replace('`', '')}`" if label == "Key id" else md_escape(value)
+        lines.append(f"- **{label}:** {shown}")
     lines.append("")
     return lines
 

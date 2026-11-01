@@ -249,9 +249,23 @@ def test_inspect_shows_the_web_bot_auth_detail() -> None:
     assert "2023-11-14 22:13 UTC" in out
     assert "**Key unavailable:** not-listed" in out
     assert "http-message-signatures-directory" in out
-    assert "`wba-mixed`" in out and "`wba-nonce-reuse`" in out
+    assert "wba-mixed" in out and "wba-nonce-reuse" in out
     assert "3 Signature not logged" in out
 
 
 def test_inspect_omits_the_web_bot_auth_block_without_a_signature() -> None:
     assert "### Web Bot Auth" not in _signed(None)
+
+
+def test_overlay_data_carries_the_same_web_bot_auth_rows() -> None:
+    wba = WbaResult(status=WbaStatus.VERIFIED, operator="OpenAI", keyid="k1", created=1_700_000_000)
+    prof = replace(_profile("w", Kind.AI_CRAWLER, "Example"), wba=wba)
+    rows = dict(build_member_view(prof, limit=5)["wba"])  # type: ignore[arg-type]
+    assert rows["Status"] == "verified"
+    assert rows["Signer"] == "OpenAI"
+    assert rows["Key id"] == "k1"
+    assert rows["Signed"] == "2023-11-14 22:13 UTC"
+
+
+def test_overlay_data_has_no_web_bot_auth_rows_without_a_signature() -> None:
+    assert build_member_view(_profile("w", Kind.BROWSER, "Example"), limit=5)["wba"] == []

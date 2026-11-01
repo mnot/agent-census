@@ -4,8 +4,6 @@
 [[agent]]
 # https://developers.facebook.com/docs/sharing/webmasters/web-crawlers/
 ua_substring = "facebookexternalhit"
-domains = ["facebook.com", "fbsv.net"]
-asns = [32934]
 
 [[agent]]
 ua_substring = "Twitterbot"
@@ -13,7 +11,6 @@ domains = ["twitter.com", "twttr.com"]
 
 [[agent]]
 ua_substring = "LinkedInBot"
-domains = ["fwd.linkedin.com"]
 
 [[agent]]
 # https://api.slack.com/robots
@@ -41,7 +38,6 @@ ua_substring = "Lemmy"
 
 [[agent]]
 ua_substring = "TelegramBot"
-domains = ["telegram.org"]
 
 [[agent]]
 # https://help.pinterest.com/en/business/article/pinterestbot
@@ -59,15 +55,12 @@ ranges = ["107.21.253.49", "54.204.20.249", "54.204.20.250", "54.221.198.105", "
 [[agent]]
 # https://iframely.com/docs/about
 ua_substring = "Iframely"
-domains = ["iframe.ly", "iframely.com"]
 
 [[agent]]
 ua_substring = "vkShare"
-domains = ["vk.com"]
 
 [[agent]]
 ua_substring = "HatenaBookmark"
-domains = ["hatena.ne.jp"]
 
 [[agent]]
 ua_substring = "Mastodon"

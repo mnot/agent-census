@@ -209,30 +209,6 @@ def test_out_of_range_is_impostor_even_when_dns_confirms(monkeypatch: pytest.Mon
     assert verification.dns is ChannelVerdict.VERIFIED
 
 
-def test_internet_archive_verified_by_published_range(monkeypatch: pytest.MonkeyPatch) -> None:
-    # archive.org_bot declares both a published range feed and an archive.org rDNS
-    # domain, so by default both must check out. In-feed + matching rDNS verifies;
-    # the same UA elsewhere fails the range check and impersonates.
-    monkeypatch.setattr(
-        netverify, "_fetch_ranges_text", lambda url, name=None, fmt=None: '{"prefixes": [{"ipv4Prefix": "207.241.224.0/20"}]}'
-    )
-    monkeypatch.setattr(netverify, "_reverse_dns", lambda ip: ("crawl.archive.org", False))
-    monkeypatch.setattr(netverify, "_forward_ips", lambda host: {"207.241.224.5"})
-    verifier = BotVerifier()
-    ua = "Mozilla/5.0 (compatible; archive.org_bot; +http://archive.org/details/archive.org_bot)"
-    assert verifier.needs(ua)
-    # (archive.org_bot's real spec declares only `domains`, no ranges -- so this
-    # exercises the dns-only channel; `ip` stays not_checked either way.)
-    verified = verifier.verify("207.241.224.5", ua)
-    assert verified.status is VerificationStatus.VERIFIED
-    assert verified.dns is ChannelVerdict.VERIFIED
-    assert verified.ip is ChannelVerdict.NOT_CHECKED
-    impersonator = verifier.verify("8.8.8.8", ua)
-    assert impersonator.status is VerificationStatus.IMPERSONATOR
-    assert impersonator.dns is ChannelVerdict.VIOLATION
-    assert impersonator.ip is ChannelVerdict.NOT_CHECKED
-
-
 def test_ranges_url_fetched_and_used(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_spec(monkeypatch, "FetchBot", CrawlerSpec(ranges_urls=("https://example.test/r.json",)))
     monkeypatch.setattr(

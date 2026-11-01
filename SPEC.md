@@ -358,7 +358,9 @@ or disagreed.
 *Report use:* the summary's verified share of a kind's requests and bytes counts every
 client carrying `dns-verified`, `ip-verified` or `wba-verified`
 (`VERIFIED_TAGS`, [`classify/tags.py`](agent_census/classify/tags.py)); `asn-associated`
-is deliberately excluded as coarser corroboration.
+is deliberately excluded as coarser corroboration. A client classed `impersonator` is
+never counted, even though it can carry one of those tags (one channel passed while
+another failed, or a valid signature from a different operator than the UA claims).
 
 #### `asn-associated`
 The UA names a known crawler and its origin AS is one that crawler is known to use

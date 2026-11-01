@@ -819,7 +819,10 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         respects = verdict is RobotsVerdict.RESPECTS
         ignores = verdict is RobotsVerdict.IGNORES
         unknown_r = verdict is RobotsVerdict.UNKNOWN
-        verified = bool(classification.tags & VERIFIED_TAGS)
+        # An impersonator can still carry a verified tag (one channel passed, another
+        # failed, or a valid signature from a different operator), so the report's own
+        # verdict decides.
+        verified = bool(classification.tags & VERIFIED_TAGS) and kind is not Kind.IMPERSONATOR
         rollups[kind].add(
             features, respects=respects, ignores=ignores, unknown=unknown_r, verified=verified
         )

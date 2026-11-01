@@ -92,6 +92,11 @@ def _header(
     return lines
 
 
+def _verified_share(part: int, whole: int) -> str:
+    """The kind's verified share of ``whole`` (requests or bytes), or ``–`` when none."""
+    return f"{part / whole:.0%}" if part > 0 and whole > 0 else "–"
+
+
 def _summary_table(result: AnalysisResult) -> list[str]:
     rollups = result.rollups
     total_requests = sum(r.requests for r in rollups.values()) or 1
@@ -99,8 +104,9 @@ def _summary_table(result: AnalysisResult) -> list[str]:
     lines = [
         "## Summary by kind",
         "",
-        "| Kind | Clients | Requests | Req % | Avg req/client | Bandwidth | BW % | robots |",
-        "| --- | --: | --: | --: | --: | --: | --: | :-: |",
+        "| Kind | Clients | Requests | Req % | Verified req % | Avg req/client | Bandwidth "
+        "| BW % | Verified BW % | robots |",
+        "| --- | --: | --: | --: | --: | --: | --: | --: | --: | :-: |",
     ]
     any_robots = False
     # Markdown tables can't span cells, so each band opens with a label row (the
@@ -108,7 +114,7 @@ def _summary_table(result: AnalysisResult) -> list[str]:
     for cluster, members in clusters_present(
         lambda k: (r := rollups.get(k)) is not None and r.clients > 0
     ):
-        lines.append(f"| **{cluster.label}** | | | | | | | |")
+        lines.append(f"| **{cluster.label}** | | | | | | | | | |")
         for kind in members:
             rollup = rollups[kind]
             avg = rollup.requests / rollup.clients
@@ -117,9 +123,16 @@ def _summary_table(result: AnalysisResult) -> list[str]:
             lines.append(
                 f"| {kind_label(kind)} | {rollup.clients:,} | {rollup.requests:,} | "
                 f"{rollup.requests / total_requests:.0%} | "
+                f"{_verified_share(rollup.verified_requests, rollup.requests)} | "
                 f"{avg:,.0f} | {human_bytes(rollup.total_bytes)} | "
-                f"{rollup.total_bytes / total_bytes:.0%} | {robots} |"
+                f"{rollup.total_bytes / total_bytes:.0%} | "
+                f"{_verified_share(rollup.verified_bytes, rollup.total_bytes)} | {robots} |"
             )
+    lines.append("")
+    lines.append(
+        "_Verified: the share of the kind's requests (or bytes) from clients confirmed by "
+        "reverse DNS, a published IP range, or a Web Bot Auth signature._"
+    )
     lines.append("")
     if any_robots:
         lines.append(

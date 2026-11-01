@@ -432,6 +432,26 @@ def test_report_renders_markdown() -> None:
     assert "vuln scanner" in text  # category names display without underscores
 
 
+def test_markdown_summary_shows_verified_shares() -> None:
+    from types import SimpleNamespace
+
+    from agent_census.pipeline import KindRollup
+    from agent_census.report.markdown import _summary_table
+
+    rollups = {
+        Kind.CRAWLER: KindRollup(
+            clients=2, requests=40, total_bytes=4000, verified_clients=1,
+            verified_requests=10, verified_bytes=1000,
+        ),
+        Kind.BROWSER: KindRollup(clients=1, requests=60, total_bytes=6000),
+    }
+    text = "\n".join(_summary_table(SimpleNamespace(rollups=rollups)))  # type: ignore[arg-type]
+    assert "| Verified req % |" in text and "| Verified BW % |" in text
+    assert "| 40% | 25% | 20 |" in text  # crawler: req share, verified req share, avg/client
+    browser_row = next(line for line in text.splitlines() if "browser" in line.lower())
+    assert browser_row.count("| – |") >= 2  # nothing verified
+
+
 def test_report_shows_elapsed_note() -> None:
     text = render_report(_run(), source="x", elapsed=7.25)
     assert "_Analysed in 7.2s._" in text
@@ -711,6 +731,53 @@ def test_verified_crawler_buckets_under_its_operator_not_residential(tmp_path: P
     profile = next(p for p in result.profiles if p.client_id.ip == "mybot.example")
     assert profile.network == "mybot.example"
     assert {"dns-verified", "datacenter"} <= profile.classification.tags  # verified -> hosted
+
+
+def test_verified_traffic_counted_per_kind(tmp_path: Path) -> None:
+    # A client carrying a verification tag adds its requests and bytes to its kind's
+    # verified totals; a declared-but-unchecked one with the same shape adds none.
+    from agent_census.model import BotVerification, ChannelVerdict, ClientId, VerificationStatus
+
+    class _StubVerifier:
+        def needs(self, ua: str | None) -> bool:
+            return ua is not None and "MyBot" in ua
+
+        def verify_all(self, items: object) -> dict[ClientId, BotVerification]:
+            return {
+                cid: BotVerification(
+                    VerificationStatus.VERIFIED,
+                    resolved_host="mybot.example",
+                    evidence=("ok",),
+                    dns=ChannelVerdict.VERIFIED,
+                )
+                for cid, _ua in items  # type: ignore[attr-defined]
+            }
+
+    lines = [
+        f'9.9.9.{i} - - [10/Oct/2023:12:00:0{i} +0000] "GET /p{i} HTTP/1.1" 200 100 '
+        '"-" "MyBot/1.0 (+https://mybot.example)"'
+        for i in range(3)
+    ]
+    lines += [
+        f'8.8.8.8 - - [10/Oct/2023:12:01:0{i} +0000] "GET /q{i} HTTP/1.1" 200 50 '
+        '"-" "OtherBot/1.0 (+https://other.example)"'
+        for i in range(2)
+    ]
+    log = tmp_path / "bots.log"
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parser = resolve("apache", {"format": PRESETS["combined"]})
+    result = pipeline.analyze(log, parser, identity.get_strategy("ip_ua"), verifier=_StubVerifier())
+
+    verified = next(p for p in result.profiles if "dns-verified" in p.classification.tags)
+    rollup = result.rollups[verified.classification.primary]
+    assert rollup.verified_clients >= 1
+    assert rollup.verified_requests == verified.features.request_count == 3
+    assert rollup.verified_bytes == verified.features.total_bytes == 300
+    assert rollup.verified_requests <= rollup.requests
+    # No verified tag on the other client, so it contributes nothing to any rollup's
+    # verified totals.
+    assert sum(r.verified_requests for r in result.rollups.values()) == 3
+    assert sum(r.requests for r in result.rollups.values()) == 5
 
 
 def test_respect_counted_in_summary_without_per_client_tag(tmp_path: Path) -> None:

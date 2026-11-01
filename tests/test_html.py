@@ -504,7 +504,7 @@ def test_summary_table_kind_sparklines_share_one_peak() -> None:
     # rollups through the real accumulator rather than hand-rolling the histogram.
     def rollup_of(profile: ClientProfile) -> object:
         acc = _RollupAcc()
-        acc.add(profile.features, respects=False, ignores=False, unknown=False)
+        acc.add(profile.features, respects=False, ignores=False, unknown=False, verified=False)
         return acc.freeze()
 
     rollups = {Kind.CRAWLER: rollup_of(busy), Kind.AI_CRAWLER: rollup_of(quiet)}
@@ -525,6 +525,33 @@ def test_summary_table_kind_sparklines_share_one_peak() -> None:
     # stays legible while the ordering holds.
     assert heights["crawler"] > heights["ai crawler"]
     assert heights["ai crawler"] >= heights["crawler"] // 2 - 1
+
+
+def test_summary_table_bars_scale_to_peak_and_show_verified_fill() -> None:
+    # Share bars are drawn relative to the column's largest kind (so it fills the
+    # cell) while the label keeps the true share; the green fill is the kind's own
+    # verified fraction, with the counts in the cell's tooltip. A kind with nothing
+    # verified gets no fill and no tooltip.
+    from types import SimpleNamespace
+
+    from agent_census.pipeline import KindRollup
+    from agent_census.report.html import _summary_table
+
+    rollups = {
+        Kind.CRAWLER: KindRollup(
+            clients=2, requests=40, total_bytes=4000, verified_clients=1,
+            verified_requests=10, verified_bytes=1000,
+        ),
+        Kind.BROWSER: KindRollup(clients=1, requests=60, total_bytes=6000),
+    }
+    html = _summary_table(SimpleNamespace(rollups=rollups), {}, None)
+
+    assert html.count('<div class="bar" style="width:100.0%">') == 2  # browser leads both
+    assert '<div class="bar" style="width:66.7%"><span class="vfill" style="width:25.0%">' in html
+    assert 'title="10 of 40 requests verified (25%)"' in html
+    assert 'title="1,000 of 4,000 bytes verified (25%)"' in html
+    assert html.count('class="vfill"') == 2  # one per column, crawler only
+    assert '<span class="muted">40%</span>' in html  # label is the true share
 
 
 def test_summary_table_bands_rowspan_the_label() -> None:

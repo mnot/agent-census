@@ -87,6 +87,12 @@ def forbidden_tell(features: ClientFeatures) -> tuple[bool, int, int]:
 # these are suppressed there -- see ``ClientProfile.is_aggregate``.
 CADENCE_TAGS = frozenset({"metronomic", "bursty", "steady"})
 
+# The identity channels that confirm a declared crawler: reverse DNS, a published IP
+# range, a Web Bot Auth signature. A client carrying any of them counts as
+# *verified* in the summary's verified-traffic share. ``asn-associated`` is
+# deliberately absent -- it is coarser corroboration, not a check.
+VERIFIED_TAGS = frozenset({"dns-verified", "ip-verified", "wba-verified"})
+
 # Tags that record an incidental fact about *this batch's own requests* -- did they
 # happen to hit /robots.txt, earn a 304, co-load a page's assets, follow on-site
 # links, arrive as a single request, use HEAD/POST heavily, run long, or transfer/

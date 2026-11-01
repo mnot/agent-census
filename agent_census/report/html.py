@@ -271,11 +271,27 @@ def _meta_list(
     return '<ul class="meta">' + "".join(f"<li>{item}</li>" for item in items) + "</ul>"
 
 
-def _share_bar(fraction: float) -> str:
+def _share_bar(fraction: float, verified: float = 0.0, peak: float = 1.0) -> str:
+    """A share-of-total bar. The label is the true ``fraction``; the bar is drawn
+    relative to ``peak`` (the largest fraction in the column) so the biggest kind
+    fills the cell. ``verified`` is the part of *this kind's* amount from verified
+    clients (0-1), drawn as a green fill inside the bar."""
+    fill = (
+        f'<span class="vfill" style="width:{verified * 100:.1f}%"></span>' if verified > 0 else ""
+    )
     return (
-        f'<div class="bar" style="width:{fraction * 100:.1f}%"></div>'
+        f'<div class="bar" style="width:{fraction / peak * 100:.1f}%">{fill}</div>'
         f'<span class="muted">{fraction:.0%}</span>'
     )
+
+
+def _verified_cell(part: int, whole: int, noun: str) -> tuple[float, str]:
+    """The fill fraction and ``<td>`` title for a kind's verified ``part`` of ``whole``."""
+    if part <= 0 or whole <= 0:
+        return 0.0, ""
+    fraction = part / whole
+    title = f"{part:,} of {whole:,} {noun} verified ({fraction:.0%})"
+    return fraction, f' title="{_esc(title)}"'
 
 
 # Stacked robots-compliance bar: respect (green) / violate (red) / can't-tell
@@ -310,6 +326,9 @@ def _summary_table(result: AnalysisResult, patterns: dict[Kind, str], window: _W
     rollups = result.rollups
     total = sum(r.requests for r in rollups.values()) or 1
     total_bytes = sum(r.total_bytes for r in rollups.values()) or 1
+    shown = [r for r in rollups.values() if r.clients > 0]
+    peak_req = max((r.requests for r in shown), default=0) / total or 1.0
+    peak_bw = max((r.total_bytes for r in shown), default=0) / total_bytes or 1.0
     robots_help = (
         "Share of clients by robots.txt compliance — hover a bar for counts.\n"
         "green respect: requested no disallowed paths\n"
@@ -319,8 +338,8 @@ def _summary_table(result: AnalysisResult, patterns: dict[Kind, str], window: _W
     head = (
         "<tr><th class='band'></th><th>Kind</th>"
         "<th class='num'>Clients</th><th class='num'>Requests</th>"
-        f"<th>Req share</th><th class='reqpat'>Requests over {_axis_span(window)}</th>"
-        "<th class='num'>Bandwidth</th><th>BW share</th>"
+        f"<th class='shr'>Req share</th><th class='reqpat'>Requests over {_axis_span(window)}</th>"
+        "<th class='num'>Bandwidth</th><th class='shr'>BW share</th>"
         f'<th title="{_esc(robots_help)}">robots.txt compliance ⓘ</th></tr>'
     )
     rows = []
@@ -353,13 +372,17 @@ def _summary_table(result: AnalysisResult, patterns: dict[Kind, str], window: _W
                 else ""
             )
             tr = "<tr class='bandstart'>" if (offset == 0 and ci > 0) else "<tr>"
+            v_req, req_title = _verified_cell(rollup.verified_requests, rollup.requests, "requests")
+            v_bw, bw_title = _verified_cell(rollup.verified_bytes, rollup.total_bytes, "bytes")
             rows.append(
                 f'{tr}{band}<td><a href="#{kind.value}">{_kind_badge(kind)}</a></td>'
                 f"<td class='num'>{rollup.clients:,}</td><td class='num'>{rollup.requests:,}</td>"
-                f"<td>{_share_bar(rollup.requests / total)}</td>"
+                f"<td class='shr'{req_title}>"
+                f"{_share_bar(rollup.requests / total, v_req, peak_req)}</td>"
                 f"<td class='reqpat'>{patterns.get(kind, '')}</td>"
                 f"<td class='num'>{human_bytes(rollup.total_bytes)}</td>"
-                f"<td>{_share_bar(rollup.total_bytes / total_bytes)}</td>"
+                f"<td class='shr'{bw_title}>"
+                f"{_share_bar(rollup.total_bytes / total_bytes, v_bw, peak_bw)}</td>"
                 f"<td>{robots}</td></tr>"
             )
     return (
@@ -367,7 +390,10 @@ def _summary_table(result: AnalysisResult, patterns: dict[Kind, str], window: _W
         f"<div class='tscroll'><table id='kindtab'>{head}{''.join(rows)}</table></div>\n"
         '<p class="hint">Click a kind to show only it; click a client below '
         "to copy its id for <code>inspect --client</code>, or a grouped row's "
-        "identity for <code>inspect --actor</code>.</p>"
+        "identity for <code>inspect --actor</code>. Share bars are scaled to the largest "
+        "kind; the percentage is the true share. The green part of a bar is traffic "
+        "from verified clients (reverse DNS, a published IP range, or a Web Bot Auth "
+        "signature) -- hover for the counts.</p>"
     )
 
 

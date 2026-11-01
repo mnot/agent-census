@@ -355,6 +355,10 @@ or disagreed.
 *Bearing:* directly tied to the impersonation verdict — a definitive
 `dns-violation`/`ip-violation` is exactly the evidence behind a network
 `impersonator` decision (§2.3, step 4). `verified`/`unverified` are informational.
+*Report use:* the summary's verified share of a kind's requests and bytes counts every
+client carrying `dns-verified`, `ip-verified` or `wba-verified`
+(`VERIFIED_TAGS`, [`classify/tags.py`](agent_census/classify/tags.py)); `asn-associated`
+is deliberately excluded as coarser corroboration.
 
 #### `asn-associated`
 The UA names a known crawler and its origin AS is one that crawler is known to use

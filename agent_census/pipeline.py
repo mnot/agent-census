@@ -31,6 +31,7 @@ from .classify.relative import (
     make_collector,
     tag_profile,
 )
+from .classify.tags import VERIFIED_TAGS
 from .dataload import KNOWN_AGENT_CATEGORIES, CrawlerSpec, load_shared_tuning
 from .features import DisallowedCheck, FeatureAccumulator
 from .hostforms import bare_host, site_key
@@ -321,6 +322,10 @@ class KindRollup:
     # (or no applicable rule). Counted only when robots data is present, so when
     # it is, respects + ignores + unknown == clients.
     unknown_robots: int = 0
+    # The part of the totals above from clients carrying a VERIFIED_TAGS tag.
+    verified_clients: int = 0
+    verified_requests: int = 0
+    verified_bytes: int = 0
     first_seen: datetime | None = None
     last_seen: datetime | None = None
     # Eviction-safe cadence: absolute-time histogram of every client's request
@@ -337,22 +342,34 @@ class _RollupAcc:
 
     __slots__ = (
         "clients", "requests", "total_bytes", "respects", "ignores", "unknown",
+        "verified_clients", "verified_requests", "verified_bytes",
         "first_seen", "last_seen", "cadence",
     )  # fmt: skip
 
     def __init__(self) -> None:
         self.clients = self.requests = self.total_bytes = 0
         self.respects = self.ignores = self.unknown = 0
+        self.verified_clients = self.verified_requests = self.verified_bytes = 0
         self.first_seen: datetime | None = None
         self.last_seen: datetime | None = None
         self.cadence: dict[int, int] = {}
 
     def add(
-        self, features: ClientFeatures, *, respects: bool, ignores: bool, unknown: bool
+        self,
+        features: ClientFeatures,
+        *,
+        respects: bool,
+        ignores: bool,
+        unknown: bool,
+        verified: bool,
     ) -> None:
         self.clients += 1
         self.requests += features.request_count
         self.total_bytes += features.total_bytes
+        if verified:
+            self.verified_clients += 1
+            self.verified_requests += features.request_count
+            self.verified_bytes += features.total_bytes
         # Robots compliance is counted from the verdict, not a tag: respecting is
         # the quiet norm, so it carries no per-client tag, only this aggregate.
         if respects:
@@ -398,6 +415,9 @@ class _RollupAcc:
             respects_robots=self.respects,
             ignores_robots=self.ignores,
             unknown_robots=self.unknown,
+            verified_clients=self.verified_clients,
+            verified_requests=self.verified_requests,
+            verified_bytes=self.verified_bytes,
             first_seen=self.first_seen,
             last_seen=self.last_seen,
             cadence=self.cadence,
@@ -799,9 +819,12 @@ def analyze(  # pylint: disable=too-many-locals,too-many-statements,too-many-arg
         respects = verdict is RobotsVerdict.RESPECTS
         ignores = verdict is RobotsVerdict.IGNORES
         unknown_r = verdict is RobotsVerdict.UNKNOWN
-        rollups[kind].add(features, respects=respects, ignores=ignores, unknown=unknown_r)
+        verified = bool(classification.tags & VERIFIED_TAGS)
+        rollups[kind].add(
+            features, respects=respects, ignores=ignores, unknown=unknown_r, verified=verified
+        )
         net_rollups[network][kind].add(
-            features, respects=respects, ignores=ignores, unknown=unknown_r
+            features, respects=respects, ignores=ignores, unknown=unknown_r, verified=verified
         )
         net_categories.setdefault(network, network_category or _NET_RESIDENTIAL)
         # Keep only the highest-volume profiles per kind in detail; the rest are

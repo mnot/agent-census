@@ -200,7 +200,12 @@ tr:hover td { background: #8881; }
 /* Req/BW share bars share the sparkline's CanvasText mix so the two glyphs in a
    row read as one family (a flat pale grey was too faint to make out). */
 .bar { background: color-mix(in srgb, CanvasText 66%, Canvas); border-radius: 4px;
-  height: .7rem; min-width: 2px; }
+  height: .7rem; min-width: 2px; overflow: hidden; }
+/* Share columns get room for the bars to be read; the biggest kind fills the cell. */
+#kindtab .shr { min-width: 9rem; }
+/* Verified part of a share bar: a fill from the left, as wide as the verified
+   fraction of that kind's amount. Same green as the trust tags. */
+.bar > .vfill { display: block; height: 100%; min-width: 1px; background: #34a853; }
 /* Stacked robots-compliance bar. Segments are flex children sized by % width;
    the track background shows through any gap. cursor:help signals the per-segment
    count tooltips. */

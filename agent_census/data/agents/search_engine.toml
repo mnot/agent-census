@@ -295,6 +295,7 @@ ranges_url = "https://search.developer.apple.com/applebot.json"
 # https://zhanzhang.sogou.com/index.php/help/spider documents only this token.
 ua_substring = "Sogou web spider"
 domains = ["sogou.com"]
+wba_operator = "Sogou"
 
 [[agent]]
 # https://o-seznam.cz/napoveda/vyhledavani/en/seznambot-crawler/

@@ -24,6 +24,8 @@ from agent_census.model import (
     RobotsVerdict,
     Signal,
     VerificationStatus,
+    WbaResult,
+    WbaStatus,
 )
 
 
@@ -1756,3 +1758,29 @@ def test_ancient_residential_browser_is_not_floored() -> None:
         "(KHTML, like Gecko) Chrome/99.0.4844.5 Safari/537.36",
     )
     assert classify_client(feats, datacenter=False).primary is not Kind.BROWSER
+
+
+def _signed_browser() -> ClientFeatures:
+    return ClientFeatures(
+        request_count=10,
+        asset_coload_ratio=0.8,
+        page_count=5,
+        ua_looks_like_browser=True,
+        static_ratio=0.5,
+        ratio_404=0.0,
+    )
+
+
+@pytest.mark.parametrize("status", [WbaStatus.VERIFIED, WbaStatus.EXPIRED])
+def test_confirmed_signer_is_not_a_browser(status: WbaStatus) -> None:
+    feats = _signed_browser()
+    assert classify_client(feats).primary is Kind.BROWSER
+    result = classify_client(feats, wba=WbaResult(status=status, operator="Ahrefs"))
+    assert result.primary is Kind.AUTOMATION
+    assert result.boilerplate_lead is True
+
+
+@pytest.mark.parametrize("status", [WbaStatus.PRESENT, WbaStatus.UNVERIFIABLE])
+def test_unconfirmed_signature_leaves_a_browser_alone(status: WbaStatus) -> None:
+    result = classify_client(_signed_browser(), wba=WbaResult(status=status))
+    assert result.primary is Kind.BROWSER

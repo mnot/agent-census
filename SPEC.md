@@ -769,6 +769,12 @@ tell set are structural, in [`combiner.py`](agent_census/classify/combiner.py).
   `vuln_scanner` whatever costume it wears; the hostile activity is the more
   actionable verdict. Once the scanner clears the bar, the `spoofed_browser` vote
   is dropped (its costume tags still show on the row).
+- *A confirmed signer is not a browser* — a client whose Web Bot Auth signature
+  is `verified` or `expired` is a declared bot, however browser-shaped its UA and
+  behaviour (an agentic browser renders pages and co-loads assets like one). Both
+  the `browser` and `spoofed_browser` votes are dropped; a purpose classifier
+  still wins on confidence, and failing that the fallback below names it
+  `automation`.
 
 **Impersonation is decisive** — a client faking a *declared identity* is an
 `impersonator` regardless of what else it looks like, with the cryptographic
@@ -795,6 +801,7 @@ reach it — a real crawler can behave badly without forging its identity.
 ```
 below_threshold(...):
     if datacenter and looks_like_datacenter_scraper:   return SCRAPER
+    if wba verified or expired:                        return AUTOMATION
     if tags ∩ {headless-browser, lacks-cache, generic-ua, bot-ua}:  return AUTOMATION
     if datacenter:                                     return AUTOMATION
     return UNKNOWN
@@ -802,6 +809,8 @@ below_threshold(...):
 
 - A generic-library or UA-less client harvesting several pages from a datacenter
   IP, not probing, is benignly scraping → **`scraper`**.
+- A client with a confirmed Web Bot Auth signature (`verified`/`expired`) and no
+  identified purpose is a declared bot → **`automation`**.
 - A positive **machine tell** — the set `{headless-browser, lacks-cache,
   generic-ua, bot-ua}`, read directly from the tags derived above — means a
   machine of unidentified purpose, not a true unknown → **`automation`**. This is

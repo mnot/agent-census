@@ -19,6 +19,7 @@ from ..model import (
     Kind,
     Signal,
     WbaResult,
+    WbaStatus,
 )
 from .tags import derive_tag_evidence, impersonation
 
@@ -144,6 +145,15 @@ def combine(
     if Kind.SPOOFED_BROWSER in by_label:
         by_label.pop(Kind.BROWSER, None)
 
+    # A cryptographically confirmed signer is a declared bot, not a person at a browser,
+    # however browser-shaped its UA and behaviour (an agentic browser renders pages and
+    # co-loads assets like one). Drop both browser votes; a purpose classifier still
+    # wins on confidence, and failing that the fallback names it automation.
+    signed = wba is not None and wba.status in (WbaStatus.VERIFIED, WbaStatus.EXPIRED)
+    if signed:
+        by_label.pop(Kind.BROWSER, None)
+        by_label.pop(Kind.SPOOFED_BROWSER, None)
+
     # A client that probes attack paths is a vuln_scanner, whatever costume it wears: the
     # hostile activity is a more actionable, specific verdict than the disguise. So once
     # vuln_scanner clears the bar it takes precedence over spoofed_browser, whose accumulated
@@ -184,7 +194,7 @@ def combine(
 
     if not by_label or max(by_label.values()) < unknown_threshold:
         return _below_threshold(
-            features, tags, tag_evidence, tuple(signals), stored, datacenter, by_label
+            features, tags, tag_evidence, tuple(signals), stored, datacenter, by_label, signed
         )
 
     primary = _pick(by_label)
@@ -218,6 +228,7 @@ def _below_threshold(
     stored: tuple[Signal, ...],
     datacenter: bool,
     by_label: dict[Kind, float],
+    signed: bool = False,
 ) -> Classification:
     """Pick a fallback when no classifier cleared the bar, narrowing UNKNOWN where we can.
 
@@ -254,6 +265,12 @@ def _below_threshold(
     # unidentified. A self-declared bot / library / headless engine names itself;
     # a hosting (datacenter) origin gives it away even on a single request -- a
     # person rarely browses from infrastructure. Either way it is not a true unknown.
+    if signed:
+        return verdict(
+            Kind.AUTOMATION,
+            _T["fallback_automation"],
+            "signs its requests with Web Bot Auth, but no purpose could be identified",
+        )
     if tags & _AUTOMATION_TELLS:
         return verdict(
             Kind.AUTOMATION,

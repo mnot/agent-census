@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+from typing import Any
+
 from agent_census.model import (
     Classification,
     ClientFeatures,
     ClientId,
     ClientProfile,
     Kind,
+    WbaResult,
+    WbaStatus,
 )
 from agent_census.pipeline import AnalysisResult, IdentityStats, SkipStats
 from agent_census.report import render_inspect, select_profiles
@@ -211,3 +216,42 @@ def test_inspect_shows_evidence_for_every_tag() -> None:
         chip = next((c for c in chips if f">{tag}</span>" in c), None)
         assert chip is not None, f"{tag} missing from inspect data"
         assert chips[chip], f"{tag} shown without evidence"
+
+
+def _signed(wba: WbaResult | None, **feats: Any) -> str:
+    prof = replace(
+        _profile("w", Kind.AI_CRAWLER, "Example"), wba=wba, features=ClientFeatures(**feats)
+    )
+    return render_inspect([prof])
+
+
+def test_inspect_shows_the_web_bot_auth_detail() -> None:
+    out = _signed(
+        WbaResult(
+            status=WbaStatus.UNVERIFIABLE,
+            operator=None,
+            signer_domain="signer.example",
+            keyid="abc123",
+            created=1_700_000_000,
+            key_failure="not-listed",
+            directory_url="https://signer.example/.well-known/http-message-signatures-directory",
+            reason="key not in directory",
+            key_note="the request is old",
+            mixed=True,
+            nonce_reused=True,
+        ),
+        wba_unusable={"Signature not logged": 3},
+    )
+    assert "### Web Bot Auth" in out
+    assert "- **Status:** unverifiable" in out
+    assert "signer.example (not a registered operator)" in out
+    assert "`abc123`" in out
+    assert "2023-11-14 22:13 UTC" in out
+    assert "**Key unavailable:** not-listed" in out
+    assert "http-message-signatures-directory" in out
+    assert "`wba-mixed`" in out and "`wba-nonce-reuse`" in out
+    assert "3 Signature not logged" in out
+
+
+def test_inspect_omits_the_web_bot_auth_block_without_a_signature() -> None:
+    assert "### Web Bot Auth" not in _signed(None)

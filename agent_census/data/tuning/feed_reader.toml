@@ -11,8 +11,11 @@ dominant_weight = 0.5
 present_weight = 0.2
 
 [feed_ua]
-# The User-Agent identifies a feed reader (see ua_signatures.toml / feed_readers.toml).
-weight = 0.4
+# The User-Agent identifies a feed reader (see ua_signatures.toml / feed_readers.toml). One
+# match is enough to carry a client past shared.toml's unknown_threshold on its own, as for
+# the app classifier: a reader app's article view fetches pages, not feeds, and 0.4 left it
+# just short of the bar, so it fell to `unknown`.
+weight = 0.5
 
 [few_urls]
 # Polls a handful of URLs repeatedly, over enough requests to judge it.

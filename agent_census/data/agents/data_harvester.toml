@@ -24,3 +24,11 @@ ua_substring = "Diffbot"
 # Omgili / webz.io. Their page is unreadable (expired TLS cert); a Webz.io post says Omgilibot is
 # succeeded by Webzio, but no primary page gives the tokens, so none are added yet.
 ua_substring = "Omgilibot"
+
+# https://www.sketchengine.eu/crawler/ -- Lexical Computing's corpus-building crawler, which it
+# says is neither a generative-AI nor a search crawler. Two tokens, no IPs or reverse DNS.
+[[agent]]
+ua_substring = "SpiderLing"
+
+[[agent]]
+ua_substring = "SketchEngine"

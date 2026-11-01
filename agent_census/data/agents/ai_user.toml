@@ -58,3 +58,29 @@ user_triggered = true
 ua_substring = "Kimi-User"
 ranges_url = "https://www.kimi.com/policies/kimi-user.json"
 user_triggered = true
+
+[[agent]]
+# https://elevenlabs.io/docs/bots -- fetches pages a customer adds to an agent's knowledge
+# base, when they are added and refreshed.
+ua_substring = "ElevenlabsBot"
+user_triggered = true
+
+[[agent]]
+# https://exauser.crawler.exa.ai/ -- fetches a page live when a user or an app built on the Exa
+# API asks for it; signed, with no IPs or reverse DNS published.
+ua_substring = "ExaUser"
+user_triggered = true
+wba_operator = "Exa"
+
+[[agent]]
+# https://parallel.ai/parallel-web-systems-bots.md -- accesses content on behalf of users and is
+# not used to crawl.
+ua_substring = "Shap-User"
+user_triggered = true
+wba_operator = "Parallel"
+
+[[agent]]
+# https://app.keenable.ai/bot -- makes requests on someone's behalf; does not crawl.
+ua_substring = "Keenable-User"
+ranges_url = "https://app.keenable.ai/bot/keenable-user.json"
+user_triggered = true

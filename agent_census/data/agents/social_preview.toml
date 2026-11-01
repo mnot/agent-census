@@ -109,3 +109,11 @@ ua_substring = "SummalyBot"
 [[agent]]
 # https://github.com/Lantern-chat
 ua_substring = "Lantern"
+
+[[agent]]
+# Naver's blog-editor robot: collects a link preview when an author inserts a link. Reverse DNS
+# ends in .naver.com, as for Naver's robots in general; the range list is for Yeti.
+# https://help.naver.com/alias/search/site/site_11.naver
+ua_substring = "Blueno"
+domains = ["naver.com"]
+user_triggered = true

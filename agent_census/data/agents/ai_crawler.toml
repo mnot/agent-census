@@ -172,3 +172,8 @@ ua_substring = "colossio"
 ua_substring = "DuckAssistBot"
 ranges_url = "https://duckduckgo.com/duckassistbot.json"
 wba_operator = "DuckDuckGo"
+
+[[agent]]
+# https://elevenlabs.io/docs/bots -- collects content that may be used for training. Publishes
+# no IPs or reverse DNS. (Its customer-initiated fetcher, ElevenlabsBot, is in ai_user.toml.)
+ua_substring = "ElevenlabsCrawler"

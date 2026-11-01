@@ -24,6 +24,11 @@ ranges_url = "https://openai.com/searchbot.json"
 rdns_fallback = true
 
 [[agent]]
+# Checks landing pages submitted as ads on ChatGPT. OpenAI publishes ranges, no reverse DNS.
+ua_substring = "OAI-AdsBot"
+ranges_url = "https://openai.com/adsbot.json"
+
+[[agent]]
 # https://support.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler
 ua_substring = "ClaudeBot"
 ranges_url = "https://claude.com/crawling/bots.json"

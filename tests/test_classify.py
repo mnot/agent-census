@@ -1784,3 +1784,46 @@ def test_confirmed_signer_is_not_a_browser(status: WbaStatus) -> None:
 def test_unconfirmed_signature_leaves_a_browser_alone(status: WbaStatus) -> None:
     result = classify_client(_signed_browser(), wba=WbaResult(status=status))
     assert result.primary is Kind.BROWSER
+
+
+def test_confirmed_signer_keeps_the_costume_verdict_unless_registered() -> None:
+    costume = ClientFeatures(
+        request_count=200,
+        ua_looks_like_browser=True,
+        ua_empty=False,
+        page_count=50,
+        asset_coload_ratio=0.0,
+        referer_count=60,
+        referer_following_ratio=0.0,
+    )
+    assert classify_client(costume, datacenter=True).primary is Kind.SPOOFED_BROWSER
+    # Any client can publish a key directory and sign, so an unregistered signer
+    # doesn't clear a costume...
+    self_signed = WbaResult(status=WbaStatus.VERIFIED, signer_domain="evil.example")
+    result = classify_client(costume, datacenter=True, wba=self_signed)
+    assert result.primary is Kind.SPOOFED_BROWSER
+    # ...but a registered operator's signature does.
+    registered = WbaResult(status=WbaStatus.VERIFIED, operator="Ahrefs")
+    assert classify_client(costume, datacenter=True, wba=registered).primary is Kind.AUTOMATION
+
+
+def test_confirmed_signer_loses_to_an_identified_purpose() -> None:
+    feats = ClientFeatures(
+        request_count=50,
+        distinct_paths=50,
+        coverage=1.0,
+        referer_following_ratio=0.9,
+        ratio_2xx=0.9,
+        ua_declares_bot=True,
+        ua_empty=False,
+        user_agent="HeadlessChrome/149.0.0.0 Safari/537.36",
+    )
+    signed = classify_client(feats, wba=WbaResult(status=WbaStatus.VERIFIED, operator="Ahrefs"))
+    assert signed.primary is not Kind.AUTOMATION
+    assert signed.primary is classify_client(feats).primary
+
+
+def test_signed_by_another_operator_than_the_user_agent_claims_is_an_impersonator() -> None:
+    feats = ClientFeatures(request_count=10, user_agent="Mozilla/5.0 (compatible; AhrefsBot/7.0)")
+    result = classify_client(feats, wba=WbaResult(status=WbaStatus.VERIFIED, operator="You"))
+    assert result.primary is Kind.IMPERSONATOR

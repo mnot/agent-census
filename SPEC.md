@@ -771,10 +771,12 @@ tell set are structural, in [`combiner.py`](agent_census/classify/combiner.py).
   is dropped (its costume tags still show on the row).
 - *A confirmed signer is not a browser* — a client whose Web Bot Auth signature
   is `verified` or `expired` is a declared bot, however browser-shaped its UA and
-  behaviour (an agentic browser renders pages and co-loads assets like one). Both
-  the `browser` and `spoofed_browser` votes are dropped; a purpose classifier
-  still wins on confidence, and failing that the fallback below names it
-  `automation`.
+  behaviour (an agentic browser renders pages and co-loads assets like one), so
+  the `browser` vote is dropped. The `spoofed_browser` vote is dropped only when
+  the signer is a registered operator (`WbaResult.operator`): a key fetched from
+  the client's own `Signature-Agent` URL verifies too, so any client can sign, and
+  that must not erase a forgery signal. A purpose classifier still wins on
+  confidence; failing that the fallback below names the client `automation`.
 
 **Impersonation is decisive** — a client faking a *declared identity* is an
 `impersonator` regardless of what else it looks like, with the cryptographic

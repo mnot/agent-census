@@ -43,8 +43,25 @@ user_triggered = true
 [[agent]]
 # https://developers.google.com/crawling/docs/crawlers-fetchers/google-common-crawlers
 ua_substring = "Google-CloudVertexBot"
-domains = ["google.com"]
+# Google gives no reverse-DNS pattern for this bot specifically, so the ranges lead.
+domains = ["googlebot.com"]
 ranges_url = "https://developers.google.com/static/crawling/ipranges/common-crawlers.json"
+rdns_fallback = true
+
+# User-triggered Google fetchers.
+# https://developers.google.com/crawling/docs/crawlers-fetchers/google-user-triggered-fetchers
+[[agent]]
+ua_substring = "Google-GeminiNotebook"
+user_triggered = true
+
+[[agent]]
+ua_substring = "Google-Pinpoint"
+user_triggered = true
+
+[[agent]]
+ua_substring = "Google-Agent"
+ranges_url = "https://developers.google.com/static/crawling/ipranges/user-triggered-agents.json"
+user_triggered = true
 
 [[agent]]
 # https://docs.perplexity.ai/docs/resources/perplexity-crawlers

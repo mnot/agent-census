@@ -3,23 +3,91 @@
 # the User-Agent. Optional: domains (reverse-DNS suffixes), ranges (CIDR blocks),
 # ranges_url (JSON of published ranges, fetched + cached under --verify-bots).
 
-[[agent]]
-# https://developers.google.com/crawling/docs/crawlers-fetchers/google-common-crawlers
-ua_substring = "Googlebot"
-domains = ["googlebot.com", "google.com"]
-ranges_url = "https://developers.google.com/static/crawling/ipranges/common-crawlers.json"
+# Google. The first matching token wins, so one that is a substring of another
+# (Googlebot in Googlebot-Image, AdsBot-Google in AdsBot-Google-Mobile) comes after it.
 
-[[agent]]
+# Common crawlers: reverse DNS under googlebot.com, ranges in common-crawlers.json.
 # https://developers.google.com/crawling/docs/crawlers-fetchers/google-common-crawlers
+[[agent]]
 ua_substring = "Googlebot-Image"
-domains = ["googlebot.com", "google.com"]
+domains = ["googlebot.com"]
 ranges_url = "https://developers.google.com/static/crawling/ipranges/common-crawlers.json"
 
 [[agent]]
-# https://developers.google.com/crawling/docs/crawlers-fetchers/google-common-crawlers
-ua_substring = "GoogleOther"
-domains = ["googlebot.com", "google.com"]
+ua_substring = "Googlebot-Video"
+domains = ["googlebot.com"]
 ranges_url = "https://developers.google.com/static/crawling/ipranges/common-crawlers.json"
+
+[[agent]]
+ua_substring = "Googlebot"
+domains = ["googlebot.com"]
+ranges_url = "https://developers.google.com/static/crawling/ipranges/common-crawlers.json"
+
+[[agent]]
+ua_substring = "Storebot-Google"
+domains = ["googlebot.com"]
+ranges_url = "https://developers.google.com/static/crawling/ipranges/common-crawlers.json"
+
+[[agent]]
+ua_substring = "Google-InspectionTool"
+domains = ["googlebot.com"]
+ranges_url = "https://developers.google.com/static/crawling/ipranges/common-crawlers.json"
+
+[[agent]]
+# Covers the GoogleOther-Image and GoogleOther-Video variants too.
+ua_substring = "GoogleOther"
+domains = ["googlebot.com"]
+ranges_url = "https://developers.google.com/static/crawling/ipranges/common-crawlers.json"
+
+# Special-case crawlers: Google-operated for its own products (ads quality, push
+# delivery, safety), not for Search. Reverse DNS is rate-limited-proxy-*.google.com,
+# ranges in special-crawlers.json. Retired ones (DuplexWeb-Google, AdsBot-Google-Mobile-Apps,
+# googleweblight) are deliberately left out.
+# https://developers.google.com/crawling/docs/crawlers-fetchers/google-special-case-crawlers
+[[agent]]
+ua_substring = "AdsBot-Google-Mobile"
+domains = ["google.com"]
+ranges_url = "https://developers.google.com/static/crawling/ipranges/special-crawlers.json"
+
+[[agent]]
+ua_substring = "AdsBot-Google"
+domains = ["google.com"]
+ranges_url = "https://developers.google.com/static/crawling/ipranges/special-crawlers.json"
+
+[[agent]]
+ua_substring = "Mediapartners-Google"
+domains = ["google.com"]
+ranges_url = "https://developers.google.com/static/crawling/ipranges/special-crawlers.json"
+
+[[agent]]
+ua_substring = "APIs-Google"
+domains = ["google.com"]
+ranges_url = "https://developers.google.com/static/crawling/ipranges/special-crawlers.json"
+
+[[agent]]
+ua_substring = "Google-Safety"
+domains = ["google.com"]
+ranges_url = "https://developers.google.com/static/crawling/ipranges/special-crawlers.json"
+
+# User-triggered fetchers: Google-owned fetchers resolve under gae.googleusercontent.com,
+# user-owned ones under google-proxy-*.google.com. Google's page doesn't say which feed
+# or reverse-DNS pattern goes with which fetcher, so these are recognised but unverified.
+# https://developers.google.com/crawling/docs/crawlers-fetchers/google-user-triggered-fetchers
+[[agent]]
+ua_substring = "Google-CWS"
+user_triggered = true
+
+[[agent]]
+ua_substring = "GoogleProducer"
+user_triggered = true
+
+[[agent]]
+ua_substring = "Google-Read-Aloud"
+user_triggered = true
+
+[[agent]]
+ua_substring = "Google-Site-Verification"
+user_triggered = true
 
 [[agent]]
 # https://developer.chrome.com/blog/private-prefetch-proxy/

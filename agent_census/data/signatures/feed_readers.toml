@@ -11,5 +11,5 @@ feed_readers = [
     "newsraft", "wp.com feedbot", "Windows-RSS-Platform", "NextCloud-News",
     "davefeedread", "gofeed", "rss-parser", "Tapestry", "Micro.blog", "Vienna",
     "hypertexting", "FreshRSS", "Foragd", "BubblesBot", "Selfoss", "Skyreader",
-    "feedspool", "SurfaceFeedPoller", "Lumen/"
+    "feedspool", "SurfaceFeedPoller", "Lumen/", "FeedFetcher-Google"
 ]

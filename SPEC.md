@@ -679,7 +679,8 @@ knobs.
 
 #### `feed_reader`
 Feeds must be *the point*: either a feed-reader UA or feeds as the majority of
-traffic. Corroborated by polling few URLs, steady intervals, conditional requests
+traffic. A feed-reader UA alone clears the unknown bar, so a reader app's article
+views (which fetch pages, not feeds) still land here. Corroborated by polling few URLs, steady intervals, conditional requests
 (304s), and HEAD freshness checks.
 *Tag relationships:* `fetches-feeds`, `polls-feeds`, `has-cache`, `uses-HEAD`,
 `steady`. The feed-dominance line is shared with `spoofed_browser`'s exclusion, so

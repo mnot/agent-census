@@ -1531,10 +1531,10 @@ def test_head_corroborates_a_feed_reader() -> None:
     # and stays a feed reader (HEAD is not penalised the way it is for browsers).
     base = ClientFeatures(
         request_count=8,
-        feed_requests=8,
-        feed_ratio=1.0,
+        feed_requests=2,
+        feed_ratio=0.25,  # not feed-dominant, and the UA weight is large: stay off the ceiling
         distinct_paths=5,
-        distinct_targets=5,  # above the "polls few URLs" bonus, so we're off the ceiling
+        distinct_targets=5,  # above the "polls few URLs" bonus
         user_agent="NetNewsWire (RSS reader)",
     )
     heading = replace(base, head_ratio=0.5)
@@ -1607,6 +1607,20 @@ def test_ad_fetchers_and_web_tools_get_their_own_kinds() -> None:
         )
     )
     assert read_aloud.primary is Kind.WEB_TOOL
+
+
+def test_feed_reader_ua_alone_is_enough() -> None:
+    # A reader app's article view fetches a page, not a feed, wearing a browser shell with
+    # the product token on the end. The UA alone must clear the unknown bar.
+    result = classify_client(
+        ClientFeatures(
+            request_count=1,
+            ua_looks_like_browser=True,
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) NetNewsWire",
+        )
+    )
+    assert result.primary is Kind.FEED_READER
 
 
 def test_known_bot_match_without_declared_name_carries_no_agent_name() -> None:

@@ -29,6 +29,11 @@ ua_substring = "Slack-ImgProxy"
 ua_substring = "Discordbot"
 
 [[agent]]
+# https://developers.google.com/crawling/docs/crawlers-fetchers/google-user-triggered-fetchers
+ua_substring = "GoogleMessages"
+user_triggered = true
+
+[[agent]]
 ua_substring = "WhatsApp"
 
 [[agent]]

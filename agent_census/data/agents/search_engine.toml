@@ -364,3 +364,12 @@ ua_substring = "BeamoBot"
 [[agent]]
 # https://search.synapto.com.br
 ua_substring = "SynaptoRadarBot"
+
+[[agent]]
+# https://andiai.com/bot
+ua_substring = "Andi-SearchBot"
+
+[[agent]]
+# https://yacy.net/bot.html -- a peer-to-peer engine whose crawlers are run by its users, so
+# there are no IPs or reverse DNS to verify.
+ua_substring = "yacybot"

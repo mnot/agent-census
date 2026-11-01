@@ -89,6 +89,21 @@ ua_substring = "Mattermost-Bot"
 ua_substring = "Pleroma"
 
 [[agent]]
+# https://akkoma.dev/AkkomaGang/akkoma/src/branch/develop/lib/pleroma/application.ex
+# UA is "Akkoma <version>; <url> <email>".
+ua_substring = "Akkoma"
+
+[[agent]]
+# https://github.com/misskey-dev/misskey/blob/develop/packages/backend/src/config.ts
+# UA is "Misskey/<version> (<url>)"; forks such as Sharkey keep it.
+ua_substring = "Misskey/"
+
+[[agent]]
+# https://github.com/friendica/friendica/blob/develop/src/Network/HTTPClient/Client/HttpClient.php
+# UA is "Friendica/<version> DatabaseVersion/<n> Request/<type> +<url>".
+ua_substring = "Friendica/"
+
+[[agent]]
 ua_substring = "SummalyBot"
 
 [[agent]]

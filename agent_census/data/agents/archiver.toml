@@ -1,22 +1,19 @@
 # Web-archiving / preservation crawlers (keep copies of the web, not index it).
 # One [[agent]] per crawler. ua_substring is matched case-insensitively against
 # the User-Agent. Verified by reverse/forward DNS against the listed domains
-# unless an entry carries its own ranges_url.
+# or a published range list, where the operator documents one.
 
 # Internet Archive / Wayback Machine -- https://archive.org/details/archive.org_bot
-# Verified by rDNS: the published range feed sits behind Cloudflare and blocks
-# some fetches as bots, so it isn't reliable to pull; rDNS is good enough here.
+# The Internet Archive documents no reverse-DNS domain or range list for these, so
+# they are recognised but unverified.
 [[agent]]
 ua_substring = "archive.org_bot"
-domains = ["archive.org"]
 
 [[agent]]
 ua_substring = "ia_archiver"
-domains = ["archive.org"]
 
 [[agent]]
 ua_substring = "special_archiver"
-domains = ["archive.org"]
 
 # Common Crawl -- a nonprofit that publishes an open WARC archive of the web.
 # https://commoncrawl.org/ccbot

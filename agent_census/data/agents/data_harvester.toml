@@ -19,9 +19,7 @@ ua_substring = "panscient"
 [[agent]]
 # https://www.diffbot.com/
 ua_substring = "Diffbot"
-domains = ["diffbot.com"]
 
 [[agent]]
 # Omgili / webz.io
 ua_substring = "Omgilibot"
-domains = ["omgili.com"]

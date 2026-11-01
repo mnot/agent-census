@@ -6,8 +6,11 @@
 ua_substring = "facebookexternalhit"
 
 [[agent]]
+# X's live docs are gone; the AS number and the rDNS domains are from the archived Cards
+# troubleshooting page (developer.x.com/en/docs/x-for-websites/cards/guides/troubleshooting-cards).
 ua_substring = "Twitterbot"
 domains = ["twitter.com", "twttr.com"]
+asns = [13414]
 
 [[agent]]
 ua_substring = "LinkedInBot"
@@ -59,8 +62,9 @@ ua_substring = "Embedly"
 ranges = ["107.21.253.49", "54.204.20.249", "54.204.20.250", "54.221.198.105", "54.221.199.147", "54.225.104.196", "2600:1f18:100d:9f00::/52"]
 
 [[agent]]
-# https://iframely.com/docs/about
-ua_substring = "Iframely"
+# https://iframely.com/docs/about -- the Preview Agent ("Iframely/<version>"). The "/" keeps the
+# Processing and Training agents, which are AI-related, out of this entry (see ai_crawler.toml).
+ua_substring = "Iframely/"
 
 [[agent]]
 ua_substring = "vkShare"

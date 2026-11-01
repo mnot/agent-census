@@ -42,6 +42,7 @@ from .format import (
     ordered_tags,
     rationale_rows,
     tag_title,
+    wba_rows,
 )
 from .html import _EXPAND_LIMIT, tag_class
 
@@ -239,6 +240,7 @@ def build_member_view(
         "signals": _signals_view(profile),
         "tags": _tags_view(profile),
         "compliance": _compliance_view(profile),
+        "wba": [list(row) for row in wba_rows(profile)],
         "features": [list(row) for row in feature_rows(feats)],
         "trace": _trace_view(profile, limit=limit, site=site),
     }

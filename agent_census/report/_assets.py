@@ -505,6 +505,14 @@ document.addEventListener('click', function (event) {
       cols.appendChild(rb);
     }
 
+    if (m.wba.length) {
+      var wb = block('Web Bot Auth');
+      var wl = h('ul', 'inspect-facts');
+      m.wba.forEach(function (r) { wl.appendChild(fact(r[0], r[1])); });
+      wb.appendChild(wl);
+      cols.appendChild(wb);
+    }
+
     var fb = block('Features');
     var fl = h('ul', 'inspect-facts');
     m.features.forEach(function (r) { fl.appendChild(fact(r[0], r[1])); });

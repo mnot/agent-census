@@ -16,6 +16,7 @@ from ..model import (
     Kind,
     WbaStatus,
 )
+from ..wba import display_operator, format_stamp
 
 _KHTML_MARKER = "(khtml, like gecko)"
 # Layout-engine tokens: their presence in a trimmed preamble means the UA wore a
@@ -495,6 +496,54 @@ def md_escape(text: str) -> str:
     # renders as a line break in many Markdown viewers and terminals, corrupting
     # the row, so neutralise CR as well as LF -- not just the pipe.
     return text.replace("|", "\\|").replace("\r", " ").replace("\n", " ")
+
+
+def wba_rows(profile: ClientProfile) -> list[tuple[str, str]]:
+    """The Web Bot Auth detail for one client as plain ``(label, value)`` rows, shared
+    by the Markdown ``inspect`` block and the HTML overlay so the two never drift.
+    Empty when the client presented no signature. Values are raw (the keyid and
+    directory come from the request), so each renderer escapes for its own medium."""
+    wba = profile.wba
+    if wba is None:
+        return []
+    rows = [("Status", wba.status.value)]
+    who = display_operator(wba)
+    if who:
+        rows.append(("Signer", who if wba.operator else f"{who} (not a registered operator)"))
+    if wba.signer_domain and wba.signer_domain != who:
+        rows.append(("Signature-Agent host", wba.signer_domain))
+    if wba.keyid:
+        rows.append(("Key id", wba.keyid))
+    if wba.directory_url:
+        rows.append(("Key directory", wba.directory_url))
+    rows += [
+        ("Signed", format_stamp(wba.created)),
+        ("Expires", format_stamp(wba.expires)),
+        ("Request", format_stamp(wba.request_time)),
+    ]
+    if wba.key_failure:
+        rows.append(("Key unavailable", wba.key_failure))
+    if wba.reason:
+        rows.append(("Reason", wba.reason))
+    if wba.key_note:
+        rows.append(("Note", wba.key_note))
+    flags = [
+        text
+        for text, on in (
+            ("some signed requests did not verify (wba-mixed)", wba.mixed),
+            ("a nonce also seen from another origin (wba-replay)", wba.replayed),
+            ("a nonce reused across its own requests (wba-nonce-reuse)", wba.nonce_reused),
+        )
+        if on
+    ]
+    if flags:
+        rows.append(("Flags", "; ".join(flags)))
+    if profile.features.wba_unusable:
+        detail = ", ".join(
+            f"{n:,} {why}" for why, n in sorted(profile.features.wba_unusable.items())
+        )
+        rows.append(("Unusable signature requests", detail))
+    return rows
 
 
 def feature_rows(feats: ClientFeatures) -> list[tuple[str, str]]:

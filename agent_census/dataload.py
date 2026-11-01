@@ -273,8 +273,8 @@ class CrawlerSpec:
     # used when the ranges can't be obtained.
     rdns_fallback: bool = False
     # The agent fetches on behalf of a present user (a "-User" / on-behalf-of proxy
-    # like ChatGPT-User or Amzn-User), rather than crawling autonomously. Orthogonal
-    # to the kind -- it surfaces as the ``user-triggered`` tag, not a kind of its own.
+    # like ChatGPT-User or Amzn-User), rather than crawling autonomously. It surfaces
+    # as the ``user-triggered`` tag; the kind comes from the file (ai_user, web_tool).
     user_triggered: bool = False
     # Names the :class:`WbaOperator` (by ``name``) this UA is expected to sign as,
     # if it uses Web Bot Auth. Lets the impersonation check catch a UA claiming
@@ -442,6 +442,9 @@ def load_vuln_paths() -> tuple[tuple[str, ...], tuple[str, ...]]:
 # that other list -- their behavioural classification is unchanged; we only
 # confirm (or refute) the network origin of the identity they claim.
 KNOWN_AGENT_CATEGORIES = (
+    "ads",
+    "ai_user",
+    "web_tool",
     "search_engine",
     "social_preview",
     "archiver",

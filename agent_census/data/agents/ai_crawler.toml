@@ -1,4 +1,5 @@
-# AI / LLM data-gathering crawlers and assistants.
+# AI / LLM data-gathering crawlers. Assistants that fetch at a person's request are in
+# ai_user.toml.
 # ranges_url points at a provider's published IP ranges in the Google/OpenAI
 # {"prefixes":[{"ipv4Prefix": ...}, ...]} schema; fetched + cached under
 # --verify-bots and the right signal for crawlers that don't support reverse DNS.
@@ -11,22 +12,10 @@ ranges_url = "https://openai.com/gptbot.json"
 rdns_fallback = true
 
 [[agent]]
-ua_substring = "ChatGPT-User"
-domains = ["openai.com"]
-ranges_url = "https://openai.com/chatgpt-user.json"
-rdns_fallback = true
-user_triggered = true
-
-[[agent]]
 ua_substring = "OAI-SearchBot"
 domains = ["openai.com"]
 ranges_url = "https://openai.com/searchbot.json"
 rdns_fallback = true
-
-[[agent]]
-# Checks landing pages submitted as ads on ChatGPT. OpenAI publishes ranges, no reverse DNS.
-ua_substring = "OAI-AdsBot"
-ranges_url = "https://openai.com/adsbot.json"
 
 [[agent]]
 # https://support.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler
@@ -40,12 +29,6 @@ ranges_url = "https://claude.com/crawling/bots.json"
 rdns_fallback = true
 
 [[agent]]
-ua_substring = "Claude-User"
-ranges_url = "https://claude.com/crawling/bots.json"
-rdns_fallback = true
-user_triggered = true
-
-[[agent]]
 # https://developers.google.com/crawling/docs/crawlers-fetchers/google-common-crawlers
 ua_substring = "Google-CloudVertexBot"
 # Google gives no reverse-DNS pattern for this bot specifically, so the ranges lead.
@@ -53,37 +36,10 @@ domains = ["googlebot.com"]
 ranges_url = "https://developers.google.com/static/crawling/ipranges/common-crawlers.json"
 rdns_fallback = true
 
-# User-triggered Google fetchers.
-# https://developers.google.com/crawling/docs/crawlers-fetchers/google-user-triggered-fetchers
-[[agent]]
-ua_substring = "Google-GeminiNotebook"
-user_triggered = true
-
-[[agent]]
-ua_substring = "Google-Pinpoint"
-user_triggered = true
-
-[[agent]]
-ua_substring = "Google-Agent"
-ranges_url = "https://developers.google.com/static/crawling/ipranges/user-triggered-agents.json"
-user_triggered = true
-wba_operator = "Google"
-
 [[agent]]
 # https://docs.perplexity.ai/docs/resources/perplexity-crawlers
 ua_substring = "PerplexityBot"
 ranges_url = "https://www.perplexity.ai/perplexitybot.json"
-
-[[agent]]
-ua_substring = "Perplexity-User"
-ranges_url = "https://www.perplexity.ai/perplexity-user.json"
-user_triggered = true
-
-[[agent]]
-# https://docs.mistral.ai/robots
-ua_substring = "MistralAI-User"
-ranges_url = "https://mistral.ai/mistralai-user-ips.json"
-user_triggered = true
 
 [[agent]]
 # https://docs.mistral.ai/robots
@@ -99,13 +55,6 @@ ua_substring = "MistralAI-Training"
 ua_substring = "Amazonbot"
 ranges_url = "https://developer.amazon.com/amazonbot/ip-addresses/"
 format = "amazon"
-
-[[agent]]
-# https://developer.amazon.com/amazonbot
-ua_substring = "Amzn-User"
-ranges_url = "https://developer.amazon.com/amazonbot/live-ip-addresses/"
-format = "amazon"
-user_triggered = true
 
 [[agent]]
 # https://docs.aws.amazon.com/quick/latest/userguide/web-crawler-integration.html
@@ -141,25 +90,11 @@ ua_substring = "Meta-webindexer"
 # https://developers.facebook.com/docs/sharing/webmasters/web-crawlers/
 ua_substring = "Meta-externalagent"
 
-[[agent]]
-# https://developers.facebook.com/docs/sharing/webmasters/web-crawlers/
-ua_substring = "Meta-externalfetcher"
-user_triggered = true
-
-[[agent]]
-# https://developers.facebook.com/docs/sharing/webmasters/web-crawlers/
-ua_substring = "Meta-ExternalAds"
-
 # Kimi (Moonshot). Its UAs link to the policy page below; the three feeds list the same four IPs.
 [[agent]]
 # https://www.kimi.com/policies/kimi-crawlers
 ua_substring = "KimiBot"
 ranges_url = "https://www.kimi.com/policies/kimibot.json"
-
-[[agent]]
-ua_substring = "Kimi-User"
-ranges_url = "https://www.kimi.com/policies/kimi-user.json"
-user_triggered = true
 
 [[agent]]
 ua_substring = "Kimi-SearchBot"

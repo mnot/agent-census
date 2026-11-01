@@ -342,6 +342,7 @@ _VULN_COLS = [_C_UA, _C_PROBE, _C_TRAVERSAL, _C_EVASION, _C_404, _C_REQUESTS]
 _CRAWL_KINDS = {
     "crawler",
     "ai_crawler",
+    "ads",
     "search_engine",
     "archiver",
     "seo_marketing",

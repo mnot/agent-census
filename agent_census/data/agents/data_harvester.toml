@@ -17,11 +17,6 @@ ranges = ["199.47.80.0/21"]
 ua_substring = "panscient"
 
 [[agent]]
-# https://www.diffbot.com/docs/crawl/faq/robots-txt
-ua_substring = "Diffbot-User"
-user_triggered = true
-
-[[agent]]
 # https://www.diffbot.com/
 ua_substring = "Diffbot"
 

@@ -40,6 +40,9 @@ _ROUND = int(_T["round_digits"])
 # Tie-break order when two kinds share the top confidence: earlier wins.
 _PRIORITY: tuple[Kind, ...] = (
     Kind.IMPERSONATOR,
+    Kind.ADS,
+    Kind.AI_USER,
+    Kind.WEB_TOOL,
     Kind.SEARCH_ENGINE,
     Kind.SOCIAL_PREVIEW,
     Kind.ARCHIVER,

@@ -77,9 +77,10 @@ tiers don't run at all, so only `asns` can confirm or impeach.
   `YandexUserproxy`) that serves a present user's action rather than crawling
   autonomously. This is taken **on trust** -- whether a human actually drove any given
   request isn't observable, and identity verification (where available) confirms *who*
-  the agent is, not that a user prompted it. It does **not** change the kind -- such an
-  agent is still an `ai_crawler` or `search_engine` -- it only adds the `user-triggered`
-  tag. Optional; defaults to false.
+  the agent is, not that a user prompted it. The flag itself doesn't pick the kind; the
+  file does. An AI assistant's fetcher lives in `ai_user.toml` and any other hosted tool
+  (read aloud, translation, a site owner's verification) in `web_tool.toml`. The flag adds
+  the `user-triggered` tag. Optional; defaults to false.
 
 ## Identity, cryptographic -- linking to a Web Bot Auth operator
 

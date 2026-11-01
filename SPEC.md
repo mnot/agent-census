@@ -387,7 +387,8 @@ The UA names a native-app networking stack (CFNetwork, dart:io, …).
 
 #### `user-triggered`
 The UA names a fetcher the operator designates as acting on behalf of a present
-user, not an autonomous crawler. Informational; no classifier bearing.
+user, not an autonomous crawler. Informational; no classifier bearing — the `ai_user` and
+`web_tool` kinds come from which data file the token is in, and carry this tag.
 
 #### `ignores-robots`
 The client requested paths disallowed by the applicable robots.txt group (the only
@@ -502,7 +503,7 @@ and a confidence. The kinds:
 
 | Family | Kinds |
 | --- | --- |
-| Declared crawler identities | `search_engine`, `social_preview`, `archiver`, `ai_crawler`, `seo_marketing`, `data_harvester` |
+| Declared identities | `search_engine`, `social_preview`, `archiver`, `ads`, `ai_crawler`, `seo_marketing`, `data_harvester`, `ai_user`, `web_tool` |
 | Behavioural | `browser`, `app`, `crawler`, `scraper`, `vuln_scanner`, `monitor`, `feed_reader`, `spam_bot` |
 | Browser costume | `spoofed_browser` |
 | Forged identity | `impersonator` |
@@ -528,9 +529,9 @@ datacenter nudge on `browser`) opt in to receive it.
 ### 2.2 The classifiers
 
 #### Declared-identity kinds
-*Kinds: `search_engine`, `social_preview`, `archiver`, `ai_crawler`,
-`seo_marketing`, `data_harvester`.*
-All six share one mechanism (a common base class). A token in the User-Agent is
+*Kinds: `search_engine`, `social_preview`, `archiver`, `ads`, `ai_crawler`,
+`seo_marketing`, `data_harvester`, `ai_user`, `web_tool`.*
+All of them share one mechanism (a common base class). A token in the User-Agent is
 matched against that kind's curated data list; failing that, the origin AS number
 is matched against the same operator's network (for operators that crawl behind
 spoofed browser UAs, the constant is the network, not the UA). A UA match takes a
@@ -545,6 +546,24 @@ the `checked-robots` fact is the robots bonus here; the resulting client is a
 *Tuning:* [`known_bot.toml`](agent_census/data/tuning/known_bot.toml) (`[ua_match]`
 base and bonuses, `[asn_match]` base). The UA tokens and AS lists themselves are
 data, not tuning — under `data/agents/`.
+
+Three of these kinds are defined by what the fetch is *for*, not by who sends it, so one
+operator's agents can fall in different kinds:
+
+- **`ads`** — an ad platform checking the landing pages advertisers submit, or matching ads
+  to a publisher's content (AdsBot-Google, AdIdxBot, OAI-AdsBot, Mediapartners-Google).
+  Neither search nor training.
+- **`ai_user`** — an AI assistant fetching a page at a person's request (ChatGPT-User,
+  Claude-User, Google-Agent).
+- **`web_tool`** — a hosted tool fetching a page while a person uses it: read-aloud,
+  translation, a calendar subscription, or a site owner's verification or submission. It
+  runs on the provider's servers; `app` is software on the person's own machine.
+
+`ai_user` and `web_tool` are in the report's Human-like cluster because one person's action
+causes one fetch for that person; `social_preview` stays a utility bot because one share
+fans out to many cached fetches. Whether a person actually prompted a given request isn't
+observable, so both kinds rest on the operator's stated purpose for the token (the
+[`user-triggered`](#user-triggered) tag).
 
 #### `browser`
 Interactive browsers. Accumulates positive evidence and applies disqualifiers:
@@ -784,9 +803,11 @@ below_threshold(...):
 - Otherwise → **`unknown`**, the honest answer, never argued for by a classifier.
 
 **Winner and tie-break.** Above the threshold the primary is the highest
-aggregated confidence; ties break by a fixed priority order (`impersonator` first,
-through the declared and behavioural kinds, down to `spoofed_browser`,
-`automation`, and `unknown` last). Order otherwise has no effect on the outcome. A
+aggregated confidence; ties break by a fixed priority order (`impersonator` first, then
+`ads`, `ai_user` and `web_tool`, through the other declared and behavioural kinds, down to
+`spoofed_browser`, `automation`, and `unknown` last). The three that come first are the
+most specific tokens: AdIdxBot's UA ends in Bingbot's info URL, so it matches both, and
+`ads` must win. Order otherwise has no effect on the outcome. A
 `feed_reader` that also requested non-feed resources gains a `fetches-non-feeds`
 tag at this point.
 

@@ -67,6 +67,7 @@ user_triggered = true
 ua_substring = "Google-Agent"
 ranges_url = "https://developers.google.com/static/crawling/ipranges/user-triggered-agents.json"
 user_triggered = true
+wba_operator = "Google"
 
 [[agent]]
 # https://docs.perplexity.ai/docs/resources/perplexity-crawlers
@@ -166,10 +167,12 @@ ua_substring = "SemanticScholarBot"
 # a specific URL; before AIWebIndex, which would otherwise match it.
 ua_substring = "AIWebIndex-Agent"
 user_triggered = true
+wba_operator = "Lyrenth"
 
 [[agent]]
 # https://www.lyrenth.com/bot
 ua_substring = "AIWebIndex"
+wba_operator = "Lyrenth"
 
 # Iframely's Processing agent does indexing, search and AI-assisted retrieval for its customers, and
 # the Training agent fetches for AI training where the publisher allows it. Its Preview agent is in
@@ -177,10 +180,12 @@ ua_substring = "AIWebIndex"
 [[agent]]
 # https://iframely.com/docs/about-processing
 ua_substring = "Iframely-Processing"
+wba_operator = "Iframely"
 
 [[agent]]
 # https://iframely.com/docs/about-training
 ua_substring = "Iframely-Training"
+wba_operator = "Iframely"
 
 # Recognised by origin AS number, not a User-Agent token: this network crawls
 # behind rotating spoofed-browser UAs (HeadlessChrome, old Chrome), so there is

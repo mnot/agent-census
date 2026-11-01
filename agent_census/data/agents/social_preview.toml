@@ -65,6 +65,7 @@ ranges = ["107.21.253.49", "54.204.20.249", "54.204.20.250", "54.221.198.105", "
 # https://iframely.com/docs/about -- the Preview Agent ("Iframely/<version>"). The "/" keeps the
 # Processing and Training agents, which are AI-related, out of this entry (see ai_crawler.toml).
 ua_substring = "Iframely/"
+wba_operator = "Iframely"
 
 [[agent]]
 ua_substring = "vkShare"

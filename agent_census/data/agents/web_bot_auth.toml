@@ -48,3 +48,38 @@ agent_urls = ["https://bot.duckduckgo.com"]
 keyids = [
     "5HvpfNA946z6lcCXEIOOpzlN5l0mdZE42jdqimEwPf8",
 ]
+
+# From here down: each operator's own key directory, plus the page that says it signs.
+# Lyrenth and Iframely don't state their Signature-Agent value, so agent_urls is the directory host.
+
+[[operator]]
+name = "Sogou"
+agent_urls = ["https://zhanzhang.sogou.com"]
+keyids = [
+    "Lf-EHBFr05hYw2HsOpih4LBK02QlBEk83-z6nKSs2N8",
+]
+
+[[operator]]
+name = "Lyrenth"
+agent_urls = ["https://api.lyrenth.com"]
+keyids = [
+    "fklKy4PQxv4fvWmHtz8oaNxWcYTklIP_kdN2cYE9Vg4",
+]
+
+[[operator]]
+name = "Iframely"
+agent_urls = ["https://iframely.com"]
+keyids = [
+    "EVBfOLCCVQu9Yky7cVG8KVoVV4upiYs8gEb0khC2hrI",
+]
+
+[[operator]]
+name = "Google"
+agent_urls = ["https://agent.bot.goog"]
+keyids = [
+    "_fmS_hfpckRfp1x7fDExtVKVaYtcu1WJX1Io5LIow24",
+    "cBovpyiY9PIQIFEfaw7w_0Wwwwx4UF2LY6w0lQURHBU",
+    "I10hzgxlf59i39kdp5Lib4Tfbg-FO4ZMwmAEDwG88bY",
+    "ImfgehCo9CQ0CTvJyuAY3dt6p5xMvJVutWoGpHtmVME",
+    "c8D-_KOv7e9F83sFV2aCQUY5EuDbEVp5_sN86S8bKTc",
+]

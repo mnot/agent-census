@@ -62,8 +62,12 @@ To get Web Bot Auth checking on Cloudflare logs, the Logpush job has to log the
 two settings: a `log_custom_field` rule in the zone's `http_log_custom_fields`
 phase whose `request_fields` name the headers (in lower case, as Cloudflare
 requires), and `RequestHeaders` in the job's output fields. Without both, signed
-requests aren't detected. `ClientRequestScheme` is used too, when logged, since a
-signature can cover `@scheme`.
+requests aren't detected. Verification also needs `ClientRequestHost`,
+`ClientRequestMethod` and `ClientRequestURI` (or `ClientRequestPath`) in the job,
+since the signature base is rebuilt from them; a signature covering a field the
+log lacks is reported as unverifiable. Add `ClientRequestScheme` too: without it
+the scheme is assumed to be `https`, and a signature that covers `@scheme` on a
+plain-HTTP request would fail.
 
 ### Options
 

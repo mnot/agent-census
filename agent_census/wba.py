@@ -112,7 +112,7 @@ class WbaClaim:
     agent_url: str | None  # operator/directory URL parsed from Signature-Agent
     authority: str | None  # @authority derived component (Host, lowercased)
     method: str | None  # @method derived component (upper-case)
-    path: str  # @path derived component
+    path: str | None  # @path derived component; None when the log carried no path
     scheme: str  # @scheme derived component (the logged scheme, else https)
     timestamp: float | None  # request time, for created/expires freshness
 
@@ -351,12 +351,30 @@ def claim_problem(extra: dict[str, str]) -> str | None:
     return None
 
 
+_DEFAULT_PORT = {"https": ":443", "http": ":80"}
+
+
+def _authority(host: str | None, scheme: str) -> str | None:
+    """``@authority`` for a logged Host: lower-cased, scheme's default port dropped.
+
+    RFC 9421 §2.2.3 normalises it per RFC 9110 §4.2.3, so ``example.com:443`` on
+    an https request is signed as ``example.com``.
+    """
+    if not host:
+        return None
+    authority = host.lower()
+    suffix = _DEFAULT_PORT[scheme]
+    if authority.endswith(suffix):
+        authority = authority[: -len(suffix)]
+    return authority or None
+
+
 def build_claim(
     extra: dict[str, str],
     *,
     host: str | None,
     method: str | None,
-    path: str,
+    path: str | None,
     timestamp: float | None,
     scheme: str | None = None,
 ) -> WbaClaim | None:
@@ -379,6 +397,7 @@ def build_claim(
     if label not in parse_signature(sig):
         return None  # signed for web-bot-auth but the Signature lacks that label
     agent_raw = extra.get(SIGNATURE_AGENT_HEADER)
+    scheme = scheme if scheme in _DEFAULT_PORT else "https"  # unlogged: assume https
     return WbaClaim(
         signature_input=sig_input,
         signature=sig,
@@ -386,10 +405,10 @@ def build_claim(
         label=label,
         params=params,
         agent_url=parse_signature_agent(agent_raw),
-        authority=host.lower() if host else None,
+        authority=_authority(host, scheme),
         method=method.upper() if method else None,
-        path=path,
-        scheme=scheme or "https",
+        path=path or None,  # "" means no request line was logged, not an empty @path
+        scheme=scheme,
         timestamp=timestamp,
     )
 

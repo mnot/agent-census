@@ -175,56 +175,102 @@ def test_scheme_is_read_and_validated() -> None:
     assert _parse({"ClientIP": "1.2.3.4"}).entry.scheme is None  # type: ignore[union-attr]
 
 
-def _signed_record(
-    priv: Ed25519PrivateKey, *, scheme: str | None, host: str = "Example.COM:8443"
+
+
+_COVERED = '("@authority" "@path" "@scheme")'
+
+
+def _record(
+    priv: Ed25519PrivateKey,
+    base_lines: str,
+    *,
+    host: str | None = "example.com",
+    scheme: str | None = None,
+    uri: str | None = "/a%20b?x=1",
+    covered: str = _COVERED,
 ) -> dict[str, Any]:
-    """A Cloudflare record whose signature covers @authority, @path and @scheme."""
-    sig_input = (
-        'sig=("@authority" "@path" "@scheme");created=1000;keyid="k";alg="ed25519";'
-        'expires=2000;tag="web-bot-auth"'
-    )
+    """A Cloudflare record signed over a base written out by hand (RFC 9421 §2.5).
+
+    The base is spelled out in each test rather than built with ``wba``, so a
+    wrong rendering of @authority, @path or @scheme can't cancel out.
+    """
+    params = f'{covered};created=1000;keyid="k";alg="ed25519";expires=2000;tag="web-bot-auth"'
+    base = f'{base_lines}\n"@signature-params": {params}'
+    sig = base64.b64encode(priv.sign(base.encode("utf-8"))).decode("ascii")
     record: dict[str, Any] = {
         "ClientIP": "203.0.113.5",
         "ClientRequestMethod": "GET",
-        "ClientRequestURI": "/a%20b?x=1",
-        "ClientRequestHost": host,
         "EdgeStartTimestamp": 1500,
-        "RequestHeaders": {"signature-input": sig_input, "signature": "sig=:AA==:"},
+        "RequestHeaders": {"signature-input": f"sig={params}", "signature": f"sig=:{sig}:"},
     }
-    if scheme is not None:
-        record["ClientRequestScheme"] = scheme
-    claim = _claim_from(record)
-    base, problem = wba.build_signature_base(claim)
-    assert base is not None, problem
-    signature = base64.b64encode(priv.sign(base.encode("utf-8"))).decode("ascii")
-    record["RequestHeaders"]["signature"] = f"sig=:{signature}:"
+    for key, value in (
+        ("ClientRequestHost", host),
+        ("ClientRequestScheme", scheme),
+        ("ClientRequestURI", uri),
+    ):
+        if value is not None:
+            record[key] = value
     return record
 
 
-def _claim_from(record: dict[str, Any]) -> wba.WbaClaim:
+def _status(record: dict[str, Any], priv: Ed25519PrivateKey) -> WbaStatus:
     entry = _parse(record).entry
-    assert entry is not None and entry.timestamp is not None
+    assert entry is not None
     acc = FeatureAccumulator()
     acc.add(entry)
     assert acc.wba_claims, "no claim built from the record"
-    return acc.wba_claims[0]
+    return wba.verify_claim(acc.wba_claims[0], priv.public_key())[0]
 
 
-def test_signed_cloudflare_record_verifies_through_features() -> None:
+_BASE_HTTPS = '"@authority": example.com\n"@path": /a%20b\n"@scheme": https'
+_BASE_HTTP = '"@authority": example.com\n"@path": /a%20b\n"@scheme": http'
+
+
+def test_signed_record_verifies_with_logged_scheme() -> None:
     priv = Ed25519PrivateKey.generate()
-    # Plain-HTTP request, signed over @scheme; host carries a port and upper case.
-    claim = _claim_from(_signed_record(priv, scheme="http"))
-    assert claim.scheme == "http" and claim.authority == "example.com:8443"
-    status, _ = wba.verify_claim(claim, priv.public_key())
-    assert status is WbaStatus.VERIFIED
+    record = _record(priv, _BASE_HTTP, scheme="http")
+    assert _status(record, priv) is WbaStatus.VERIFIED
 
 
-def test_unlogged_scheme_assumes_https() -> None:
+def test_unlogged_scheme_is_assumed_https() -> None:
     priv = Ed25519PrivateKey.generate()
-    claim = _claim_from(_signed_record(priv, scheme="https"))
-    status, _ = wba.verify_claim(claim, priv.public_key())
-    assert status is WbaStatus.VERIFIED
-    # Same signed bytes with the scheme dropped from the log still read as https.
-    record = _signed_record(priv, scheme="https")
-    del record["ClientRequestScheme"]
-    assert _claim_from(record).scheme == "https"
+    assert _status(_record(priv, _BASE_HTTPS), priv) is WbaStatus.VERIFIED
+    # The documented limit: a plain-HTTP signature with no scheme logged can't match.
+    assert _status(_record(priv, _BASE_HTTP), priv) is WbaStatus.FORGED
+
+
+def test_authority_is_lowercased_and_default_port_dropped() -> None:
+    priv = Ed25519PrivateKey.generate()
+    https = _record(priv, _BASE_HTTPS, host="Example.COM:443", scheme="https")
+    assert _status(https, priv) is WbaStatus.VERIFIED
+    http = _record(priv, _BASE_HTTP, host="EXAMPLE.com:80", scheme="http")
+    assert _status(http, priv) is WbaStatus.VERIFIED
+    # :80 is not the default for https, so it stays in the authority.
+    other = '"@authority": example.com:80\n"@path": /a%20b\n"@scheme": https'
+    assert _status(_record(priv, other, host="example.com:80"), priv) is WbaStatus.VERIFIED
+
+
+def test_non_default_port_is_kept() -> None:
+    priv = Ed25519PrivateKey.generate()
+    base = '"@authority": example.com:8443\n"@path": /a%20b\n"@scheme": https'
+    assert _status(_record(priv, base, host="example.com:8443"), priv) is WbaStatus.VERIFIED
+
+
+def test_missing_path_is_unverifiable_not_forged() -> None:
+    priv = Ed25519PrivateKey.generate()
+    record = _record(priv, _BASE_HTTPS, uri=None)
+    assert _status(record, priv) is WbaStatus.UNVERIFIABLE
+    # The same record with the URI logged verifies, so the signature itself is sound.
+    assert _status(_record(priv, _BASE_HTTPS), priv) is WbaStatus.VERIFIED
+
+
+def test_missing_host_is_unverifiable_not_forged() -> None:
+    priv = Ed25519PrivateKey.generate()
+    assert _status(_record(priv, _BASE_HTTPS, host=None), priv) is WbaStatus.UNVERIFIABLE
+
+
+def test_uncovered_path_is_not_needed() -> None:
+    priv = Ed25519PrivateKey.generate()
+    base = '"@authority": example.com'
+    record = _record(priv, base, uri=None, covered='("@authority")')
+    assert _status(record, priv) is WbaStatus.VERIFIED

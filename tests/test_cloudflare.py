@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from agent_census import wba
 from agent_census.features import extract_features
 from agent_census.parsing import resolve
 from agent_census.parsing.base import ParseOutcome
@@ -83,3 +84,59 @@ def test_missing_fields_default_safely() -> None:
     entry = out.entry
     assert entry is not None
     assert entry.remote_host == "-" and entry.method is None and entry.path == ""
+
+
+_SIG_INPUT = 'sig=("@authority" "signature-agent");created=1782543550;keyid="k";tag="web-bot-auth"'
+_SIG = "sig=:aGVsbG8=:"
+_SIG_AGENT = '"https://ahrefs.com"'
+
+
+def test_request_headers_feed_web_bot_auth() -> None:
+    out = _parse(
+        {
+            "ClientIP": "203.0.113.5",
+            "ClientRequestMethod": "GET",
+            "ClientRequestURI": "/",
+            "ClientRequestHost": "redbot.org",
+            "EdgeStartTimestamp": "2026-06-27T07:19:10Z",
+            # Logpush lower-cases names; matching must not depend on it.
+            "RequestHeaders": {
+                "signature-input": _SIG_INPUT,
+                "Signature": _SIG,
+                "SIGNATURE-AGENT": _SIG_AGENT,
+                "accept": "*/*",
+            },
+        }
+    )
+    entry = out.entry
+    assert entry is not None
+    assert entry.extra[wba.SIGNATURE_INPUT_HEADER] == _SIG_INPUT
+    assert entry.extra[wba.SIGNATURE_HEADER] == _SIG
+    assert entry.extra[wba.SIGNATURE_AGENT_HEADER] == _SIG_AGENT
+    assert "accept" not in entry.extra  # only the headers wba reads are kept
+    claim = wba.build_claim(
+        entry.extra,
+        host=entry.host_header,
+        method=entry.method,
+        path=entry.path,
+        timestamp=None,
+    )
+    assert claim is not None
+    assert claim.agent_url == "https://ahrefs.com" and claim.authority == "redbot.org"
+
+
+def test_request_header_field_lines_are_joined() -> None:
+    out = _parse(
+        {"ClientIP": "1.2.3.4", "RequestHeaders": {"signature-input": ["a=1", "b=2"]}}
+    )
+    assert out.entry is not None
+    assert out.entry.extra[wba.SIGNATURE_INPUT_HEADER] == "a=1, b=2"
+
+
+def test_missing_or_malformed_request_headers_add_nothing() -> None:
+    for headers in (None, "x", [], {"signature": 5}, {"signature": ""}, {"accept": "*/*"}):
+        record: dict[str, Any] = {"ClientIP": "1.2.3.4", "ClientASN": 15169}
+        if headers is not None:
+            record["RequestHeaders"] = headers
+        out = _parse(record)
+        assert out.entry is not None and out.entry.extra == {"ClientASN": "15169"}

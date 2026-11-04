@@ -113,7 +113,7 @@ class WbaClaim:
     authority: str | None  # @authority derived component (Host, lowercased)
     method: str | None  # @method derived component (upper-case)
     path: str  # @path derived component
-    scheme: str  # @scheme derived component (always https for a logged request)
+    scheme: str  # @scheme derived component (the logged scheme, else https)
     timestamp: float | None  # request time, for created/expires freshness
 
 
@@ -358,6 +358,7 @@ def build_claim(
     method: str | None,
     path: str,
     timestamp: float | None,
+    scheme: str | None = None,
 ) -> WbaClaim | None:
     """Build a :class:`WbaClaim` from one request's logged fields, or ``None``.
 
@@ -388,7 +389,7 @@ def build_claim(
         authority=host.lower() if host else None,
         method=method.upper() if method else None,
         path=path,
-        scheme="https",
+        scheme=scheme or "https",
         timestamp=timestamp,
     )
 

@@ -57,9 +57,13 @@ preset:
 agent-census analyze cloudflare-logs.json --log-format-preset cloudflare
 ```
 
-To get Web Bot Auth checking on Cloudflare logs, have the Logpush job log the
-`Signature-Input`, `Signature` and `Signature-Agent` request headers (a custom
-field, emitted as `RequestHeaders`). Without them signed requests aren't detected.
+To get Web Bot Auth checking on Cloudflare logs, the Logpush job has to log the
+`Signature-Input`, `Signature` and `Signature-Agent` request headers. That takes
+two settings: a `log_custom_field` rule in the zone's `http_log_custom_fields`
+phase whose `request_fields` name the headers (in lower case, as Cloudflare
+requires), and `RequestHeaders` in the job's output fields. Without both, signed
+requests aren't detected. `ClientRequestScheme` is used too, when logged, since a
+signature can cover `@scheme`.
 
 ### Options
 

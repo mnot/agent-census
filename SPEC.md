@@ -421,9 +421,13 @@ flags layered on when present: `wba-mixed` (some of the client's signatures
 verified and some did not), `wba-replay` (a nonce also seen from a different
 origin — a captured signature replayed), and `wba-nonce-reuse` (a nonce reused
 across the client's own requests). A request with no signature emits nothing.
-The signature base is rebuilt from the logged host, method and path, and from the
-logged scheme where the format records one (Cloudflare's `ClientRequestScheme`),
-else `https`, so a signature covering `@scheme` verifies for a plain-HTTP request.
+The signature base is rebuilt from the logged host, method, path and scheme. The
+host is lower-cased with the scheme's default port dropped, as RFC 9421 requires.
+A component the log didn't carry (host, method or path) makes a signature that
+covers it `unverifiable`, never a forgery. The scheme comes from the log where the
+format records one (Cloudflare's `ClientRequestScheme`) and is otherwise assumed
+`https`, so a signature covering `@scheme` on a plain-HTTP request verifies only
+where the scheme is logged; elsewhere it reads as a forgery.
 `wba-unverified` records *why* the key was unavailable (`WbaResult.key_failure`):
 `not-listed` (directory read fine, key absent), `fetch-failed`, `bad-directory`,
 `offline` or `no-agent`. Only `not-listed` suggests rotation, and only when the

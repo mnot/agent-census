@@ -92,6 +92,9 @@ class LogEntry:
     user_agent: str | None = None
     host_header: str | None = None
 
+    # the request's URL scheme ("http"/"https"), where the format records it
+    scheme: str | None = None
+
     # anything else the format captured (%{Foo}i/%{Foo}o/cookies/notes)
     extra: dict[str, str] = field(default_factory=dict)
 

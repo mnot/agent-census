@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import base64
 import json
 from typing import Any
 
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
 from agent_census import wba
-from agent_census.features import extract_features
+from agent_census.features import FeatureAccumulator, extract_features
 from agent_census.parsing import resolve
+from agent_census.model import WbaStatus
 from agent_census.parsing.base import ParseOutcome
 
 
@@ -140,3 +144,87 @@ def test_missing_or_malformed_request_headers_add_nothing() -> None:
             record["RequestHeaders"] = headers
         out = _parse(record)
         assert out.entry is not None and out.entry.extra == {"ClientASN": "15169"}
+
+
+def test_lone_surrogates_are_replaced_not_left_to_crash_later() -> None:
+    # JSON "\ud800" decodes to a lone surrogate, which can't be UTF-8 encoded.
+    out = _parse(
+        '{"ClientIP": "1.2.3.4", "ClientRequestURI": "/a\\ud800?q=\\udfff",'
+        ' "ClientRequestUserAgent": "bot\\ud800",'
+        ' "RequestHeaders": {"signature-input": "x\\ud800", "signature-agent": ["a\\udc00"]}}'
+    )
+    entry = out.entry
+    assert entry is not None
+    texts = [entry.path, entry.query, entry.user_agent, *entry.extra.values()]
+    for text in texts:
+        assert isinstance(text, str)
+        text.encode("utf-8")  # must not raise
+    assert entry.path == "/a�" and entry.user_agent == "bot�"
+
+
+def test_empty_header_values_are_dropped_alike() -> None:
+    for value in ("", [""], []):
+        out = _parse({"ClientIP": "1.2.3.4", "RequestHeaders": {"signature-input": value}})
+        assert out.entry is not None and wba.SIGNATURE_INPUT_HEADER not in out.entry.extra
+
+
+def test_scheme_is_read_and_validated() -> None:
+    for raw, expected in (("http", "http"), ("HTTPS", "https"), ("ws", None), (5, None)):
+        out = _parse({"ClientIP": "1.2.3.4", "ClientRequestScheme": raw})
+        assert out.entry is not None and out.entry.scheme == expected
+    assert _parse({"ClientIP": "1.2.3.4"}).entry.scheme is None  # type: ignore[union-attr]
+
+
+def _signed_record(
+    priv: Ed25519PrivateKey, *, scheme: str | None, host: str = "Example.COM:8443"
+) -> dict[str, Any]:
+    """A Cloudflare record whose signature covers @authority, @path and @scheme."""
+    sig_input = (
+        'sig=("@authority" "@path" "@scheme");created=1000;keyid="k";alg="ed25519";'
+        'expires=2000;tag="web-bot-auth"'
+    )
+    record: dict[str, Any] = {
+        "ClientIP": "203.0.113.5",
+        "ClientRequestMethod": "GET",
+        "ClientRequestURI": "/a%20b?x=1",
+        "ClientRequestHost": host,
+        "EdgeStartTimestamp": 1500,
+        "RequestHeaders": {"signature-input": sig_input, "signature": "sig=:AA==:"},
+    }
+    if scheme is not None:
+        record["ClientRequestScheme"] = scheme
+    claim = _claim_from(record)
+    base, problem = wba.build_signature_base(claim)
+    assert base is not None, problem
+    signature = base64.b64encode(priv.sign(base.encode("utf-8"))).decode("ascii")
+    record["RequestHeaders"]["signature"] = f"sig=:{signature}:"
+    return record
+
+
+def _claim_from(record: dict[str, Any]) -> wba.WbaClaim:
+    entry = _parse(record).entry
+    assert entry is not None and entry.timestamp is not None
+    acc = FeatureAccumulator()
+    acc.add(entry)
+    assert acc.wba_claims, "no claim built from the record"
+    return acc.wba_claims[0]
+
+
+def test_signed_cloudflare_record_verifies_through_features() -> None:
+    priv = Ed25519PrivateKey.generate()
+    # Plain-HTTP request, signed over @scheme; host carries a port and upper case.
+    claim = _claim_from(_signed_record(priv, scheme="http"))
+    assert claim.scheme == "http" and claim.authority == "example.com:8443"
+    status, _ = wba.verify_claim(claim, priv.public_key())
+    assert status is WbaStatus.VERIFIED
+
+
+def test_unlogged_scheme_assumes_https() -> None:
+    priv = Ed25519PrivateKey.generate()
+    claim = _claim_from(_signed_record(priv, scheme="https"))
+    status, _ = wba.verify_claim(claim, priv.public_key())
+    assert status is WbaStatus.VERIFIED
+    # Same signed bytes with the scheme dropped from the log still read as https.
+    record = _signed_record(priv, scheme="https")
+    del record["ClientRequestScheme"]
+    assert _claim_from(record).scheme == "https"

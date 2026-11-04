@@ -25,10 +25,20 @@ from .base import LogParser, ParseOutcome
 from .registry import register
 
 _SUBMICRO = re.compile(r"(\.\d{6})\d+")  # fromisoformat rejects >6 fractional digits
+_SURROGATES = re.compile("[\ud800-\udfff]")
+
+
+def _clean(text: str) -> str:
+    """Replace lone surrogates (JSON ``\\ud800`` escapes decode to them).
+
+    They're valid ``str`` but can't be UTF-8 encoded, so left in they abort the run
+    in whatever later hashes or encodes the value.
+    """
+    return _SURROGATES.sub("�", text)
 
 
 def _str(value: object) -> str | None:
-    return value if isinstance(value, str) else None
+    return _clean(value) if isinstance(value, str) else None
 
 
 def _int(value: object) -> int | None:
@@ -58,13 +68,17 @@ def _parse_timestamp(value: object) -> datetime | None:
         return None
 
 
+def _scheme(value: object) -> str | None:
+    """``http`` or ``https`` (case-insensitive); anything else is treated as unlogged."""
+    scheme = value.lower() if isinstance(value, str) else None
+    return scheme if scheme in ("http", "https") else None
+
+
 def _header_value(value: object) -> str | None:
     """A logged header value: a string, or a list of field lines joined per RFC 9110."""
-    if isinstance(value, str):
-        return value or None
-    if isinstance(value, list) and value and all(isinstance(v, str) for v in value):
-        return ", ".join(value)
-    return None
+    if isinstance(value, list) and all(isinstance(v, str) for v in value):
+        value = ", ".join(value)
+    return _clean(value) or None if isinstance(value, str) else None
 
 
 def _web_bot_auth_headers(record: Mapping[str, object]) -> dict[str, str]:
@@ -91,8 +105,8 @@ def _web_bot_auth_headers(record: Mapping[str, object]) -> dict[str, str]:
 
 
 def _to_entry(record: Mapping[str, object], line_no: int) -> LogEntry:
-    uri = record.get("ClientRequestURI")
-    if isinstance(uri, str):
+    uri = _str(record.get("ClientRequestURI"))
+    if uri is not None:
         path, sep, query = uri.partition("?")
     else:
         path, sep, query = _str(record.get("ClientRequestPath")) or "", "", ""
@@ -114,6 +128,7 @@ def _to_entry(record: Mapping[str, object], line_no: int) -> LogEntry:
         referer=_str(record.get("ClientRequestReferer")),
         user_agent=_str(record.get("ClientRequestUserAgent")),
         host_header=_str(record.get("ClientRequestHost")),
+        scheme=_scheme(record.get("ClientRequestScheme")),
         extra=extra,
     )
 

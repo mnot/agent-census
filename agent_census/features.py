@@ -419,6 +419,7 @@ class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
                 method=entry.method,
                 path=entry.path,
                 timestamp=entry.timestamp.timestamp() if entry.timestamp is not None else None,
+                scheme=entry.scheme,
             )
             if claim is not None:
                 if all(c.signature != claim.signature for c in self.wba_claims):

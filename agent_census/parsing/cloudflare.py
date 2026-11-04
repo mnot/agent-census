@@ -5,7 +5,9 @@ Each line is one JSON object using Cloudflare's field names (``ClientIP``,
 onto :class:`~agent_census.model.LogEntry`. ``ClientASN`` is carried through in
 ``extra`` so ASN-based detection works straight from the log -- no MaxMind, no
 range fetch. ``EdgeStartTimestamp`` is accepted as RFC3339 or a unix integer
-(seconds / millis / micros / nanos), since Logpush can emit either.
+(seconds / millis / micros / nanos), since Logpush can emit either. The Web Bot
+Auth headers (``Signature-Input``, ``Signature``, ``Signature-Agent``) are read from
+the ``RequestHeaders`` custom field when the job logs them.
 
 Unlike Apache, the schema is fixed, so this parser takes no options.
 """
@@ -18,6 +20,7 @@ from collections.abc import Iterator, Mapping
 from datetime import datetime, timezone
 
 from ..model import LogEntry
+from ..wba import SIGNATURE_AGENT_HEADER, SIGNATURE_HEADER, SIGNATURE_INPUT_HEADER
 from .base import LogParser, ParseOutcome
 from .registry import register
 
@@ -55,6 +58,38 @@ def _parse_timestamp(value: object) -> datetime | None:
         return None
 
 
+def _header_value(value: object) -> str | None:
+    """A logged header value: a string, or a list of field lines joined per RFC 9110."""
+    if isinstance(value, str):
+        return value or None
+    if isinstance(value, list) and value and all(isinstance(v, str) for v in value):
+        return ", ".join(value)
+    return None
+
+
+def _web_bot_auth_headers(record: Mapping[str, object]) -> dict[str, str]:
+    """The Web Bot Auth request headers from the ``RequestHeaders`` custom field.
+
+    Logpush emits the request headers a job is configured to log as an object keyed
+    by header name; names are matched case-insensitively and stored under the
+    canonical names ``wba`` reads from ``LogEntry.extra``.
+    """
+    headers = record.get("RequestHeaders")
+    if not isinstance(headers, dict):
+        return {}
+    wanted = {
+        name.lower(): name
+        for name in (SIGNATURE_INPUT_HEADER, SIGNATURE_HEADER, SIGNATURE_AGENT_HEADER)
+    }
+    found: dict[str, str] = {}
+    for key, raw in headers.items():
+        canonical = wanted.get(key.lower()) if isinstance(key, str) else None
+        value = _header_value(raw)
+        if canonical is not None and value is not None:
+            found[canonical] = value
+    return found
+
+
 def _to_entry(record: Mapping[str, object], line_no: int) -> LogEntry:
     uri = record.get("ClientRequestURI")
     if isinstance(uri, str):
@@ -65,6 +100,7 @@ def _to_entry(record: Mapping[str, object], line_no: int) -> LogEntry:
     asn = _int(record.get("ClientASN"))
     if asn:  # the key contains "asn", so features read it as the AS number
         extra["ClientASN"] = str(asn)
+    extra.update(_web_bot_auth_headers(record))
     return LogEntry(
         line_no=line_no,
         remote_host=_str(record.get("ClientIP")) or "-",

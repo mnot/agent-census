@@ -1,0 +1,111 @@
+# Social-preview / link-unfurl fetchers: fetch a URL once to build the rich
+# preview card shown when a link is shared in a chat or post.
+
+[[agent]]
+# https://developers.facebook.com/docs/sharing/webmasters/web-crawlers/
+ua_substring = "facebookexternalhit"
+
+[[agent]]
+# X's live docs are gone; the AS number and the rDNS domains are from the archived Cards
+# troubleshooting page (developer.x.com/en/docs/x-for-websites/cards/guides/troubleshooting-cards).
+ua_substring = "Twitterbot"
+domains = ["twitter.com", "twttr.com"]
+asns = [13414]
+
+[[agent]]
+ua_substring = "LinkedInBot"
+
+[[agent]]
+# https://api.slack.com/robots
+ua_substring = "Slackbot"
+
+[[agent]]
+ua_substring = "Slackbot-LinkExpanding"
+
+[[agent]]
+ua_substring = "Slack-ImgProxy"
+
+[[agent]]
+# https://support.discord.com/hc/en-us/articles/42500550752919-About-Discord-Link-Previews-and-the-Discordbot
+ua_substring = "Discordbot"
+ranges_url = "https://cdn.discordapp.com/ipranges/discord.json"
+
+[[agent]]
+# https://developers.google.com/crawling/docs/crawlers-fetchers/google-user-triggered-fetchers
+ua_substring = "GoogleMessages"
+user_triggered = true
+
+[[agent]]
+ua_substring = "WhatsApp"
+
+[[agent]]
+ua_substring = "Lemmy"
+
+[[agent]]
+ua_substring = "TelegramBot"
+
+[[agent]]
+# https://help.pinterest.com/en/business/article/pinterestbot
+ua_substring = "Pinterestbot"
+domains = ["pinterest.com", "pinterestcrawler.com"]
+
+[[agent]]
+# The page also documents a UA with no "Pinterestbot" in it. The version is kept in the
+# token because bare "Pinterest/" is broad enough to catch non-crawler UAs.
+ua_substring = "Pinterest/0.2"
+domains = ["pinterest.com", "pinterestcrawler.com"]
+
+[[agent]]
+ua_substring = "redditbot"
+
+[[agent]]
+# https://docs.embed.ly/reference/faq
+ua_substring = "Embedly"
+ranges = ["107.21.253.49", "54.204.20.249", "54.204.20.250", "54.221.198.105", "54.221.199.147", "54.225.104.196", "2600:1f18:100d:9f00::/52"]
+
+[[agent]]
+# https://iframely.com/docs/about -- the Preview Agent ("Iframely/<version>"). The "/" keeps the
+# Processing and Training agents, which are AI-related, out of this entry (see ai_crawler.toml).
+ua_substring = "Iframely/"
+domains = ["iframely.com"]
+ranges_url = ["https://iframely.com/ips-v4", "https://iframely.com/ips-v6"]
+format = "text"
+rdns_fallback = true
+wba_operator = "Iframely"
+
+[[agent]]
+ua_substring = "vkShare"
+
+[[agent]]
+ua_substring = "HatenaBookmark"
+
+[[agent]]
+ua_substring = "Mastodon"
+
+[[agent]]
+ua_substring = "Mattermost-Bot"
+
+[[agent]]
+ua_substring = "Pleroma"
+
+[[agent]]
+# https://akkoma.dev/AkkomaGang/akkoma/src/branch/develop/lib/pleroma/application.ex
+# UA is "Akkoma <version>; <url> <email>".
+ua_substring = "Akkoma"
+
+[[agent]]
+# https://github.com/misskey-dev/misskey/blob/develop/packages/backend/src/config.ts
+# UA is "Misskey/<version> (<url>)"; forks such as Sharkey keep it.
+ua_substring = "Misskey/"
+
+[[agent]]
+# https://github.com/friendica/friendica/blob/develop/src/Network/HTTPClient/Client/HttpClient.php
+# UA is "Friendica/<version> DatabaseVersion/<n> Request/<type> +<url>".
+ua_substring = "Friendica/"
+
+[[agent]]
+ua_substring = "SummalyBot"
+
+[[agent]]
+# https://github.com/Lantern-chat
+ua_substring = "Lantern"

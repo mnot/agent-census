@@ -1,0 +1,107 @@
+# Thresholds used by more than one classifier or tag. They live here, once, so that
+# tuning "what counts as browser-like" or "what counts as a 404 storm" moves every
+# consumer together instead of drifting between private copies. A threshold only one
+# classifier uses stays in that classifier's own file; this file is strictly the
+# genuinely-shared ones.
+
+[verdict]
+# The confidence a kind must reach to win; below it the honest answer is UNKNOWN.
+# Also the level a clean browser-shaped client is floored to, so a brief visit still
+# clears the bar. (Used by the combiner and the browser classifier.)
+unknown_threshold = 0.45
+
+[browser_shape]
+# What counts as browser-like behaviour, defined once for the browser classifier,
+# the loads-assets / follows-links / no-assets / cold tags, the generic crawler and
+# scraper, and the reference-browser predicate that calibrates the relative tags.
+coload_ratio_min = 0.4   # at/above this share of pages co-load sub-resources: browser-like
+no_coload_max = 0.1      # below this: essentially no sub-resource co-loading
+# Minimum HTML pages before the co-load ratio is read as evidence. #115 set this to 3
+# because a *bare-temporal* co-load over one page was a coin flip; co-load is now
+# referer-linked (#109), so a single-page cascade means the page's sub-resources actually
+# referenced it -- real evidence -- and one-and-done page loads are a large, legitimate
+# share of sessions, so 1 is the right bar. (A feed-dominant client that also loaded one
+# browser page can tip to browser here; accepted as a rare, mixed-IP case.)
+coload_min_pages = 1
+follow_ratio_min = 0.3   # at/above this share follow on-site links: browser-like
+no_follow_max = 0.1      # below this: hits URLs cold, no on-site link-following
+
+[cadence]
+# Inter-arrival regularity (coefficient of variation) bands, shared by the browser
+# classifier and the metronomic / bursty / steady tags. Below `metronomic_max` is
+# clockwork automation; above `bursty_min` is human-irregular; between is steady.
+metronomic_max = 0.15
+bursty_min = 0.6
+
+[head_traffic]
+# A HEAD share above this is notable -- browsers issue GET, so it argues against a
+# browser and earns the uses-HEAD tag. (Feed readers and monitors set their own,
+# higher, HEAD thresholds in their files; this is the generic "notable" line.)
+notable_ratio = 0.1
+
+[fabricated_referer]
+# A Referer equal to the requested URL is impossible from real navigation. At or
+# above this share, with at least `min_requests` requests, it reads as faked organic
+# traffic -- caps the browser verdict and earns the forged-referer tag.
+self_referer_min = 0.5
+min_requests = 4
+
+[feed_traffic]
+# At/above this share of feed requests a client is a feed reader, not something else.
+# Shared because two classifiers must agree on it: feed_reader claims the client as
+# "dominant" here, and spoofed_browser excludes it here -- so the two never fire for the
+# same client. Reading one value keeps that non-overlap true by construction.
+dominant_ratio_min = 0.5
+
+[storm_404]
+# A 404 rate above `ratio_min` spread across at least `distinct_paths_min` distinct
+# missing paths is probing, not a few broken links. Used by the vuln-scanner
+# classifier and the 404-storm tag.
+ratio_min = 0.6
+distinct_paths_min = 15
+
+[forbidden]
+# The server refused at least `ratio_min` of a client's requests with 403, over at
+# least `min_requests` of them -- its own verdict that the client is unwelcome (a WAF
+# rule, hotlink protection, a blocklist). Shared by the often-forbidden tag and the
+# vuln-scanner classifier (which weighs it as corroboration), so the two stay in step.
+ratio_min = 0.5
+min_requests = 5
+
+[impossible_referer]
+# A same-site Referer naming the host form the site only ever redirects (never
+# renders) is impossible from a real browser. Gated on the site actually redirecting
+# one form to the other (see [redirect_gate]), this then requires a browser UA, no
+# feed activity, and the Referer on a real share of requests -- a lone hit could be a
+# quirky proxy / extension. Used by the impossible-referer tag and the combiner's
+# browser -> spoofed_browser conversion. Calibrated on live logs: the offending
+# clients are low-volume (so min_hits stays low), and a real browser essentially never
+# carries the redirect-only form on a fifth of its requests.
+ratio_min = 0.2
+min_hits = 2
+
+[redirect_gate]
+# Infer that the site 301s one host form to the other (www <-> apex) from observed
+# traffic rather than a hard-coded rule: within the dominant site's own traffic, the
+# share of its www.* requests (and, separately, its non-www requests) that returned a
+# 3xx. When exactly one side is at/above `gate_3xx_ratio` (with at least `min_requests`
+# requests to judge), that side is the redirect-only "shadow" and the impossible-
+# referer signal is armed for it. Scoped per site so a foreign vhost's redirects don't
+# arm it. Used by the pipeline.
+min_requests = 50
+gate_3xx_ratio = 0.9
+
+[no_cache_dominance]
+# When a no-cache client (never a 304) is re-fetching hard enough that "holds no browser
+# cache" is *dispositive* rather than merely notable: re-fetching dominates its traffic --
+# at least `cold_refetch_min` revisits making up at least `dominant_fraction` of requests --
+# or the volume alone passes `high_volume`. Shared because two classifiers must agree on it:
+# browser.py hard-disqualifies a browser verdict on exactly this condition (a soft penalty
+# below it), and spoofed_browser.py fires its no-cache tell on exactly this condition too --
+# so the "not a browser on cache grounds" line is drawn once. The broader
+# `ClientFeatures.holds_no_cache` (which also trips on modest re-fetching) is the *notable*
+# line; this is the *dispositive* one. A broad-path client that never caches but re-fetches
+# little (a heavy human session on a site with no validators) stays under it.
+cold_refetch_min = 20
+dominant_fraction = 0.5
+high_volume = 2000

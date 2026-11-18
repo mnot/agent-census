@@ -1,0 +1,16 @@
+# Known-bot tuning (see classify/known_bot.py). Search engines, AI crawlers, and
+# other declared agents are recognised by a UA token (or, failing that, by their
+# origin AS) and taken at face value; the combiner downgrades the claim to
+# `impersonator` if DNS / range verification later contradicts it.
+
+[ua_match]
+# A UA token names a known agent. The base confidence, plus small bonuses for polite
+# behaviour -- fetching /robots.txt and showing no vulnerability probing.
+base = 0.7
+robots_bonus = 0.08
+no_probing_bonus = 0.05
+
+[asn_match]
+# The UA doesn't name the agent but the origin AS does (operators that crawl behind
+# rotating, spoofed browser UAs). Lower than a UA match -- the AS is the only tell.
+base = 0.6

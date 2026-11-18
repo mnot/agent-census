@@ -1,0 +1,71 @@
+# Markers read off the request line -- path, query, and method -- during feature
+# extraction (see agent_census/features.py). Like the UA signatures, these are
+# descriptive: they decide what gets counted, and classifiers turn the counts into
+# verdicts. Editing a list changes what is counted; no code change is needed.
+# Path/query markers are matched case-insensitively as substrings.
+
+[static_assets]
+# Sub-resources a browser pulls in *after* a page: stylesheets, scripts, images,
+# fonts, media, data fetches. A high share of these is a browser tell -- a real
+# browser fetches a page and then its sub-resources; their absence is a tell the
+# client wants only documents.
+#
+# The response media type is preferred over the URL extension (see features._is_static):
+# a stylesheet served at /style with no .css is still text/css, and an XHR/fetch of
+# /data.json is a sub-resource. `media_types` are matched as a prefix of the logged
+# 200 Content-Type (so "image/" covers image/png, image/svg+xml, ...); `extensions` are
+# the fallback when the log carries no (200) Content-Type.
+media_types = [
+    "text/css", "text/javascript", "application/javascript", "application/json",
+    "application/pdf", "application/wasm",
+    "image/", "font/", "audio/", "video/", "application/font", "application/x-font",
+]
+extensions = [
+    "css", "js", "mjs",
+    "png", "jpg", "jpeg", "gif", "svg", "webp", "avif", "ico", "bmp",
+    "woff", "woff2", "ttf", "eot", "otf",
+    "map", "mp4", "webm", "mp3", "ogg", "wav", "pdf",
+]
+
+[pages]
+# What counts as an HTML page (the anchor for the co-load and breadth measurements),
+# rather than a sub-resource. Media type wins: a 200 whose Content-Type is text/html is
+# a page whatever its URL looks like; `extensions` (plus a trailing slash or an
+# extension-less path) are the fallback when no 200 Content-Type was logged.
+media_types = ["text/html", "application/xhtml+xml"]
+extensions = ["html", "htm", "xhtml", "php", "asp", "aspx", "jsp", "shtml", "cfm"]
+
+[chrome_assets]
+# Requests the browser makes on its own -- the tab favicon, the iOS home-screen icon --
+# not sub-resources embedded in and rendered from a page. They are static by extension
+# (.ico / .png) but must NOT count as a page co-load: ~18% of icon requests carry the
+# page as Referer, yet a favicon fetch is browser chrome, not evidence the page's content
+# was rendered, so crediting a cascade from one would let a costume that fetches
+# page + favicon look like a browser. Matched case-insensitively as a path substring.
+path_markers = ["favicon", "apple-touch-icon"]
+
+[path_traversal]
+# Substrings that mark a directory-traversal or path-injection attempt. A hit is
+# scored against the client as probing, not browsing.
+markers = ["../", "..%2f", "%2e%2e", "..\\", "%00", "/etc/passwd", "/proc/self"]
+
+[encoding_evasion]
+# Double- or overlong-encoded sequences. There is no legitimate reason to
+# double-encode a path, so these read as deliberate WAF evasion and weigh heavier
+# than plain traversal.
+markers = ["%252e", "%252f", "%255c", "%c0%ae", "%c0%af", "%u002e"]
+
+[methods]
+# HTTP methods a browser never issues on its own. Their presence points at a scanner
+# or scripted client -- WebDAV verbs, probing, tunnelling.
+uncommon = ["PUT", "DELETE", "PROPFIND", "PROPPATCH", "CONNECT", "TRACE", "PATCH", "MKCOL"]
+
+[feed_urls]
+# How a feed poll is spotted from the URL (the UA side lives in ua_signatures.toml).
+# A filename part equal to one of these tokens -- /blog/feed/, /index.rss, atom.xml
+# -- reads as a feed. Matched as a whole dot/dash/underscore-delimited part, so
+# "feedback.html" doesn't count.
+filename_tokens = ["feed", "rss", "atom"]
+# Whole feed filenames that carry no give-away token, a stopgap until response media
+# types are used more widely (many sites publish their feed at /index.xml).
+filenames = ["index.xml"]

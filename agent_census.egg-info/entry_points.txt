@@ -1,0 +1,2 @@
+[console_scripts]
+agent-census = agent_census.cli:main

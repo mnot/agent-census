@@ -1,0 +1,303 @@
+# Search-engine crawlers (index the site for search results).
+# One [[agent]] per crawler. ua_substring is matched case-insensitively against
+# the User-Agent. Optional: domains (reverse-DNS suffixes), ranges (CIDR blocks),
+# ranges_url (JSON of published ranges, fetched + cached under --verify-bots).
+
+# Google. The first matching token wins, so one that is a substring of another
+# (Googlebot in Googlebot-Image) comes after it.
+
+# Common crawlers: reverse DNS under googlebot.com, ranges in common-crawlers.json.
+# https://developers.google.com/crawling/docs/crawlers-fetchers/google-common-crawlers
+[[agent]]
+ua_substring = "Googlebot-Image"
+domains = ["googlebot.com"]
+ranges_url = "https://developers.google.com/static/crawling/ipranges/common-crawlers.json"
+
+[[agent]]
+ua_substring = "Googlebot-Video"
+domains = ["googlebot.com"]
+ranges_url = "https://developers.google.com/static/crawling/ipranges/common-crawlers.json"
+
+[[agent]]
+ua_substring = "Googlebot"
+domains = ["googlebot.com"]
+ranges_url = "https://developers.google.com/static/crawling/ipranges/common-crawlers.json"
+
+[[agent]]
+ua_substring = "Storebot-Google"
+domains = ["googlebot.com"]
+ranges_url = "https://developers.google.com/static/crawling/ipranges/common-crawlers.json"
+
+[[agent]]
+ua_substring = "Google-InspectionTool"
+domains = ["googlebot.com"]
+ranges_url = "https://developers.google.com/static/crawling/ipranges/common-crawlers.json"
+
+[[agent]]
+# Covers the GoogleOther-Image and GoogleOther-Video variants too.
+ua_substring = "GoogleOther"
+domains = ["googlebot.com"]
+ranges_url = "https://developers.google.com/static/crawling/ipranges/common-crawlers.json"
+
+# More of Google's special-case crawlers (the ad fetchers are in ads.toml): reverse DNS is
+# rate-limited-proxy-*.google.com, ranges in special-crawlers.json. The retired
+# DuplexWeb-Google and googleweblight are left out.
+# https://developers.google.com/crawling/docs/crawlers-fetchers/google-special-case-crawlers
+[[agent]]
+ua_substring = "APIs-Google"
+domains = ["google.com"]
+ranges_url = "https://developers.google.com/static/crawling/ipranges/special-crawlers.json"
+
+[[agent]]
+ua_substring = "Google-Safety"
+domains = ["google.com"]
+ranges_url = "https://developers.google.com/static/crawling/ipranges/special-crawlers.json"
+
+[[agent]]
+# https://developer.chrome.com/blog/private-prefetch-proxy/
+ua_substring = "Chrome Privacy Preserving Prefetch Proxy"
+
+# Bing. Only Bingbot and BingPreview verify against bingbot.json; Bing doesn't say whether
+# that feed covers its other crawlers, so those verify by reverse DNS alone. AdIdxBot, its
+# ad crawler, is in ads.toml.
+# https://www.bing.com/webmasters/help/which-crawlers-does-bing-use-8c184ec0
+[[agent]]
+ua_substring = "Bingbot"
+domains = ["search.msn.com"]
+ranges_url = "https://www.bing.com/toolbox/bingbot.json"
+
+[[agent]]
+# Bing's current BingPreview UAs match Bingbot's; this catches the legacy BingPreview/1.0b.
+ua_substring = "BingPreview"
+domains = ["search.msn.com"]
+ranges_url = "https://www.bing.com/toolbox/bingbot.json"
+
+[[agent]]
+ua_substring = "MicrosoftPreview"
+domains = ["search.msn.com"]
+
+[[agent]]
+ua_substring = "BingVideoPreview"
+domains = ["search.msn.com"]
+
+[[agent]]
+# http://help.yahoo.com/help/us/ysearch/slurp
+ua_substring = "Slurp"
+
+[[agent]]
+# https://duckduckgo.com/duckduckgo-help-pages/results/duckduckbot
+ua_substring = "DuckDuckBot"
+ranges_url = "https://duckduckgo.com/duckduckbot.json"
+wba_operator = "DuckDuckGo"
+
+[[agent]]
+# https://help.baidu.com/question?prod_id=99&class=0&id=3001
+ua_substring = "Baiduspider"
+domains = ["baidu.com", "baidu.jp"]
+
+[[agent]]
+# https://yandex.com/support/webmaster/en/robot-workings/check-yandex-robots
+ua_substring = "YandexBot"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexImages"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexBlogs"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexFavicons"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexMobileBot"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexMedia"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexOntoDB"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexRCA"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexRenderResourcesBot"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexVideo"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexAdditionalBot"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexComBot"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+# arguably not search
+[[agent]]
+ua_substring = "YandexImageResizer"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+# The remaining robots on Yandex's check page. YandexOntoDB and YandexVideo cover
+# YandexOntoDBAPI and YandexVideoParser. The advertising robots are in ads.toml; YandexUserproxy,
+# YandexCalendar and YandexSearchShop are in web_tool.toml.
+# https://yandex.com/support/webmaster/en/robot-workings/check-yandex-robots
+[[agent]]
+ua_substring = "YandexAccessibilityBot"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexCheckBot"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexFeed"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexMarket"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexMetrika"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexMobileScreenShotBot"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexPagechecker"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexScreenshotBot"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexSitelinks"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexSpravBot"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexTracker"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexVertis"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexVerticals"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexWebmaster"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexAdditional"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+# https://support.apple.com/en-us/119829
+ua_substring = "Applebot"
+domains = ["applebot.apple.com"]
+ranges_url = "https://search.developer.apple.com/applebot.json"
+
+[[agent]]
+# https://zhanzhang.sogou.com/index.php/help/spider documents only this token.
+ua_substring = "Sogou web spider"
+domains = ["sogou.com"]
+wba_operator = "Sogou"
+
+[[agent]]
+# https://o-seznam.cz/napoveda/vyhledavani/en/seznambot-crawler/
+ua_substring = "SeznamBot"
+domains = ["seznam.cz"]
+ranges_url = "https://search.seznam.cz/ipranges/seznambot.json"
+
+[[agent]]
+# https://webmaster.petalsearch.com/site/petalbot
+ua_substring = "PetalBot"
+domains = ["petalsearch.com"]
+
+[[agent]]
+# https://help.qwant.com/bot/
+ua_substring = "Qwantbot"
+domains = ["qwant.com"]
+ranges_url = "https://help.qwant.com/wp-content/uploads/sites/latest/qwantbot.json"
+
+[[agent]]
+# https://kagi.com/bot
+ua_substring = "Kagibot"
+domains = ["kagibot.org"]
+ranges = ["216.18.205.234", "35.212.27.76", "104.254.65.50", "209.151.156.194"]
+
+[[agent]]
+# https://www.mojeek.com/bot.html
+ua_substring = "MojeekBot"
+domains = ["mojeek.com"]
+ranges_url = "https://www.mojeek.com/mojeekbot.json"
+
+[[agent]]
+ua_substring = "coccocbot"
+domains = ["coccoc.com"]
+
+[[agent]]
+# https://bot.seekport.com
+ua_substring = "SeekportBot"
+ranges_url = "https://bot.seekport.com/seekportbot_ips.txt"
+format = "text"
+
+[[agent]]
+ua_substring = "YisouSpider"
+
+[[agent]]
+# https://github.com/mwmbl/mwmbl/
+ua_substring = "mwmbl"
+
+[[agent]]
+# https://docs.aws.amazon.com/kendra/latest/dg/stop-web-crawler.html
+ua_substring = "amazon-kendra"
+
+[[agent]]
+# https://developer.amazon.com/amazonbot
+ua_substring = "Amzn-SearchBot"
+ranges_url = "https://developer.amazon.com/amazonbot/searchbot-ip-addresses/"
+format = "amazon"
+
+[[agent]]
+# https://www.image-meta.com
+ua_substring = "ImageMetaBot"
+
+[[agent]]
+# https://beamosearch.com/
+ua_substring = "BeamoBot"
+
+[[agent]]
+# https://search.synapto.com.br
+ua_substring = "SynaptoRadarBot"
+
+[[agent]]
+# https://andiai.com/bot
+ua_substring = "Andi-SearchBot"
+
+[[agent]]
+# https://yacy.net/bot.html -- a peer-to-peer engine whose crawlers are run by its users, so
+# there are no IPs or reverse DNS to verify.
+ua_substring = "yacybot"

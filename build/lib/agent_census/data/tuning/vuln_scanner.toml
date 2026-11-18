@@ -1,0 +1,58 @@
+# Vulnerability / misconfiguration scanner tuning (see classify/vuln_scanner.py).
+# The signature: requests to known probe paths, a 404 storm across many distinct
+# missing paths, traversal / injection and encoding-evasion markers, unusual
+# methods, and a fast cadence. The 404-storm thresholds come from shared.toml.
+
+[scanner_ua]
+# The User-Agent names a scanning / pentest tool (see data/scanner_ua.toml).
+weight = 0.5
+
+[probe_paths]
+# Requests to known probe paths. A burst (`strong_min_hits`) or probes making up at
+# least `strong_ratio` of all traffic is a scanner (`strong_weight`); a lone probe
+# amid normal traffic is incidental (`incidental_weight`).
+strong_min_hits = 3
+strong_ratio = 0.5
+strong_weight = 0.45
+incidental_weight = 0.2
+
+[storm_404]
+# A 404 storm (thresholds from shared.toml storm_404): probing for paths that aren't
+# there, not a few broken links.
+weight = 0.3
+
+[forbidden]
+# The server refusing a sustained share of the client's requests with 403 -- its own
+# hostility verdict (threshold shared with the often-forbidden tag, shared.toml
+# forbidden). Corroboration, not proof of probing: a 403 can be a benign hotlink / WAF
+# block, so it sits below the direct probe tells and can't fire the scanner alone.
+# At 0.3 (the storm-404 tier) it tips a client that also shows one real hostile tell
+# (a traversal marker, a probe) over the bar, but 403 + only a weak tell -- or 403
+# alone -- stays under it.
+#
+# The minimum tipping case is a knife-edge: 0.3 (this) + 0.15 (a single traversal
+# marker) is 0.44999… in IEEE double, just under the 0.45 bar. It fires because the
+# combiner rounds each signal's confidence to round_digits before the >= compare -- a
+# deliberate mechanism (combiner.py cites this exact 0.3 + 0.15 case). So don't "tidy"
+# this weight or round_digits without re-checking that boundary; the guard is
+# tests/test_classify.py::test_forbidden_heavy_tips_a_client_with_a_hostile_tell.
+weight = 0.3
+
+[traversal]
+# Any path-traversal / injection marker in a request.
+weight = 0.15
+
+[encoding_evasion]
+# Double / overlong percent-encoding -- no legitimate use, so weighted above plain
+# traversal.
+weight = 0.25
+
+[exotic_method]
+# Any request using an unusual method (PUT / DELETE / PROPFIND / CONNECT …).
+weight = 0.1
+
+[fast_cadence]
+# A fast median inter-arrival time over enough requests to judge it.
+median_max = 0.5
+min_requests = 5
+weight = 0.1

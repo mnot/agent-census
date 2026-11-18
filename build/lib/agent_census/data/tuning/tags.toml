@@ -1,0 +1,38 @@
+# Secondary-tag tuning (see classify/tags.py). Tags are descriptors layered on top
+# of the primary kind -- they don't compete with it. Only the tags' *own* thresholds
+# live here; the ones shared with the classifiers (cadence bands, browser-shape
+# cutoffs, notable-HEAD, fabricated-referer, 404 storm) live in shared.toml, so a
+# tag and the classifier that reasons about the same signal stay in step.
+
+[cadence]
+# A client needs at least this many requests before its timing regularity is judged
+# (the metronomic / bursty / steady tags). The band edges are in shared.toml.
+min_requests = 5
+
+[link_following]
+# The follows-links / cold tags need at least this many requests, and some request
+# carrying a Referer, before on-site link-following is judged. Cutoffs in shared.toml.
+min_requests = 4
+
+[probe_paths]
+# The probe-paths tag fires on a burst of known-probe hits, or probes making up a
+# meaningful share of traffic -- so a broad crawler grazing a few attack-shaped URLs
+# over tens of thousands of requests isn't mistaken for a scan.
+min_hits = 3
+min_ratio = 0.05
+
+[post_heavy]
+# The post-heavy tag: POST is more than `ratio_min` of at least `min_requests`
+# requests.
+ratio_min = 0.5
+min_requests = 5
+
+[fake_browser]
+# A browser-shaped UA showing none of a browser's behaviour is judged a costume only
+# once it has made at least this many requests (one reveals nothing either way).
+min_requests = 2
+
+[ua_rotation]
+# This many distinct User-Agents on one IP reads as rotation -- evasive from a
+# hosting IP / browser costume, or a benign shared egress (NAT / VPN / proxy).
+distinct_ua_min = 4

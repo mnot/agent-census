@@ -1,0 +1,17 @@
+maxminddb>=2
+http-sf>=1.3
+cryptography>=43
+
+[:python_version < "3.11"]
+tomli
+
+[dev]
+mypy
+black
+isort
+pylint
+pytest
+pytest-md
+validate-pyproject
+build
+tomli

@@ -1,0 +1,305 @@
+# IP ranges belonging to datacenter / cloud hosting providers.
+#
+# A client arriving from one of these ranges while presenting a desktop-browser
+# User-Agent is almost certainly automation in disguise, not a person -- see the
+# `datacenter` tag and the `spoofed_browser` kind.
+#
+# Each [[source]] is one provider. `ranges` are inline CIDRs, always used and
+# requiring no network. `ranges_url` points at a provider's published list,
+# fetched (and cached for a week) by default; `--no-fetch-ranges` skips fetching,
+# leaving only whatever inline `ranges` are present (currently none -- detection
+# is feed-based). `format` says how to parse the URL (prefixes | aws | azure |
+# text | csv | subnets | oracle | ripestat -- see iprange.extract_cidrs). A
+# source may carry both: inline `ranges` then act as an offline fallback.
+#
+# `asns` lists the provider's AS numbers. When the log carries the client's AS
+# number (e.g. Apache "%{MM_ASN}e" from mod_maxminddb), a client whose ASN is
+# listed here is treated as that datacenter even if its IP is in no fetched range
+# -- no network needed, since it matches a log value against static config. To
+# flag extra networks as datacenters, add a source with just a name + asns:
+#   [[source]]
+#   name = "My flagged networks"
+#   asns = [12345, 67890]
+# The AS numbers below are a curated starter set (the provider's primary ASNs);
+# big clouds announce from several, so extend as needed.
+
+[[source]]
+name = "Hetzner"
+asns = [24940, 212317, 213230, 215859]
+
+[[source]]
+name = "OVH"
+asns = [16276, 35540]
+
+[[source]]
+name = "Cloud.ru"
+asns = [208677]
+
+[[source]]
+name = "Amazon"
+ranges_url = "https://ip-ranges.amazonaws.com/ip-ranges.json"
+format = "aws"
+asns = [16509, 14618, 36263]
+
+[[source]]
+name = "Google"
+ranges_url = "https://www.gstatic.com/ipranges/cloud.json"
+format = "prefixes"
+asns = [15169, 396982, 19527, 43515, 139070, 139190]
+
+[[source]]
+name = "Cloudflare v4"
+ranges_url = "https://www.cloudflare.com/ips-v4"
+format = "text"
+asns = [13335]
+
+[[source]]
+name = "Cloudflare v6"
+ranges_url = "https://www.cloudflare.com/ips-v6"
+format = "text"
+asns = [13335]
+
+[[source]]
+name = "DigitalOcean"
+ranges_url = "https://www.digitalocean.com/geo/google.csv"
+format = "csv"
+asns = [14061]
+
+[[source]]
+name = "Rackspace"
+asns = [44009, 15395, 39921, 198220]
+
+[[source]]
+name = "Linode"
+ranges_url = "https://geoip.linode.com"
+format = "csv"  # RFC 8805 geofeed; first column is the prefix
+asns = [63949, 20940, 24319]
+
+[[source]]
+name = "Vultr"
+ranges_url = "https://geofeed.constant.com/?json"
+format = "subnets"
+asns = [20473]  # The Constant Company
+
+[[source]]
+name = "Oracle"
+ranges_url = "https://docs.oracle.com/iaas/tools/public_ip_ranges.json"
+format = "oracle"
+asns = [31898, 6142, 11049, 11506, 14544, 20037, 46558, 54253]
+
+[[source]]
+name = "Yandex"
+ranges_url = "https://tech.cdn.yandex.net/prefixes/yc.json"
+
+[[source]]
+name = "Contabo"
+asns = [51167, 141995, 40021]
+
+[[source]]
+name = "Microsoft"
+asns = [8075, 3598, 8068, 8069, 17144, 30520, 46182, 54396, 63314]
+
+# Microsoft Azure publishes its ranges as a weekly "Service Tags" download whose
+# URL embeds a rotating date, so there is no stable URL to pin here; the inline
+# fallback above does not cover Azure. Add a current Service Tags URL by hand if
+# you need Azure coverage:
+[[source]]
+name = "Azure"
+asns = [12076]
+# ranges_url = "https://download.microsoft.com/.../ServiceTags_Public_YYYYMMDD.json"
+# format = "azure"
+
+[[source]]
+name = "OneHostPlanet"
+asns = [209155]
+
+[[source]]
+name = "Scaleway"
+asns = [202023, 12876, 29447]
+
+[[source]]
+name = "Huawei"
+asns = [136907, 55990, 151610]
+
+[[source]]
+name = "Alibaba"
+asns = [45102, 37963]
+
+[[source]]
+name = "Dreamhost"
+asns = [26347]
+
+[[source]]
+name = "HostGlobal"
+asns = [202306]
+
+[[source]]
+name = "Tencent"
+asns = [139341, 132203, 137876, 45090]
+
+[[source]]
+name = "Interserver"
+asns = [19318]
+
+[[source]]
+name = "CherryServers"
+asns = [216444, 204770, 16125]
+
+[[source]]
+name = "Anexia"
+asns = [197540, 42473, 51453]
+
+[[source]]
+name = "Datacamp"  # CDN77 / DataCamp hosting + CDN
+asns = [60068, 212238]
+
+[[source]]
+name = "NM Muennich"
+asns = [34788]
+
+[[source]]
+name = "Fastly"
+asns = [54113]
+
+[[source]]
+name = "Akamai"
+asns = [36183, 12222, 17204, 35994]
+
+[[source]]
+name = "HostPapa"
+asns = [36352, 11989, 23273, 40092]
+
+[[source]]
+name = "Unified Layer"  # Bluehost / HostGator / Newfold
+asns = [46606]
+
+[[source]]
+name = "M247"
+asns = [9009, 16247]
+
+[[source]]
+name = "IONOS"
+asns = [8560]
+
+[[source]]
+name = "EGIHosting"
+asns = [18779]
+
+[[source]]
+name = "Latitude.sh"
+asns = [396356]
+
+[[source]]
+name = "PrivateLayer"
+asns = [51852]
+
+[[source]]
+name = "HostRoyale"
+asns = [203020, 207990, 39486, 44144]
+
+[[source]]
+name = "PonyNet"  # FranTech / BuyVM
+asns = [53667]
+
+[[source]]
+name = "Clouvider"
+asns = [62240]
+
+[[source]]
+name = "Stark"
+asns = [44477]
+
+[[source]]
+name = "Limestone"
+asns = [46475]
+
+[[source]]
+name = "Packethub"
+asns = [141039, 147049, 207137, 136787]
+
+[[source]]
+name = "GSL Networks"
+asns = [137409]
+
+[[source]]
+name = "Malieva"
+asns = [208046]
+
+[[source]]
+name = "WorldStream"
+asns = [49981, 16278, 28836]
+
+[[source]]
+name = "web2objects"
+asns = [62874]
+
+[[source]]
+name = "F.N.S."
+asns = [206092]
+
+[[source]]
+name = "code200"
+asns = [205659, 209709, 203061, 205964]
+
+[[source]]
+name = "Infraly"
+asns = [400529]
+
+[[source]]
+name = "Dedik"
+asns = [209413]
+
+[[source]]
+name = "Serv3r.net"
+asns = [400130]
+
+[[source]]
+name = "Latitude.sh"
+asns = [262287]
+
+[[source]]
+name = "Webair"
+asns = [27257, 20264, 36057, 393710, 396528]
+
+[[source]]
+name = "Fiberway"
+asns = [49434]
+
+[[source]]
+name = "RouterHosting"
+asns = [14956]
+
+[[source]]
+name = "DataWagon"
+asns = [27176]
+
+[[source]]
+name = "HERE"
+asns = [1248]
+
+[[source]]
+name = "GoDaddy"
+asns = [398101, 26496, 397516, 397519, 397522, 398104, 398109, 400754]
+
+[[source]]
+name = "Velia"
+asns = [30083]
+
+[[source]]
+name = "Host-Telecom"
+asns = [51248]
+
+[[source]]
+name = "Bucklog"
+asns = [211590]
+
+[[source]]
+name = "DMZHost"  # Techoff Srv Limited (dmzhost.co)
+asns = [48090]
+
+[[source]]
+name = "Node4"
+asns = [31727]
+
+[[source]]
+asns = [46851]

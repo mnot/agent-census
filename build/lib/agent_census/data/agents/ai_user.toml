@@ -1,0 +1,60 @@
+# AI assistants fetching a page at a person's request (ChatGPT-User and its kin). Per the
+# operator: whether a person drove any given request isn't observable here. Same [[agent]]
+# format as the other files in this directory; see README.md.
+
+# Google's user-triggered AI fetchers.
+# https://developers.google.com/crawling/docs/crawlers-fetchers/google-user-triggered-fetchers
+[[agent]]
+ua_substring = "Google-GeminiNotebook"
+user_triggered = true
+
+[[agent]]
+ua_substring = "Google-Pinpoint"
+user_triggered = true
+
+[[agent]]
+ua_substring = "Google-Agent"
+ranges_url = "https://developers.google.com/static/crawling/ipranges/user-triggered-agents.json"
+user_triggered = true
+wba_operator = "Google"
+
+[[agent]]
+ua_substring = "ChatGPT-User"
+domains = ["openai.com"]
+ranges_url = "https://openai.com/chatgpt-user.json"
+rdns_fallback = true
+user_triggered = true
+
+[[agent]]
+ua_substring = "Claude-User"
+ranges_url = "https://claude.com/crawling/bots.json"
+rdns_fallback = true
+user_triggered = true
+
+[[agent]]
+ua_substring = "Perplexity-User"
+ranges_url = "https://www.perplexity.ai/perplexity-user.json"
+user_triggered = true
+
+[[agent]]
+# https://docs.mistral.ai/robots
+ua_substring = "MistralAI-User"
+ranges_url = "https://mistral.ai/mistralai-user-ips.json"
+user_triggered = true
+
+[[agent]]
+# https://developer.amazon.com/amazonbot
+ua_substring = "Amzn-User"
+ranges_url = "https://developer.amazon.com/amazonbot/live-ip-addresses/"
+format = "amazon"
+user_triggered = true
+
+[[agent]]
+# https://developers.facebook.com/docs/sharing/webmasters/web-crawlers/
+ua_substring = "Meta-externalfetcher"
+user_triggered = true
+
+[[agent]]
+ua_substring = "Kimi-User"
+ranges_url = "https://www.kimi.com/policies/kimi-user.json"
+user_triggered = true

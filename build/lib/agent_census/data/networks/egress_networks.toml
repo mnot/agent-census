@@ -1,0 +1,65 @@
+# Named shared-egress networks: privacy relays and proxies that front many real
+# users behind a rotating pool of addresses. Traffic from one is genuinely a
+# browser (often a strong signal of it), but the source IP is meaningless as an
+# identity, so we collapse all of a network's requests into one entry per
+# User-Agent and tag it, rather than scattering them across egress IPs.
+#
+# Each [[network]] mirrors a datacenter source ([name], optional inline `ranges`,
+# `ranges_url` + `format`, or `asns`) plus a `tag` applied to its clients. The
+# optional `group` is only the cross-tab column header: networks sharing a group
+# (e.g. Zscaler + Netskope -> "Corporate proxies") are summed into one column but
+# keep their own identity and tag. Ranges are fetched by default (cached weekly);
+# --no-fetch-ranges disables. Add networks freely.
+
+[[network]]
+name = "iCloud Private Relay"
+tag = "icloud-private-relay"
+group = "Privacy proxies"
+ranges_url = "https://mask-api.icloud.com/egress-ip-ranges.csv"
+format = "csv"  # first column is the prefix
+
+[[network]]
+name = "Tor"
+tag = "tor-exit"
+group = "Privacy proxies"
+ranges_url = "https://ip1.info/tor-ips/tor-ips.txt"
+format = "text"  # one exit-node IP per line
+
+# VPNs and corporate security proxies (SASE) front many real users behind one
+# network. They publish no clean range list, so they're matched by AS number --
+# which needs the log to carry the client ASN (e.g. %{MM_ASN}e).
+[[network]]
+name = "Zscaler"
+tag = "corporate-proxy"
+group = "Corporate proxies"
+asns = [22616, 62044, 53813]  # Zscaler announces from several ASes; add more as you see them
+
+[[network]]
+name = "Netskope"
+tag = "corporate-proxy"
+group = "Corporate proxies"
+asns = [55256]
+
+[[network]]
+name = "Cato Networks"
+tag = "corporate-proxy"
+group = "Corporate proxies"
+asns = [13150]  # SASE vendor, same category as Zscaler/Netskope
+
+[[network]]
+name = "Menlo Security"
+tag = "corporate-proxy"
+group = "Corporate proxies"
+asns = [62654]  # SASE / secure web gateway vendor
+
+[[network]]
+name = "Strong Technology"
+tag = "vpn"
+group = "VPNs"
+asns = [54203, 62651]  # StrongVPN operator
+
+[[network]]
+name = "Proton"
+tag = "vpn"
+group = "VPNs"
+asns = [209103]  # ProtonVPN exit infrastructure

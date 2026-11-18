@@ -1,0 +1,579 @@
+"""Fetching, caching, and parsing of published IP-range lists.
+
+Shared by crawler verification (:mod:`agent_census.netverify`) and datacenter
+detection (:mod:`agent_census.hosting`). A fetched list is cached on disk for a
+week so repeated runs stay offline; a failed refresh falls back to the stale
+copy. Providers publish ranges in several shapes, so :func:`extract_cidrs`
+dispatches on a declared format.
+"""
+
+from __future__ import annotations
+
+import bisect
+import errno
+import hashlib
+import html
+import ipaddress
+import json
+import os
+import re
+import socket
+import sys
+import time
+import urllib.error
+import urllib.request
+from collections.abc import Callable, Iterable
+from pathlib import Path
+
+from . import USER_AGENT
+
+Network = ipaddress.IPv4Network | ipaddress.IPv6Network
+Address = ipaddress.IPv4Address | ipaddress.IPv6Address
+Interval = tuple[int, int]  # (first address, last address) as ints, one IP version
+Intervals = tuple[list[Interval], list[Interval]]  # (v4, v6)
+
+
+def normalize_ip(ip: str) -> Address | None:
+    """Parse ``ip``, folding an IPv4-mapped IPv6 address to its IPv4 form.
+
+    A dual-stack server may log an IPv4 peer as ``::ffff:203.0.113.1``; left as an
+    IPv6 address it would never match an IPv4-only published range (crawler,
+    datacenter, egress), so the same host would verify differently by log shape.
+    Mapping it back to ``203.0.113.1`` keeps membership version-agnostic. Returns
+    ``None`` for an unparseable string.
+    """
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return None
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
+        return addr.ipv4_mapped
+    return addr
+
+
+class RangeIndex:
+    """Fast membership over many CIDRs: O(log n) per query instead of a scan.
+
+    Ranges are stored as integer intervals (split by IP version), sorted by start
+    with a running max-end alongside. A query bisects for the last range starting
+    at or before the address, then checks whether any range up to there reaches
+    it (via the prefix max-end) -- correct even when ranges overlap, with no need
+    to merge them. Built once per provider set; the difference between
+    milliseconds and microseconds per IP on large logs.
+    """
+
+    __slots__ = ("_starts4", "_maxend4", "_starts6", "_maxend6")
+
+    def __init__(self, v4: list[Interval], v6: list[Interval]) -> None:
+        self._starts4, self._maxend4 = self._build(v4)
+        self._starts6, self._maxend6 = self._build(v6)
+
+    @classmethod
+    def from_networks(cls, networks: Iterable[Network]) -> RangeIndex:
+        """Build directly from network objects (splitting by IP version)."""
+        v4: list[Interval] = []
+        v6: list[Interval] = []
+        for net in networks:
+            (v4 if net.version == 4 else v6).append(
+                (int(net.network_address), int(net.broadcast_address))
+            )
+        return cls(v4, v6)
+
+    @staticmethod
+    def _build(intervals: list[Interval]) -> tuple[list[int], list[int]]:
+        pairs = sorted(intervals)
+        starts = [start for start, _ in pairs]
+        maxend: list[int] = []
+        running = -1
+        for _, end in pairs:
+            running = max(running, end)
+            maxend.append(running)
+        return starts, maxend
+
+    def contains(self, ip: str) -> bool:
+        """True if ``ip`` falls in any indexed range. Unparseable IPs are False."""
+        if not self._starts4 and not self._starts6:
+            return False  # no ranges loaded -- skip parsing the address at all
+        addr = normalize_ip(ip)
+        if addr is None:
+            return False
+        if addr.version == 4:
+            starts, maxend = self._starts4, self._maxend4
+        else:
+            starts, maxend = self._starts6, self._maxend6
+        value = int(addr)
+        idx = bisect.bisect_right(starts, value) - 1
+        return idx >= 0 and maxend[idx] >= value
+
+
+_RANGES_TTL = 7 * 24 * 60 * 60  # refresh fetched range files weekly
+_FETCH_TIMEOUT = 10
+# Cap a fetched range list so a hostile/misconfigured feed can't exhaust memory.
+# Real provider lists are well under this; 16 MiB is generous headroom.
+_MAX_FETCH_BYTES = 16 * 1024 * 1024
+_INTERVALS_CACHE_VERSION = 1  # bump to invalidate cached parses when a parser changes
+
+
+def network_intervals(cidrs: tuple[str, ...]) -> Intervals:
+    """Parse CIDR strings into (v4, v6) integer intervals, dropping malformed ones."""
+    v4: list[Interval] = []
+    v6: list[Interval] = []
+    for net in parse_networks(cidrs):
+        (v4 if net.version == 4 else v6).append(
+            (int(net.network_address), int(net.broadcast_address))
+        )
+    return v4, v6
+
+
+# Whether fetching providers' published ``ranges_url`` lists is allowed this run
+# (controlled by --fetch-ranges / --no-fetch-ranges; on by default). Shared by
+# every range-backed feature so one flag governs all network access. Held in a
+# dict to stay mutable without `global`.
+_remote = {"enabled": False}
+
+
+def enable_remote() -> None:
+    """Allow fetching published range lists over the network this run (cached weekly)."""
+    _remote["enabled"] = True
+
+
+def remote_enabled() -> bool:
+    """True if range lists may be fetched this run."""
+    return _remote["enabled"]
+
+
+def parse_networks(cidrs: tuple[str, ...]) -> tuple[Network, ...]:
+    """Turn CIDR strings into network objects, silently dropping malformed ones."""
+    nets: list[Network] = []
+    for cidr in cidrs:
+        try:
+            nets.append(ipaddress.ip_network(cidr, strict=False))
+        except ValueError:
+            continue
+    return tuple(nets)
+
+
+def ip_in(ip: str, networks: tuple[Network, ...]) -> Network | None:
+    """The first network containing ``ip``, or None (also None for a bad IP)."""
+    addr = normalize_ip(ip)
+    if addr is None:
+        return None
+    return next((net for net in networks if addr.version == net.version and addr in net), None)
+
+
+def cache_dir() -> Path:
+    """The ``agent-census`` cache directory (``~/.cache/agent-census``), created if needed."""
+    base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+    directory = Path(base) / "agent-census"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def _ranges_cache_path(url: str) -> Path:
+    directory = cache_dir() / "ranges"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory / (hashlib.sha1(url.encode("utf-8")).hexdigest() + ".json")
+
+
+_warned: set[str] = set()
+
+
+def _warn(message: str) -> None:
+    """Print a one-off warning to stderr (deduped, so a failure isn't repeated)."""
+    if message in _warned:
+        return
+    _warned.add(message)
+    print(f"agent-census: warning: {message}", file=sys.stderr)
+
+
+# Why each feed URL last failed to yield ranges this run (cleared on success), so a
+# verdict that rests on it can say *what* went wrong rather than just "unobtainable".
+_feed_problems: dict[str, str] = {}
+_last_fetch_error: dict[str, str] = {}
+# Per feed URL: its provider label, the cause and age of a stale copy used in place
+# of a failed fetch, and which fetches were attempted / failed at the connection
+# level (as opposed to an HTTP error or an unparseable body, which are the
+# provider's, not this machine's, fault).
+_feed_labels: dict[str, str] = {}
+_feed_stale: dict[str, tuple[str, int]] = {}
+_feed_attempted: set[str] = set()
+_feed_unreachable: set[str] = set()
+_feed_offline: set[str] = set()  # unusable only because remote lookups are switched off
+_last_fetch_local: set[str] = set()  # fetches whose failure looks like this machine's network
+
+_LOCAL_ERRNOS = frozenset({errno.ENETUNREACH, errno.ENETDOWN, errno.EHOSTUNREACH})
+
+
+def describe_fetch_error(exc: BaseException) -> str:
+    """Short text for a failed fetch (HTTP status, timeout, or the exception)."""
+    if isinstance(exc, urllib.error.HTTPError):
+        return f"HTTP {exc.code}"
+    reason = getattr(exc, "reason", None) or exc
+    if isinstance(reason, TimeoutError):  # urllib wraps connect timeouts in URLError
+        return "timed out"
+    return f"{type(exc).__name__}: {reason}"
+
+
+def local_network_fault(exc: BaseException) -> bool:
+    """Whether a failed fetch points at this machine's network rather than the remote
+    host: a timeout, no route or network, or a resolver that can't answer at all.
+    A TLS failure, a refused connection or a name that doesn't exist is the host's."""
+    reason = getattr(exc, "reason", None) or exc
+    if isinstance(reason, TimeoutError):
+        return True
+    if isinstance(reason, socket.gaierror):
+        return reason.errno == socket.EAI_AGAIN
+    return isinstance(reason, OSError) and reason.errno in _LOCAL_ERRNOS
+
+
+def feed_broken(url: str) -> str | None:
+    """Like :func:`feed_problem`, but ``None`` when the feed is merely switched off
+    (``--no-fetch-ranges``): that's the user's choice, not a fault in the feed."""
+    return None if url in _feed_offline else _feed_problems.get(url)
+
+
+def feed_issues() -> tuple[tuple[str, str], ...]:
+    """(provider, what happened) for every feed that failed this run, for the report."""
+    issues = [
+        (_feed_labels.get(url, url), cause)
+        for url, cause in _feed_problems.items()
+        if url not in _feed_offline
+    ]
+    issues += [
+        (_feed_labels.get(url, url), f"{cause}; used a copy {age} days old")
+        for url, (cause, age) in _feed_stale.items()
+    ]
+    return tuple(sorted(issues))
+
+
+def feed_fetch_summary() -> tuple[int, int]:
+    """(feeds fetched from the network this run, those unreachable at the connection
+    level)."""
+    return len(_feed_attempted), len(_feed_unreachable)
+
+
+def feed_problem(url: str) -> str | None:
+    """Why ``url``'s range list couldn't be used this run, or ``None`` if it could
+    (or hasn't been tried)."""
+    return _feed_problems.get(url)
+
+
+def _http_get(url: str) -> str | None:
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=_FETCH_TIMEOUT) as response:  # noqa: S310
+            return str(response.read(_MAX_FETCH_BYTES).decode("utf-8", "replace"))
+    except (OSError, ValueError) as exc:
+        _last_fetch_error[url] = describe_fetch_error(exc)
+        if local_network_fault(exc):
+            _last_fetch_local.add(url)
+    return None
+
+
+def _read_cached(path: Path, usable: Callable[[str], bool]) -> str | None:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    return text if usable(text) else None
+
+
+def fetch_ranges_text(url: str, name: str | None = None, fmt: str | None = None) -> str | None:
+    """Return the range list for ``url``, backed by a weekly on-disk cache.
+
+    A failed fetch isn't printed: it is the provider's fault (or, if every feed
+    fails, a network fault the run reports once -- see :func:`feed_fetch_summary`).
+    The cause (HTTP status, timeout, ...) is kept for :func:`feed_problem` and
+    :func:`feed_issues`, and a stale cached copy is used in its place when there is
+    one. A feed that arrives but parses to nothing does warn: our format spec for it
+    is out of date.
+
+    With remote lookups disabled (``--no-fetch-ranges``) nothing is fetched: a
+    cached copy of any age is used if there is one.
+
+    With ``fmt``, text that yields no prefixes in that format (a 200 HTML error
+    page, a changed feed layout) counts as a failed fetch: it is neither cached nor
+    returned, and a poisoned cache entry from an earlier run is refetched, so a bad
+    response can't masquerade as "the feed lists no ranges" for a week.
+    """
+
+    def usable(text: str) -> bool:
+        return fmt is None or bool(extract_cidrs(text, fmt))
+
+    path = _ranges_cache_path(url)
+    label = name or "external"
+    _feed_labels[url] = label
+    if not remote_enabled():
+        cached = _read_cached(path, usable)
+        if cached is None:
+            _feed_problems[url] = (
+                "remote lookups are disabled (--no-fetch-ranges) and nothing is cached"
+            )
+            _feed_offline.add(url)
+        else:
+            _feed_problems.pop(url, None)
+            _feed_offline.discard(url)
+        return cached
+    try:
+        fresh = path.exists() and (time.time() - path.stat().st_mtime) < _RANGES_TTL
+    except OSError:
+        fresh = False
+    if fresh:
+        cached = _read_cached(path, usable)
+        if cached is not None:
+            _feed_problems.pop(url, None)
+            return cached
+    _feed_attempted.add(url)
+    _feed_offline.discard(url)
+    _last_fetch_local.discard(url)
+    text = _http_get(url)
+    cause = _last_fetch_error.pop(url, "fetch failed")
+    unparseable = text is not None and not usable(text)
+    if text is not None and unparseable:
+        cause = (
+            f"fetched {len(text)} bytes but no prefixes parsed (format {fmt}); feed may have moved"
+        )
+        text = None
+    if text is not None:
+        _feed_problems.pop(url, None)
+        _feed_stale.pop(url, None)
+        try:
+            path.write_text(text, encoding="utf-8")
+        except OSError:
+            pass
+        return text
+    if url in _last_fetch_local:
+        _feed_unreachable.add(url)
+    # A provider's feed being down is that provider's fault and shows in the report; a
+    # feed that arrives but no longer parses means our format spec is out of date.
+    if unparseable:
+        _warn(f"{label} ranges from {url}: {cause}")
+    stale = _read_cached(path, usable)  # fall back to a stale cached copy if we have one
+    if stale is not None:
+        age_days = int((time.time() - path.stat().st_mtime) // 86400)
+        _feed_stale[url] = (cause, age_days)
+        _feed_problems.pop(url, None)
+        return stale
+    _feed_problems[url] = cause
+    return None
+
+
+def _as_list(value: object) -> list[object]:
+    """A JSON array as a list, or ``[]`` for any non-array value. Guards iteration
+    against a malformed/hostile feed whose expected-array field is a scalar (which
+    would otherwise raise TypeError and abort the whole run)."""
+    return value if isinstance(value, list) else []
+
+
+def parse_prefixes(text: str) -> tuple[str, ...]:
+    """A ``{"prefixes": [...]}`` object whose entries are either CIDR strings
+    (e.g. Yandex Cloud) or dicts keyed ``ipv4Prefix``/``ipv6Prefix`` (Google / GCP)
+    or ``ip_prefix``/``ipv6_prefix`` (Amazon's searchbot-ip-addresses page mixes
+    this AWS-style key naming into the same ``{"prefixes": [...]}`` wrapper the
+    other Amazonbot pages use)."""
+    try:
+        data = json.loads(text)
+    except (ValueError, TypeError):
+        return ()
+    prefixes = _as_list(data.get("prefixes")) if isinstance(data, dict) else []
+    out: list[str] = []
+    for prefix in prefixes:
+        if isinstance(prefix, str):
+            out.append(prefix)
+        elif isinstance(prefix, dict):
+            cidr = (
+                prefix.get("ipv4Prefix")
+                or prefix.get("ipv6Prefix")
+                or prefix.get("ip_prefix")
+                or prefix.get("ipv6_prefix")
+            )
+            if cidr:
+                out.append(cidr)
+    return tuple(out)
+
+
+_CODE_BLOCK = re.compile(r"<code[^>]*>(.*?)</code>", re.DOTALL | re.IGNORECASE)
+
+
+def parse_amazon(text: str) -> tuple[str, ...]:
+    """Amazon publishes Amazonbot's ranges as Google-style ``{"prefixes": [...]}``
+    JSON, but embedded inside an HTML page (in a ``<pre><code>`` block) rather than
+    served raw. Pull the JSON out of each code block, HTML-unescape it, and hand it
+    to :func:`parse_prefixes`. Falls back to treating the whole input as raw JSON,
+    so the parser still works if the wrapper markup ever goes away."""
+    out: list[str] = []
+    for block in _CODE_BLOCK.findall(text):
+        out.extend(parse_prefixes(html.unescape(block)))
+    return tuple(out) if out else parse_prefixes(text)
+
+
+def parse_aws(text: str) -> tuple[str, ...]:
+    """AWS schema: ``prefixes[].ip_prefix`` and ``ipv6_prefixes[].ipv6_prefix``."""
+    try:
+        data = json.loads(text)
+    except (ValueError, TypeError):
+        return ()
+    if not isinstance(data, dict):
+        return ()
+    out: list[str] = []
+    for prefix in _as_list(data.get("prefixes")):
+        if isinstance(prefix, dict) and prefix.get("ip_prefix"):
+            out.append(prefix["ip_prefix"])
+    for prefix in _as_list(data.get("ipv6_prefixes")):
+        if isinstance(prefix, dict) and prefix.get("ipv6_prefix"):
+            out.append(prefix["ipv6_prefix"])
+    return tuple(out)
+
+
+def parse_azure(text: str) -> tuple[str, ...]:
+    """Azure service-tags schema: ``values[].properties.addressPrefixes[]``."""
+    try:
+        data = json.loads(text)
+    except (ValueError, TypeError):
+        return ()
+    values = _as_list(data.get("values")) if isinstance(data, dict) else []
+    out: list[str] = []
+    for value in values:
+        props = value.get("properties", {}) if isinstance(value, dict) else {}
+        for cidr in _as_list(props.get("addressPrefixes")) if isinstance(props, dict) else []:
+            if isinstance(cidr, str):
+                out.append(cidr)
+    return tuple(out)
+
+
+def parse_text(text: str) -> tuple[str, ...]:
+    """One CIDR per line; blank lines and ``#`` comments ignored."""
+    out: list[str] = []
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if line:
+            out.append(line)
+    return tuple(out)
+
+
+def parse_csv(text: str) -> tuple[str, ...]:
+    """First column of each row is the CIDR (e.g. DigitalOcean / Linode geofeeds)."""
+    out: list[str] = []
+    for raw in text.splitlines():
+        cell = raw.split(",", 1)[0].strip()
+        if "/" in cell:  # skip header / comment rows without a prefix
+            out.append(cell)
+    return tuple(out)
+
+
+def parse_subnets(text: str) -> tuple[str, ...]:
+    """Vultr geofeed JSON schema: ``{"subnets": [{"ip_prefix": "..."}]}``."""
+    try:
+        data = json.loads(text)
+    except (ValueError, TypeError):
+        return ()
+    subnets = _as_list(data.get("subnets")) if isinstance(data, dict) else []
+    out: list[str] = []
+    for subnet in subnets:
+        if isinstance(subnet, dict) and subnet.get("ip_prefix"):
+            out.append(subnet["ip_prefix"])
+    return tuple(out)
+
+
+def parse_ripestat(text: str) -> tuple[str, ...]:
+    """RIPEstat announced-prefixes: ``{"data": {"prefixes": [{"prefix": "..."}]}}``.
+
+    Lets any ASN be used as a range source, e.g.
+    ``https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS51167``.
+    """
+    try:
+        data = json.loads(text)
+    except (ValueError, TypeError):
+        return ()
+    block = data.get("data", {}) if isinstance(data, dict) else {}
+    prefixes = _as_list(block.get("prefixes")) if isinstance(block, dict) else []
+    out: list[str] = []
+    for entry in prefixes:
+        if isinstance(entry, dict) and entry.get("prefix"):
+            out.append(entry["prefix"])
+    return tuple(out)
+
+
+def parse_oracle(text: str) -> tuple[str, ...]:
+    """Oracle Cloud schema: ``{"regions": [{"cidrs": [{"cidr": "..."}]}]}``."""
+    try:
+        data = json.loads(text)
+    except (ValueError, TypeError):
+        return ()
+    regions = _as_list(data.get("regions")) if isinstance(data, dict) else []
+    out: list[str] = []
+    for region in regions:
+        cidrs = _as_list(region.get("cidrs")) if isinstance(region, dict) else []
+        for entry in cidrs:
+            if isinstance(entry, dict) and entry.get("cidr"):
+                out.append(entry["cidr"])
+    return tuple(out)
+
+
+_PARSERS = {
+    "prefixes": parse_prefixes,
+    "amazon": parse_amazon,
+    "aws": parse_aws,
+    "azure": parse_azure,
+    "text": parse_text,
+    "csv": parse_csv,
+    "subnets": parse_subnets,
+    "oracle": parse_oracle,
+    "ripestat": parse_ripestat,
+}
+
+
+# The range-list formats a data file may name in its `format` field.
+KNOWN_FORMATS = frozenset(_PARSERS)
+
+
+def extract_cidrs(text: str, fmt: str) -> tuple[str, ...]:
+    """Extract CIDR strings from ``text`` according to the named ``fmt``."""
+    parser = _PARSERS.get(fmt, parse_prefixes)
+    return parser(text)
+
+
+def _intervals_cache_path(url: str, fmt: str) -> Path:
+    directory = cache_dir() / "ranges"
+    directory.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha1(f"{url}|{fmt}|v{_INTERVALS_CACHE_VERSION}".encode("utf-8")).hexdigest()
+    return directory / (digest + ".intervals.json")
+
+
+def _read_intervals(path: Path) -> Intervals | None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return ([tuple(pair) for pair in data["v4"]], [tuple(pair) for pair in data["v6"]])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def fetch_range_intervals(url: str, fmt: str, name: str | None = None) -> Intervals:
+    """(v4, v6) intervals for ``url``'s published list, caching the *parsed* result.
+
+    The parsed integer intervals are cached weekly so repeat runs skip refetching
+    and re-parsing tens of thousands of CIDRs into objects. On a cold/stale cache
+    the raw text is fetched (itself weekly-cached), parsed, and the intervals are
+    written back; if even that fails, a stale interval cache is used if present.
+    """
+    path = _intervals_cache_path(url, fmt)
+    try:
+        fresh = path.exists() and (time.time() - path.stat().st_mtime) < _RANGES_TTL
+    except OSError:
+        fresh = False
+    if fresh:
+        cached = _read_intervals(path)
+        if cached is not None:
+            return cached
+    text = fetch_ranges_text(url, name, fmt)
+    if text is not None:
+        v4, v6 = network_intervals(extract_cidrs(text, fmt))
+        if v4 or v6:  # never cache an empty parse: it would stick for a week
+            try:
+                path.write_text(json.dumps({"v4": v4, "v6": v6}), encoding="utf-8")
+            except OSError:
+                pass
+            return v4, v6
+        _warn(f"{name or 'external'} ranges from {url}: no valid prefixes (format {fmt})")
+    stale = _read_intervals(path)  # fetch failed -- fall back to a stale parse if we have one
+    return stale if stale is not None else ([], [])

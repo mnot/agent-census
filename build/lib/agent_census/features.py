@@ -1,0 +1,896 @@
+"""Per-client feature extraction.
+
+Turns a client's requests into a :class:`ClientFeatures` of pure descriptive
+metrics. There are no judgments here: classifiers turn these numbers into labels.
+
+To stay memory-bounded on large logs, features are computed by a streaming
+:class:`FeatureAccumulator` that folds one entry in at a time and never retains
+the entries themselves -- only counters, a few small sets, and a compact array
+of timestamps. :func:`extract_features` is a convenience wrapper that feeds a
+whole list (timestamp-sorted) into one accumulator.
+"""
+
+from __future__ import annotations
+
+import math
+import re
+from array import array
+from collections import Counter, deque
+from collections.abc import Callable, Sequence
+from datetime import datetime
+from typing import TypeVar
+
+from . import uas
+from .dataload import load_list, load_request_signatures, load_vuln_paths
+from .hostforms import bare_host, referer_host, site_key
+from .model import ClientFeatures, LogEntry
+from .wba import SIGNATURE_INPUT_HEADER, WbaClaim, build_claim, claim_problem
+
+# A client's signed requests are sampled sparsely (not all -- memory) to spot a
+# *mixed* identity: some signatures verify, some don't. Distinct signatures only,
+# capped; the first is the representative that drives the headline verdict.
+_WBA_SAMPLE_CAP = 8
+# Distinct 404 request-targets kept per client for the storm signal. The gate only
+# needs a floor (a dozen-plus), so a small cap bounds memory against an adversarial
+# client that enumerates endlessly through the query string (millions of distinct
+# targets on one path) -- exactly the traffic the storm signal is meant to catch.
+_STORM_404_TARGET_CAP = 256
+# Distinct full request-targets (path + query) kept per client, so the "polls a few URLs
+# repeatedly" signals can tell a real poller from a client that varies the target in the
+# query string. The gate only asks "<= a handful", so a small cap bounds memory (and is
+# strictly tighter than the uncapped distinct-path set it sits beside).
+_DISTINCT_TARGET_CAP = 256
+
+# Request-line marker lists live in data/signatures/request_signatures.toml; this module turns
+# them into the sets and regexes the accumulator matches against per request.
+_SIG = load_request_signatures()
+
+# Static sub-resource extensions — the things a browser pulls in after a page.
+_STATIC_EXT = frozenset(_SIG.static_extensions)
+# Extensions (plus extension-less / trailing-slash paths) that count as an HTML page.
+_PAGE_EXT = frozenset(_SIG.page_extensions)
+# Response media-type prefixes, preferred over the URL extension when the log carries a
+# 200 Content-Type (a stylesheet at /style with no .css is still text/css).
+_STATIC_MEDIA = tuple(m.lower() for m in _SIG.static_media_types)
+_PAGE_MEDIA = tuple(m.lower() for m in _SIG.page_media_types)
+# Browser-chrome requests (favicon / apple-touch-icon) that are static by extension but
+# not rendered page sub-resources -- excluded from co-load satisfaction (see _is_chrome_asset).
+_CHROME_ASSET_MARKERS = tuple(m.lower() for m in _SIG.chrome_asset_markers)
+
+# Path markers for directory traversal / injection attempts.
+_TRAVERSAL_MARKERS = _SIG.traversal_markers
+# Double / overlong encoding -- a deliberate WAF-evasion tell, not just traversal.
+_EVASION_MARKERS = _SIG.evasion_markers
+# HTTP methods a browser never issues on its own (WebDAV verbs, probing, tunnelling).
+_EXOTIC_METHODS = frozenset(_SIG.uncommon_methods)
+
+_COLOAD_WINDOW_SECONDS = 10.0
+
+# Loaded once, shared by every accumulator (not stored per instance). Compiled into
+# one alternation each so a request is one regex search, not N substring scans.
+# Two buckets: "always" paths are a probe whatever the response; "contextual" paths
+# are real on sites running that stack, so they count only on an absent-resource
+# response (the client is guessing at software this site doesn't run).
+_ALWAYS_PATHS, _CONTEXTUAL_PATHS = load_vuln_paths()
+
+
+def _compile_paths(patterns: tuple[str, ...]) -> re.Pattern[str] | None:
+    return re.compile("|".join(re.escape(p.lower()) for p in patterns)) if patterns else None
+
+
+_ALWAYS_RE = _compile_paths(_ALWAYS_PATHS)
+_CONTEXTUAL_RE = _compile_paths(_CONTEXTUAL_PATHS)
+# Submission-endpoint substrings (comment/login/xmlrpc). Counted here against the
+# client's actual request paths so the spam-bot classifier can read a hit count,
+# rather than scanning the vuln-probe sample (which holds different paths).
+_SUBMIT_RE = _compile_paths(load_list("submit_paths"))
+# Statuses that mean "this path isn't here" -- the signal that a contextual hit is a
+# probe. 401/403/2xx/3xx all mean the path exists (just gated), so they don't count.
+_ABSENT_STATUSES = frozenset({404, 410})
+_TRAVERSAL_RE = re.compile("|".join(re.escape(m) for m in _TRAVERSAL_MARKERS))
+_EVASION_RE = re.compile("|".join(re.escape(m) for m in _EVASION_MARKERS))
+
+# Predicate the robots stage injects to flag a path the client may not fetch.
+DisallowedCheck = Callable[[str], bool]
+
+_K = TypeVar("_K")
+
+
+def _extension(path: str) -> str:
+    last = path.rsplit("/", 1)[-1]
+    return last.rsplit(".", 1)[-1].lower() if "." in last else ""
+
+
+def _media_from(content_type: str, status: int | None) -> str:
+    """The response media type (no parameters) -- but only for a 200. A non-200 reports
+    the error/redirect page's type, not the requested resource (a 404 for /style.css
+    commonly logs text/html), so it is not trusted; callers fall back to the URL extension."""
+    if status != 200:
+        return ""
+    return content_type.split(";", 1)[0].strip()
+
+
+def _served_media(entry: LogEntry) -> str:
+    """The trusted response media type of ``entry`` (see :func:`_media_from`). The hot
+    per-request path in ``add`` parses the Content-Type once and calls ``_media_from``
+    directly; this convenience is for the low-volume inspect-trace view."""
+    return _media_from(_response_content_type(entry), entry.status)
+
+
+def _media_matches(media: str, markers: tuple[str, ...]) -> bool:
+    """Whether ``media`` starts with any marker -- markers are type prefixes, so
+    ``image/`` covers ``image/png`` and ``text/css`` matches exactly."""
+    return any(media.startswith(m) for m in markers)
+
+
+def _is_static(path: str, media: str = "") -> bool:
+    """A page sub-resource (stylesheet, script, image, font, media, data fetch). The
+    response media type wins over the URL extension -- a stylesheet served at /style with
+    no .css is still text/css, an XHR /data.json is a sub-resource -- with the extension as
+    the fallback when no (200) Content-Type was logged. See :func:`_served_media`."""
+    if media:
+        return _media_matches(media, _STATIC_MEDIA)
+    return _extension(path) in _STATIC_EXT
+
+
+def _is_chrome_asset(path: str) -> bool:
+    """A request the browser makes on its own -- the tab favicon, the iOS home-screen
+    icon -- rather than a sub-resource embedded in and rendered from a page. Static by
+    extension, but it must not satisfy a co-load even when it carries a page Referer: a
+    favicon fetch is browser chrome, not evidence the page's content was rendered (#109)."""
+    low = path.lower()
+    return any(marker in low for marker in _CHROME_ASSET_MARKERS)
+
+
+def _is_page(status: int | None, path: str, media: str = "") -> bool:
+    if status != 200:
+        return False
+    if media:  # media type wins: an HTML response is a page whatever the URL looks like
+        return _media_matches(media, _PAGE_MEDIA)
+    if _is_static(path):  # extension fallback (no 200 Content-Type logged)
+        return False
+    ext = _extension(path)
+    return path.endswith("/") or ext == "" or ext in _PAGE_EXT
+
+
+def _referer_path(referer: str) -> str:
+    after = referer.split("://", 1)[-1]
+    slash = after.find("/")
+    if slash == -1:
+        return "/"
+    return after[slash:].split("?", 1)[0]
+
+
+def _served_host(entry: LogEntry) -> str | None:
+    """The host a request was served for: the logged ``%v`` (server_name), else the
+    Host header. Mirrors ``pipeline._vhost_of`` but stays local to keep features
+    independent of the pipeline."""
+    return entry.extra.get("server_name") or entry.host_header
+
+
+def _top_segment(path: str) -> str:
+    parts = [p for p in path.split("/") if p]
+    return parts[0] if parts else ""
+
+
+# Tokens that mark a feed in a URL filename, e.g. /blog/feed/, /index.rss, atom.xml.
+# Matched as a whole dot/dash/underscore-delimited part, not a bare substring, so
+# "feedback.html" / "anatomy.html" don't read as feeds (mirrors the word-anchored
+# UA-side detection in classify/feed_reader.py). See data/signatures/request_signatures.toml.
+_FEED_TOKENS = frozenset(_SIG.feed_filename_tokens)
+_FILENAME_PARTS = re.compile(r"[.\-_]")
+# Common token-less feed filenames -- a stopgap until response media types are
+# relied on more widely (many sites publish their feed at /index.xml).
+_FEED_FILENAMES = frozenset(_SIG.feed_filenames)
+
+
+def _response_content_type(entry: LogEntry) -> str:
+    """The logged response Content-Type, lower-cased, or '' if not captured."""
+    for key, value in entry.extra.items():
+        if key.lower() == "out:content-type":
+            return value.lower()
+    return ""
+
+
+def _as_identity(entry: LogEntry) -> tuple[str | None, str | None]:
+    """Autonomous-system (org, number) from a MaxMind env field, or (None, None).
+
+    Matches ``%{MM_ASORG}e`` / ``%{MM_ASN}e`` and the long MaxMind field names,
+    case-insensitively. Returns whatever the log carries; nothing is inferred.
+    """
+    org = number = None
+    for key, value in entry.extra.items():
+        if not value:
+            continue
+        name = key.lower().split(":", 1)[-1]  # drop the 'env:' / 'note:' prefix
+        if org is None and ("asorg" in name or "autonomous_system_organization" in name):
+            org = value
+        elif number is None and ("asn" in name or "autonomous_system_number" in name):
+            number = value
+    return org, number
+
+
+def _is_feed_request(path: str, content_type: str) -> bool:
+    """True if the request looks like a feed poll: feed-ish URL or RSS/Atom media type.
+    ``content_type`` is the raw logged response type (feeds are recognised regardless of
+    status, so it is not the 200-gated :func:`_media_from` value)."""
+    segments = [p for p in path.split("/") if p]
+    filename = segments[-1].lower() if segments else ""
+    if filename in _FEED_FILENAMES:
+        return True
+    if _FEED_TOKENS.intersection(_FILENAME_PARTS.split(filename)):
+        return True
+    return "rss" in content_type or "atom" in content_type
+
+
+def _ratio(numerator: int, denominator: int) -> float:
+    return numerator / denominator if denominator else 0.0
+
+
+# Inter-arrival deltas are summarised in O(1) memory instead of one float per
+# request: mean/min/CV are kept exactly online, and the distribution (for
+# median/p95) lives in a small log-spaced histogram once a client exceeds a
+# buffer of exact deltas. Covers 1ms .. ~10^7s (~116 days), 10 buckets/decade.
+_IAT_MIN_EXP = -3
+_IAT_MAX_EXP = 7
+_IAT_PER_DECADE = 10
+_IAT_BUCKETS = (_IAT_MAX_EXP - _IAT_MIN_EXP) * _IAT_PER_DECADE + 2  # + under/overflow
+_IAT_BUF_CAP = 256  # below this many deltas, keep them exactly (cheap for the long tail)
+
+# Time slices the per-minute counts collapse into for the report sparkline. Kept
+# small: a fixed handful of ints per client, independent of how long the span is.
+_REQUEST_BUCKETS = 40
+
+
+def _iat_bucket(delta: float) -> int:
+    """Histogram bucket for an inter-arrival delta in seconds."""
+    # Guard non-finite deltas: int(math.log10(inf)) raises OverflowError and
+    # int(nan) raises ValueError. Not reachable via the shipped parsers (a
+    # datetime can't yield an inf/nan timestamp), but this is a low-level
+    # primitive, so fail safe into the underflow bucket rather than crash.
+    if not math.isfinite(delta) or delta <= 0:
+        return 0
+    idx = int((math.log10(delta) - _IAT_MIN_EXP) * _IAT_PER_DECADE) + 1
+    return max(1, min(idx, _IAT_BUCKETS - 1))
+
+
+def _iat_bucket_value(idx: int) -> float:
+    """A representative delta (geometric centre) for a histogram bucket."""
+    if idx <= 0:
+        return 0.0
+    exp = _IAT_MIN_EXP + (idx - 1 + 0.5) / _IAT_PER_DECADE
+    return float(10**exp)
+
+
+def _hist_quantile(hist: list[int], count: int, quantile: float) -> float:
+    target = quantile * count
+    cumulative = 0
+    for idx, hits in enumerate(hist):
+        cumulative += hits
+        if cumulative >= target:
+            return _iat_bucket_value(idx)
+    return _iat_bucket_value(len(hist) - 1)
+
+
+def _median(values: list[float]) -> float:
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[mid]
+    return (ordered[mid - 1] + ordered[mid]) / 2
+
+
+def _merge_counts(left: dict[_K, int] | None, right: dict[_K, int] | None) -> dict[_K, int] | None:
+    if right is None:
+        return left
+    merged = dict(left) if left is not None else {}
+    for key, value in right.items():
+        merged[key] = merged.get(key, 0) + value
+    return merged
+
+
+def _merge_sets(left: set[str] | None, right: set[str] | None) -> set[str] | None:
+    if right is None:
+        return left
+    return right if left is None else (left | right)
+
+
+def _merge_sample(left: list[str] | None, right: list[str] | None) -> list[str] | None:
+    if not right:
+        return left
+    merged = list(left) if left else []
+    for item in right:
+        if len(merged) >= 5:
+            break
+        if item not in merged:
+            merged.append(item)
+    return merged
+
+
+class FeatureAccumulator:  # pylint: disable=too-many-instance-attributes
+    """Folds a client's entries into feature metrics without retaining them.
+
+    Real logs have a long tail of one-off clients, so the per-instance cost has
+    to be tiny: ``__slots__`` avoids a per-client ``__dict__``, and the heavier
+    containers (path sets, the timing array, the co-load deque, sample lists)
+    are allocated lazily -- a client with a single request pays for almost none
+    of them. Order-dependent metrics are computed in add order (request order
+    for an access log). A ``disallowed_check`` lets this same pass score robots.
+    """
+
+    __slots__ = (
+        "_disallowed_check", "count", "total_bytes", "status_counts", "count_404",
+        "targets_404", "vuln_hits", "vuln_sample", "submit_hits", "traversal_hits", "evasion_hits",
+        "methods", "distinct_paths", "distinct_targets", "static_count", "fetched_robots",
+        "user_agent", "as_org",
+        "as_number", "first_seen",
+        "last_seen", "_has_prev", "_prev_top", "breadth_changes",
+        "breadth_pairs", "ref_total", "ref_onsite", "self_referer_hits", "www_referer_hits",
+        "apex_referer_hits", "pages_total",
+        "pages_satisfied",
+        "_pending_pages", "disallowed_hits", "disallowed_sample", "robots_fetched_first",
+        "_content_seen", "feed_requests", "wba_claims", "wba_unusable",
+        # Inter-arrival timing, summarised in bounded memory (no per-request array).
+        "_prev_ts", "_iat_count", "_iat_sum", "_iat_sumsq", "_iat_min",
+        "_iat_buf", "_iat_hist", "_minute_counts",
+        # A bounded first-N sample of raw entries, kept only when an inspect trace
+        # is wanted (keep_trace > 0); otherwise None and free.
+        "_trace", "_trace_cap",
+    )  # fmt: skip
+
+    def __init__(
+        self, *, disallowed_check: DisallowedCheck | None = None, keep_trace: int = 0
+    ) -> None:
+        self._disallowed_check = disallowed_check
+        # First-N raw entries for an inspect trace. Capped at keep_trace, so peak
+        # memory stays bounded even across the whole run; None (no cost) when off.
+        self._trace_cap = keep_trace
+        self._trace: list[LogEntry] | None = [] if keep_trace else None
+        self.count = 0
+        self.total_bytes = 0
+        self.count_404 = 0
+        self.vuln_hits = 0
+        self.submit_hits = 0
+        self.traversal_hits = 0
+        self.evasion_hits = 0
+        self.static_count = 0
+        self.fetched_robots = False
+        self.user_agent: str | None = None
+        self.as_org: str | None = None
+        self.as_number: str | None = None
+        self.first_seen: datetime | None = None
+        self.last_seen: datetime | None = None
+        self._has_prev = False
+        self._prev_top = ""
+        self.breadth_changes = 0
+        self.breadth_pairs = 0
+        self.ref_total = 0
+        self.ref_onsite = 0
+        self.self_referer_hits = 0
+        self.www_referer_hits = 0
+        self.apex_referer_hits = 0
+        self.pages_total = 0
+        self.pages_satisfied = 0
+        self.disallowed_hits = 0
+        self.robots_fetched_first = False
+        self._content_seen = False
+        self.feed_requests = 0
+        # A sparse sample of this client's distinct signed requests, captured whole
+        # (the signature is per-request and the entries are discarded), so they can
+        # be verified after grouping. Empty unless the client presented one; the
+        # first is the representative, the rest only serve to detect a mixed identity.
+        self.wba_claims: list[WbaClaim] = []
+        self.wba_unusable: dict[str, int] = {}
+        # Inter-arrival timing: mean/min/CV kept exactly online; the distribution
+        # for median/p95 stays in a small exact buffer until it overflows into a
+        # fixed log-histogram. peak rpm uses per-minute counts (bounded by span).
+        self._prev_ts: float | None = None
+        self._iat_count = 0
+        self._iat_sum = 0.0
+        self._iat_sumsq = 0.0
+        self._iat_min: float | None = None
+        self._iat_buf: array[float] | None = None
+        self._iat_hist: list[int] | None = None
+        self._minute_counts: dict[int, int] | None = None
+        # Lazily allocated; None until first needed.
+        self.status_counts: dict[int, int] | None = None
+        self.targets_404: set[str] | None = None
+        self.vuln_sample: list[str] | None = None
+        self.methods: dict[str, int] | None = None
+        self.distinct_paths: set[str] | None = None
+        self.distinct_targets: set[str] | None = None
+        self._pending_pages: deque[tuple[float, str]] | None = None
+        self.disallowed_sample: list[str] | None = None
+
+    def _sample_wba(self, entry: LogEntry) -> None:
+        # Sample Web Bot Auth-signed requests for later verification. Guarded on the
+        # header's presence (so the parse runs only on signed requests); only
+        # distinct signatures are kept, up to the cap, so a replayed-identical
+        # signature doesn't crowd out genuinely different ones. Past the cap a request
+        # is still checked for an unusable claim (but no claim is built), so the
+        # per-cause counts cover every signed request.
+        if SIGNATURE_INPUT_HEADER not in entry.extra:
+            return
+        claim = None
+        if len(self.wba_claims) < _WBA_SAMPLE_CAP:
+            claim = build_claim(
+                entry.extra,
+                host=entry.host_header,
+                method=entry.method,
+                path=entry.path,
+                timestamp=entry.timestamp.timestamp() if entry.timestamp is not None else None,
+            )
+            if claim is not None:
+                if all(c.signature != claim.signature for c in self.wba_claims):
+                    self.wba_claims.append(claim)
+                return
+        problem = claim_problem(entry.extra)
+        if problem is not None:
+            self.wba_unusable[problem] = self.wba_unusable.get(problem, 0) + 1
+
+    def add(self, entry: LogEntry) -> None:
+        path = entry.path
+        self.count += 1
+        # Keep the first keep_trace entries verbatim for an inspect trace. Bounded,
+        # so it never grows past the cap however busy the client is.
+        if self._trace is not None and len(self._trace) < self._trace_cap:
+            self._trace.append(entry)
+        # Clamp to 0: a malformed/adversarial bytes field could be negative, which
+        # would silently corrupt total_bytes (and the mean/bandwidth built on it).
+        self.total_bytes += max(entry.bytes_sent or 0, 0)
+        if self.user_agent is None and entry.user_agent:
+            self.user_agent = entry.user_agent
+        if (self.as_org is None or self.as_number is None) and entry.extra:
+            # Capture each field independently and only once: a log may carry the
+            # AS number but not the org (or vice versa), and a later line missing
+            # the field must never overwrite a value already captured.
+            org, number = _as_identity(entry)
+            if self.as_org is None:
+                self.as_org = org
+            if self.as_number is None:
+                self.as_number = number
+        self._sample_wba(entry)
+
+        if entry.status is not None:
+            if self.status_counts is None:
+                self.status_counts = {}
+            self.status_counts[entry.status] = self.status_counts.get(entry.status, 0) + 1
+            if entry.status == 404:
+                self.count_404 += 1
+                if self.targets_404 is None:
+                    self.targets_404 = set()
+                # Count the full request target, not just the path: an enumerator that
+                # varies only the query string (/x?id=1, /x?id=2 ...) is spraying just as
+                # much as one guessing distinct paths, and a bare-path count would collapse
+                # its whole storm to a single entry. Capped so it can't grow without bound.
+                if len(self.targets_404) < _STORM_404_TARGET_CAP:
+                    self.targets_404.add(f"{path}?{entry.query}" if entry.query else path)
+
+        low = path.lower()
+        always = _ALWAYS_RE is not None and _ALWAYS_RE.search(low)
+        contextual = (
+            entry.status in _ABSENT_STATUSES
+            and _CONTEXTUAL_RE is not None
+            and _CONTEXTUAL_RE.search(low)
+        )
+        if always or contextual:
+            self.vuln_hits += 1
+            if self.vuln_sample is None:
+                self.vuln_sample = []
+            if len(self.vuln_sample) < 5 and path not in self.vuln_sample:
+                self.vuln_sample.append(path)
+        # Only POSTs count: the spam signature is *submitting* to these endpoints.
+        # The patterns are bare substrings ("comment", "contact", "register"), so
+        # counting GETs would over-fire on benign reads like /contact or
+        # /comments/feed and add spurious SPAM_BOT confidence/evidence.
+        if entry.method == "POST" and _SUBMIT_RE is not None and _SUBMIT_RE.search(low):
+            self.submit_hits += 1
+        haystack = low + (entry.query or "").lower()
+        if _TRAVERSAL_RE.search(haystack):
+            self.traversal_hits += 1
+        if _EVASION_RE.search(haystack):
+            self.evasion_hits += 1
+
+        if entry.method:
+            if self.methods is None:
+                self.methods = {}
+            self.methods[entry.method] = self.methods.get(entry.method, 0) + 1
+        if self.distinct_paths is None:
+            self.distinct_paths = set()
+        self.distinct_paths.add(path)
+        # Distinct full targets (path + query), capped: a redirect / link checker hitting
+        # /check?uri=<a-different-site-each-time> varies only the query, so by bare path it
+        # looks like it polls one URL over and over when it is processing a fresh target
+        # every request. Lets the "polls a few URLs repeatedly" signals tell them apart.
+        if self.distinct_targets is None:
+            self.distinct_targets = set()
+        if len(self.distinct_targets) < _DISTINCT_TARGET_CAP:
+            self.distinct_targets.add(f"{path}?{entry.query}" if entry.query else path)
+        content_type = _response_content_type(entry)  # parsed once for this request
+        media = _media_from(content_type, entry.status)
+        static = _is_static(path, media)
+        if static:
+            self.static_count += 1
+        if _is_feed_request(path, content_type):
+            self.feed_requests += 1
+
+        self._track_robots(path)
+        self._track_referer(entry)
+        self._track_breadth(path)
+        self._track_timing_and_coload(entry, path, static, media)
+
+    def _track_robots(self, path: str) -> None:
+        if path == "/robots.txt":
+            self.fetched_robots = True
+            if not self._content_seen:
+                self.robots_fetched_first = True
+            return  # robots.txt is always fetchable; never a disallowed hit
+        self._content_seen = True
+        if self._disallowed_check is not None and path and self._disallowed_check(path):
+            self.disallowed_hits += 1
+            if self.disallowed_sample is None:
+                self.disallowed_sample = []
+            if len(self.disallowed_sample) < 5 and path not in self.disallowed_sample:
+                self.disallowed_sample.append(path)
+
+    def _track_referer(self, entry: LogEntry) -> None:
+        if entry.referer:
+            self.ref_total += 1
+            referer_path = _referer_path(entry.referer)
+            if referer_path == entry.path:
+                # Referer equals the requested URL -- impossible from real
+                # navigation (you don't arrive at a page from itself), so it is a
+                # fabricated referer, not evidence of on-site link following.
+                self.self_referer_hits += 1
+            elif self.distinct_paths is not None and referer_path in self.distinct_paths:
+                self.ref_onsite += 1
+            # A same-site Referer, tallied by the Referer's own host form (www vs bare
+            # apex). A Referer naming a form the site only ever redirects (never
+            # renders) is impossible from a real browser -- whether the request itself
+            # went to the apex or to that redirect-only form directly (URL-replaying
+            # automation hits the www host and just eats the 301, carrying a www
+            # Referer). Which form is redirect-only is a pipeline gate, so tally both
+            # and let the classifier read the matching one; the other is ordinary
+            # same-site navigation, never consulted for that site. Anchored to the same
+            # registrable site as the served host -- needs a served host in the log.
+            ref_host = referer_host(entry.referer)
+            served_host = bare_host(_served_host(entry))
+            if (
+                ref_host is not None
+                and served_host is not None
+                and site_key(ref_host) == site_key(served_host)
+            ):
+                if ref_host.startswith("www."):
+                    self.www_referer_hits += 1
+                else:
+                    self.apex_referer_hits += 1
+
+    def _track_breadth(self, path: str) -> None:
+        top = _top_segment(path)
+        if self._has_prev:
+            self.breadth_pairs += 1
+            if top != self._prev_top:
+                self.breadth_changes += 1
+        self._prev_top = top
+        self._has_prev = True
+
+    def _track_timing_and_coload(
+        self, entry: LogEntry, path: str, static: bool, media: str
+    ) -> None:
+        stamp = entry.timestamp
+        if stamp is not None:
+            if self.first_seen is None or stamp < self.first_seen:
+                self.first_seen = stamp
+            if self.last_seen is None or stamp > self.last_seen:
+                self.last_seen = stamp
+        ts = stamp.timestamp() if stamp is not None else None
+        if ts is not None:
+            self._record_arrival(ts, static)
+        pending = self._pending_pages
+        if ts is not None and pending is not None:
+            while pending and pending[0][0] < ts - _COLOAD_WINDOW_SECONDS:
+                pending.popleft()
+        if _is_page(entry.status, path, media):
+            self.pages_total += 1
+            if ts is not None:
+                if self._pending_pages is None:
+                    self._pending_pages = deque()
+                self._pending_pages.append((ts, path))
+        elif static and ts is not None and pending and entry.referer and entry.referer != "-":
+            # A sub-resource counts as a co-load only when its Referer names the page it
+            # hangs off -- a genuine page cascade -- not merely because it arrived within the
+            # window of some unrelated page (a poller's or a costume's bare batch, which the
+            # old timing-only rule mis-credited). Browser-chrome requests (favicon /
+            # apple-touch-icon) are excluded even with a Referer -- they are not rendered page
+            # content. One asset satisfies at most one pending page-fetch, the one its Referer
+            # points at; that page is then removed so a second asset can't re-credit it.
+            # Assumes same-origin assets, so the page's path survives in the Referer (#109).
+            if not _is_chrome_asset(path):
+                ref_path = _referer_path(entry.referer)
+                for i, (_pts, ppath) in enumerate(pending):
+                    if ppath == ref_path:
+                        self.pages_satisfied += 1
+                        del pending[i]
+                        break
+
+    def _record_arrival(self, ts: float, static: bool) -> None:
+        """Fold one request's timestamp into the bounded timing summary.
+
+        Volume (peak requests/minute) counts every request. Inter-arrival *cadence*
+        (median / min / p95 / regularity) counts only navigations, not static
+        sub-resources: a browser bursts a page's CSS/JS/images within milliseconds, so
+        including them would read the client's rhythm as machine-fast (median ~0s) and
+        drown the human page-to-page pace. Assets are excluded from the cadence; pages and
+        other non-asset requests set it. A scanner fetches URLs, not sub-resources, so its
+        fast cadence is unaffected."""
+        if self._minute_counts is None:
+            self._minute_counts = {}
+        minute = int(ts // 60)
+        self._minute_counts[minute] = self._minute_counts.get(minute, 0) + 1
+        if static:
+            return
+        # Inter-arrival in stream order (≈ time order). An out-of-order (earlier)
+        # timestamp is skipped -- but the baseline must NOT retreat to it, or the
+        # next in-order delta is measured from the wrong point and inflated. Keep
+        # _prev_ts monotonic so it always tracks the latest non-asset timestamp seen.
+        if self._prev_ts is None:
+            self._prev_ts = ts
+        elif ts >= self._prev_ts:
+            self._record_delta(ts - self._prev_ts)
+            self._prev_ts = ts
+
+    def _record_delta(self, delta: float) -> None:
+        self._iat_count += 1
+        self._iat_sum += delta
+        self._iat_sumsq += delta * delta
+        if self._iat_min is None or delta < self._iat_min:
+            self._iat_min = delta
+        if self._iat_hist is not None:
+            self._iat_hist[_iat_bucket(delta)] += 1
+            return
+        if self._iat_buf is None:
+            self._iat_buf = array("d")
+        self._iat_buf.append(delta)
+        if len(self._iat_buf) > _IAT_BUF_CAP:  # outgrew the exact buffer -> histogram
+            self._ensure_iat_hist()
+
+    def _ensure_iat_hist(self) -> None:
+        if self._iat_hist is not None:
+            return
+        self._iat_hist = [0] * _IAT_BUCKETS
+        for delta in self._iat_buf or ():
+            self._iat_hist[_iat_bucket(delta)] += 1
+        self._iat_buf = None
+
+    def _timing_stats(self) -> dict[str, float | None]:
+        """Inter-arrival statistics (seconds): mean/min/CV exact, quantiles binned."""
+        if self._iat_count < 1:
+            return {"mean": None, "median": None, "p95": None, "min": None, "cv": None}
+        mean = self._iat_sum / self._iat_count
+        variance = max(0.0, self._iat_sumsq / self._iat_count - mean * mean)
+        cv = (math.sqrt(variance) / mean) if mean > 0 else None
+        if self._iat_hist is not None:
+            median = _hist_quantile(self._iat_hist, self._iat_count, 0.5)
+            p95 = _hist_quantile(self._iat_hist, self._iat_count, 0.95)
+        else:
+            buf = sorted(self._iat_buf or array("d"))
+            median = _median(buf)
+            p95 = buf[min(len(buf) - 1, round(0.95 * (len(buf) - 1)))]
+        return {"mean": mean, "median": median, "p95": p95, "min": self._iat_min, "cv": cv}
+
+    def _request_buckets(self) -> tuple[int, ...]:
+        """Fold the per-minute counts into ``_REQUEST_BUCKETS`` equal-width slices
+        of the client's active span -- the source histogram for the report's
+        request-pattern sparkline. Empty when there is nothing plottable: no
+        timestamps, or a span that fits inside a single minute (a sub-minute burst
+        has no cadence at the resolution we recorded)."""
+        counts = self._minute_counts
+        if not counts or self.first_seen is None or self.last_seen is None:
+            return ()
+        first = int(self.first_seen.timestamp() // 60)
+        span = int(self.last_seen.timestamp() // 60) - first
+        if span <= 0:
+            return ()
+        last_idx = _REQUEST_BUCKETS - 1
+        buckets = [0] * _REQUEST_BUCKETS
+        for minute, hits in counts.items():
+            # Scale by the bucket *count* for even-width bins: every bucket covers a
+            # span/_REQUEST_BUCKETS slice. The final minute scales to exactly
+            # _REQUEST_BUCKETS and the clamp folds it into the last bin. (Scaling by
+            # the last index instead would make the last bin a single-minute sliver.)
+            idx = ((minute - first) * _REQUEST_BUCKETS) // span
+            buckets[min(last_idx, max(0, idx))] += hits
+        return tuple(buckets)
+
+    def merge(self, other: FeatureAccumulator) -> None:
+        """Fold ``other`` into this accumulator (used to collapse a bot's IPs).
+
+        Counts and unions combine exactly; timing summaries combine additively
+        (sums, min, histograms, per-minute counts); order-dependent counters are
+        summed (each member was a separate connection, so summing is sound).
+        """
+        self.count += other.count
+        self.total_bytes += other.total_bytes
+        self.count_404 += other.count_404
+        self.vuln_hits += other.vuln_hits
+        self.submit_hits += other.submit_hits
+        self.traversal_hits += other.traversal_hits
+        self.evasion_hits += other.evasion_hits
+        self.static_count += other.static_count
+        self.breadth_changes += other.breadth_changes
+        self.breadth_pairs += other.breadth_pairs
+        self.ref_total += other.ref_total
+        self.ref_onsite += other.ref_onsite
+        self.self_referer_hits += other.self_referer_hits
+        self.www_referer_hits += other.www_referer_hits
+        self.apex_referer_hits += other.apex_referer_hits
+        self.pages_total += other.pages_total
+        self.pages_satisfied += other.pages_satisfied
+        self.feed_requests += other.feed_requests
+        self.disallowed_hits += other.disallowed_hits
+        self.fetched_robots = self.fetched_robots or other.fetched_robots
+        self.robots_fetched_first = self.robots_fetched_first or other.robots_fetched_first
+        if self.user_agent is None:
+            self.user_agent = other.user_agent
+        if self.as_org is None:
+            self.as_org = other.as_org
+        if self.as_number is None:
+            self.as_number = other.as_number
+        for problem, count in other.wba_unusable.items():
+            self.wba_unusable[problem] = self.wba_unusable.get(problem, 0) + count
+        for claim in other.wba_claims:
+            if len(self.wba_claims) >= _WBA_SAMPLE_CAP:
+                break
+            if all(c.signature != claim.signature for c in self.wba_claims):
+                self.wba_claims.append(claim)
+        if other.first_seen is not None and (
+            self.first_seen is None or other.first_seen < self.first_seen
+        ):
+            self.first_seen = other.first_seen
+        if other.last_seen is not None and (
+            self.last_seen is None or other.last_seen > self.last_seen
+        ):
+            self.last_seen = other.last_seen
+        self.status_counts = _merge_counts(self.status_counts, other.status_counts)
+        self.methods = _merge_counts(self.methods, other.methods)
+        self.targets_404 = _merge_sets(self.targets_404, other.targets_404)
+        self.distinct_paths = _merge_sets(self.distinct_paths, other.distinct_paths)
+        self.distinct_targets = _merge_sets(self.distinct_targets, other.distinct_targets)
+        self.vuln_sample = _merge_sample(self.vuln_sample, other.vuln_sample)
+        self.disallowed_sample = _merge_sample(self.disallowed_sample, other.disallowed_sample)
+        if self._trace is not None and other._trace:  # pylint: disable=protected-access
+            room = self._trace_cap - len(self._trace)
+            if room > 0:
+                self._trace.extend(other._trace[:room])  # pylint: disable=protected-access
+        self._merge_timing(other)
+
+    def _merge_timing(self, other: FeatureAccumulator) -> None:
+        # Combines a sibling accumulator's internals.
+        # pylint: disable=protected-access
+        self._iat_count += other._iat_count
+        self._iat_sum += other._iat_sum
+        self._iat_sumsq += other._iat_sumsq
+        if other._iat_min is not None and (self._iat_min is None or other._iat_min < self._iat_min):
+            self._iat_min = other._iat_min
+        if other._minute_counts:
+            if self._minute_counts is None:
+                self._minute_counts = {}
+            for minute, hits in other._minute_counts.items():
+                self._minute_counts[minute] = self._minute_counts.get(minute, 0) + hits
+        # Combine the inter-arrival distributions. If either side already binned,
+        # or together they'd outgrow the exact buffer, both go to the histogram.
+        buffered = len(self._iat_buf or ()) + len(other._iat_buf or ())
+        if self._iat_hist is not None or other._iat_hist is not None or buffered > _IAT_BUF_CAP:
+            self._ensure_iat_hist()
+            assert self._iat_hist is not None  # _ensure_iat_hist just built it
+            if other._iat_hist is not None:
+                for idx, hits in enumerate(other._iat_hist):
+                    self._iat_hist[idx] += hits
+            else:
+                for delta in other._iat_buf or ():
+                    self._iat_hist[_iat_bucket(delta)] += 1
+        elif other._iat_buf:
+            if self._iat_buf is None:
+                self._iat_buf = array("d")
+            self._iat_buf.extend(other._iat_buf)
+
+    def trace(self) -> tuple[LogEntry, ...]:
+        """The bounded first-N sample kept for an inspect trace.
+
+        Empty unless this accumulator was built with ``keep_trace > 0``. The
+        renderer re-sorts by timestamp, so arrival order here is fine.
+        """
+        return tuple(self._trace) if self._trace is not None else ()
+
+    def finalize(self, *, ua_count_for_ip: int = 1) -> ClientFeatures:
+        if self.count == 0:
+            return ClientFeatures()
+        status_counts = self.status_counts or {}
+        methods = self.methods or {}
+        with_status = sum(status_counts.values())
+        classes: Counter[int] = Counter()
+        for status, hits in status_counts.items():
+            classes[status // 100] += hits
+        timing = self._timing_stats()
+        peak_rpm = max(self._minute_counts.values()) if self._minute_counts else 0
+        duration = (
+            (self.last_seen - self.first_seen).total_seconds()
+            if self.first_seen is not None and self.last_seen is not None
+            else 0.0
+        )
+        distinct = len(self.distinct_paths) if self.distinct_paths is not None else 0
+        distinct_targets = len(self.distinct_targets) if self.distinct_targets is not None else 0
+        return ClientFeatures(
+            request_count=self.count,
+            total_bytes=self.total_bytes,
+            mean_bytes=self.total_bytes / self.count,
+            first_seen=self.first_seen,
+            last_seen=self.last_seen,
+            duration_seconds=duration,
+            status_counts=dict(status_counts),
+            ratio_2xx=_ratio(classes.get(2, 0), with_status),
+            ratio_3xx=_ratio(classes.get(3, 0), with_status),
+            ratio_4xx=_ratio(classes.get(4, 0), with_status),
+            ratio_5xx=_ratio(classes.get(5, 0), with_status),
+            ratio_404=_ratio(self.count_404, with_status),
+            distinct_404_targets=len(self.targets_404) if self.targets_404 is not None else 0,
+            vuln_path_hits=self.vuln_hits,
+            vuln_path_ratio=_ratio(self.vuln_hits, self.count),
+            sample_vuln_paths=tuple(self.vuln_sample or ()),
+            submit_path_hits=self.submit_hits,
+            traversal_hits=self.traversal_hits,
+            evasion_hits=self.evasion_hits,
+            inter_arrival_mean=timing["mean"],
+            inter_arrival_median=timing["median"],
+            inter_arrival_p95=timing["p95"],
+            inter_arrival_min=timing["min"],
+            peak_requests_per_minute=peak_rpm,
+            rate_regularity=timing["cv"],
+            request_buckets=self._request_buckets(),
+            distinct_paths=distinct,
+            distinct_targets=distinct_targets,
+            coverage=_ratio(distinct, self.count),
+            breadth_ratio=_ratio(self.breadth_changes, self.breadth_pairs),
+            referer_following_ratio=_ratio(self.ref_onsite, self.ref_total),
+            self_referer_ratio=_ratio(self.self_referer_hits, self.ref_total),
+            referer_count=self.ref_total,
+            www_referer_hits=self.www_referer_hits,
+            www_referer_ratio=_ratio(self.www_referer_hits, self.count),
+            apex_referer_hits=self.apex_referer_hits,
+            apex_referer_ratio=_ratio(self.apex_referer_hits, self.count),
+            asset_coload_ratio=_ratio(self.pages_satisfied, self.pages_total),
+            static_ratio=_ratio(self.static_count, self.count),
+            page_count=self.pages_total,
+            method_counts=dict(methods),
+            get_ratio=_ratio(methods.get("GET", 0), self.count),
+            head_ratio=_ratio(methods.get("HEAD", 0), self.count),
+            post_ratio=_ratio(methods.get("POST", 0), self.count),
+            exotic_method_count=sum(v for m, v in methods.items() if m in _EXOTIC_METHODS),
+            feed_requests=self.feed_requests,
+            wba_unusable=dict(self.wba_unusable),
+            feed_ratio=_ratio(self.feed_requests, self.count),
+            fetched_robots_txt=self.fetched_robots,
+            user_agent=self.user_agent,
+            ua_looks_like_browser=uas.looks_like_browser(self.user_agent),
+            ua_declares_bot=uas.declares_bot(self.user_agent),
+            ua_empty=uas.is_empty(self.user_agent),
+            ua_count_for_ip=ua_count_for_ip,
+            as_org=self.as_org,
+            as_number=self.as_number,
+        )
+
+
+def extract_features(entries: Sequence[LogEntry], *, ua_count_for_ip: int = 1) -> ClientFeatures:
+    """Compute the feature vector for one client's entries (timestamp-ordered)."""
+    accumulator = FeatureAccumulator()
+    timed = sorted((e for e in entries if e.timestamp is not None), key=_by_timestamp)
+    for entry in timed:
+        accumulator.add(entry)
+    for entry in (e for e in entries if e.timestamp is None):
+        accumulator.add(entry)
+    return accumulator.finalize(ua_count_for_ip=ua_count_for_ip)
+
+
+def _by_timestamp(entry: LogEntry) -> datetime:
+    assert entry.timestamp is not None
+    return entry.timestamp

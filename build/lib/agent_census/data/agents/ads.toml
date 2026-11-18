@@ -1,0 +1,57 @@
+# Ad-platform fetchers: they check the landing pages advertisers submit, or match ads to a
+# publisher's content. Not search, and not AI training. Same [[agent]] format as the other
+# files in this directory; see README.md.
+
+# Google's ad fetchers, from its special-case crawlers page. Reverse DNS is
+# rate-limited-proxy-*.google.com, ranges in special-crawlers.json. The retired
+# AdsBot-Google-Mobile-Apps is left out.
+# https://developers.google.com/crawling/docs/crawlers-fetchers/google-special-case-crawlers
+[[agent]]
+ua_substring = "AdsBot-Google-Mobile"
+domains = ["google.com"]
+ranges_url = "https://developers.google.com/static/crawling/ipranges/special-crawlers.json"
+
+[[agent]]
+ua_substring = "AdsBot-Google"
+domains = ["google.com"]
+ranges_url = "https://developers.google.com/static/crawling/ipranges/special-crawlers.json"
+
+[[agent]]
+ua_substring = "Mediapartners-Google"
+domains = ["google.com"]
+ranges_url = "https://developers.google.com/static/crawling/ipranges/special-crawlers.json"
+
+# Bing's ad crawler. Its UA carries Bingbot's info URL (bingbot.htm), so `ads` is checked
+# before `search_engine` or it would be read as Bingbot. Verified by reverse DNS alone,
+# since Bing doesn't say bingbot.json covers it.
+# https://www.bing.com/webmasters/help/which-crawlers-does-bing-use-8c184ec0
+[[agent]]
+ua_substring = "AdIdxBot"
+domains = ["search.msn.com"]
+
+[[agent]]
+# Checks landing pages submitted as ads on ChatGPT. OpenAI publishes ranges, no reverse DNS.
+ua_substring = "OAI-AdsBot"
+ranges_url = "https://openai.com/adsbot.json"
+
+[[agent]]
+# https://developers.facebook.com/docs/sharing/webmasters/web-crawlers/
+ua_substring = "Meta-ExternalAds"
+
+# Yandex's advertising robots (YandexDirect also covers YandexDirectDyn).
+# https://yandex.com/support/webmaster/en/robot-workings/check-yandex-robots
+[[agent]]
+ua_substring = "YaDirectFetcher"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexDirect"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexAdNet"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]
+
+[[agent]]
+ua_substring = "YandexPartner"
+domains = ["yandex.com", "yandex.net", "yandex.ru"]

@@ -1,0 +1,120 @@
+# Vulnerability / measurement scanners that publish a fixed origin range, so a
+# UA claiming to be one can be authenticated against it under --verify-bots.
+#
+# Presence here does NOT make a scanner a "good crawler": its kind is still
+# decided behaviourally (see classify/vuln_scanner.py). These entries only bind
+# the declared identity to a verifiable origin -- in-range confirms it, a
+# definitely out-of-range hit on the same UA is an impersonator.
+#
+# ua_substring is matched case-insensitively. Optional: ranges (inline CIDRs),
+# ranges_url (published feed, fetched + cached), domains (rDNS suffixes).
+
+[[agent]]
+# Palo Alto Networks' Cortex Xpanse internet-measurement scanner. Its UA carries
+# the docs URL below, which contains the "Cortex-Xpanse" token this matches on.
+# Ranges published at (and verified against):
+# https://docs-cortex.paloaltonetworks.com/r/1/Cortex-Xpanse/Scanning-activity
+name = "Cortex Xpanse"
+ua_substring = "Cortex-Xpanse"
+ranges = [
+    "35.203.210.0/23",
+    "144.86.173.0/24",
+    "147.185.132.0/23",
+    "162.216.149.0/24",
+    "162.216.150.0/24",
+    "172.105.147.0/24",
+    "198.235.24.0/24",
+    "205.210.31.0/24",
+    "216.25.88.0/21",
+    "2604:a940:300:5b6::/64",
+    "2604:a940:301:225::/64",
+    "2604:a940:302:118::/64",
+]
+
+[[agent]]
+# Driftnet's internet-measurement scanner (UA token "InternetMeasurement",
+# carrying +https://internet-measurement.com). Ranges published at (and verified
+# against): https://internet-measurement.com/
+name = "Driftnet"
+ua_substring = "InternetMeasurement"
+ranges = [
+    "87.236.176.0/24",
+    "185.247.137.0/24",
+    "193.163.125.0/24",
+    "195.96.139.0/24",
+    "45.55.151.3/32",
+    "45.55.153.86/32",
+    "45.55.158.168/32",
+    "45.55.185.224/32",
+    "45.55.186.92/32",
+    "64.227.99.138/32",
+    "64.227.108.146/32",
+    "64.227.109.89/32",
+    "64.227.110.161/32",
+    "107.170.65.169/32",
+    "128.199.8.140/32",
+    "157.245.243.118/32",
+    "157.245.245.246/32",
+    "159.65.216.50/32",
+    "159.65.219.252/32",
+    "162.243.114.171/32",
+    "162.243.116.182/32",
+    "162.243.208.127/32",
+    "167.99.234.119/32",
+    "192.241.179.235/32",
+    "2a06:4880::/29",
+    "2604:a880:0:202a::b41:8000/124",
+    "2604:a880:0:202a::b41:a000/124",
+    "2604:a880:0:202a::b41:b000/124",
+    "2604:a880:0:202a::b42:d000/124",
+    "2604:a880:0:202a::b42:e000/124",
+    "2604:a880:4:1d0::2fa6:a000/124",
+    "2604:a880:4:1d0::2fa6:b000/124",
+    "2604:a880:4:1d0::2fa6:c000/124",
+    "2604:a880:4:1d0::2fa6:d000/124",
+    "2604:a880:4:1d0::2fa6:e000/124",
+    "2604:a880:400:d1::91e4:a000/124",
+    "2604:a880:400:d1::91e4:b000/124",
+    "2604:a880:400:d1::91e4:c000/124",
+    "2604:a880:400:d1::91e4:d000/124",
+    "2604:a880:400:d1::91e4:e000/124",
+    "2604:a880:800:14::5633:8000/124",
+    "2604:a880:800:14::5633:9000/124",
+    "2604:a880:800:14::5633:a000/124",
+    "2604:a880:800:14::5633:b000/124",
+    "2604:a880:800:14::5633:c000/124",
+]
+
+[[agent]]
+# Censys' internet-measurement scanner (UA token "CensysInspect", carrying
+# +https://about.censys.io/). Censys tells operators to block its subnets *and*
+# its ASNs -- it scans from IPs across ASNs it owns beyond the published subnets
+# -- so ranges and asns are declared together and combine as an OR: in-subnet is a
+# strong VERIFIED, an in-ASN hit outside the subnets is ASN_ASSOCIATED, only a hit
+# outside both is an impersonator. Both published at (and verified against):
+# https://docs.censys.com/docs/opt-out-of-data-collection
+name = "Censys"
+ua_substring = "CensysInspect"
+ranges = [
+    "66.132.159.0/24",
+    "66.132.148.0/24",
+    "66.132.153.0/24",
+    "66.132.224.0/24",
+    "66.132.186.0/24",
+    "66.132.195.0/24",
+    "66.132.172.0/24",
+    "162.142.125.0/24",
+    "167.94.138.0/24",
+    "167.94.145.0/24",
+    "167.94.146.0/24",
+    "167.248.133.0/24",
+    "199.45.154.0/24",
+    "199.45.155.0/24",
+    "206.168.34.0/24",
+    "206.168.35.0/24",
+    "2602:80d:1000:b0cc:e::/80",
+    "2620:96:e000:b0cc:e::/80",
+    "2602:80d:1003::/112",
+    "2602:80d:1004::/112",
+]
+asns = [398722, 398705, 398324]

@@ -1,0 +1,98 @@
+# SEO / marketing / brand-monitoring crawlers: backlink indexes, rank trackers,
+# social-listening bots. Declared, but crawl for commercial third parties rather
+# than to serve the site's own audience. Most publish IP ranges, not reverse DNS.
+
+[[agent]]
+# https://ahrefs.com/robot
+ua_substring = "AhrefsBot"
+domains = ["ahrefs.com", "ahrefs.net"]
+ranges_url = "https://api.ahrefs.com/v3/public/crawler-ip-ranges"
+wba_operator = "Ahrefs"  # agents/web_bot_auth.toml
+
+[[agent]]
+# https://ahrefs.com/robot
+ua_substring = "AhrefsSiteAudit"
+domains = ["ahrefs.com", "ahrefs.net"]
+ranges_url = "https://api.ahrefs.com/v3/public/crawler-ip-ranges"
+wba_operator = "Ahrefs"  # agents/web_bot_auth.toml
+
+[[agent]]
+# https://www.semrush.com/bot/
+ua_substring = "SemrushBot"
+# asns = [209366]
+
+# Semrush's other UAs that don't carry the SemrushBot token.
+[[agent]]
+# https://www.semrush.com/bot/
+ua_substring = "SiteAuditBot"
+
+[[agent]]
+# https://www.semrush.com/bot/
+ua_substring = "SplitSignalBot"
+
+[[agent]]
+# https://www.semrush.com/bot/
+ua_substring = "RyteBot"
+
+[[agent]]
+# https://mj12bot.com
+ua_substring = "MJ12bot"
+
+[[agent]]
+# https://moz.com/help/moz-procedures/crawlers/dotbot
+ua_substring = "DotBot"
+
+[[agent]]
+# https://moz.com/help/moz-procedures/crawlers/rogerbot
+ua_substring = "rogerbot"
+
+[[agent]]
+# https://dataforseo.com/dataforseo-bot
+ua_substring = "DataForSeoBot"
+domains = ["dataforseo.com"]
+
+[[agent]]
+# https://www.zoominfo.com/legal/zoominfobot
+ua_substring = "ZoominfoBot"
+
+[[agent]]
+# https://awario.com/bots.html
+ua_substring = "AwarioBot"
+
+[[agent]]
+# https://seranking.com/backlinks-crawler
+ua_substring = "SERankingBacklinksBot"
+domains = ["seranking.com"]
+
+[[agent]]
+ua_substring = "Mediatoolkitbot"
+
+[[agent]]
+ua_substring = "BrokenLinksBot"
+
+[[agent]]
+ua_substring = "SerpMinerBot"
+
+[[agent]]
+ua_substring = "SiteCheckerBotCrawler"
+
+[[agent]]
+ua_substring = "linkfluence"
+
+[[agent]]
+ua_substring = "WebTrackrCrawler"
+
+[[agent]]
+ua_substring = "BLEXBot"
+
+[[agent]]
+# https://www.babbar.tech/crawler
+ua_substring = "Barkrowler"
+domains = ["babbar.eu"]
+ranges_url = "https://www.babbar.tech/barkrowler-ip-ranges.json"
+
+[[agent]]
+# https://serpstatbot.com
+ua_substring = "serpstatbot"
+ranges_url = "https://serpstatbot.com/serpstatbot-ip.txt"
+format = "text"  # one CIDR per line, not JSON

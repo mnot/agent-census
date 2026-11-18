@@ -1,0 +1,174 @@
+# AI / LLM data-gathering crawlers. Assistants that fetch at a person's request are in
+# ai_user.toml.
+# ranges_url points at a provider's published IP ranges in the Google/OpenAI
+# {"prefixes":[{"ipv4Prefix": ...}, ...]} schema; fetched + cached under
+# --verify-bots and the right signal for crawlers that don't support reverse DNS.
+
+[[agent]]
+# https://developers.openai.com/api/docs/bots
+ua_substring = "GPTBot"
+domains = ["openai.com"]
+ranges_url = "https://openai.com/gptbot.json"
+rdns_fallback = true
+
+[[agent]]
+ua_substring = "OAI-SearchBot"
+domains = ["openai.com"]
+ranges_url = "https://openai.com/searchbot.json"
+rdns_fallback = true
+
+[[agent]]
+# https://support.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler
+ua_substring = "ClaudeBot"
+ranges_url = "https://claude.com/crawling/bots.json"
+rdns_fallback = true
+
+[[agent]]
+ua_substring = "Claude-SearchBot"
+ranges_url = "https://claude.com/crawling/bots.json"
+rdns_fallback = true
+
+[[agent]]
+# https://developers.google.com/crawling/docs/crawlers-fetchers/google-common-crawlers
+ua_substring = "Google-CloudVertexBot"
+# Google gives no reverse-DNS pattern for this bot specifically, so the ranges lead.
+domains = ["googlebot.com"]
+ranges_url = "https://developers.google.com/static/crawling/ipranges/common-crawlers.json"
+rdns_fallback = true
+
+[[agent]]
+# https://docs.perplexity.ai/docs/resources/perplexity-crawlers
+ua_substring = "PerplexityBot"
+ranges_url = "https://www.perplexity.ai/perplexitybot.json"
+
+[[agent]]
+# https://docs.mistral.ai/robots
+ua_substring = "MistralAI-Index"
+ranges_url = "https://mistral.ai/mistralai-index-ips.json"
+
+[[agent]]
+# https://docs.mistral.ai/robots (publishes no IPs for this one)
+ua_substring = "MistralAI-Training"
+
+[[agent]]
+# https://developer.amazon.com/amazonbot
+ua_substring = "Amazonbot"
+ranges_url = "https://developer.amazon.com/amazonbot/ip-addresses/"
+format = "amazon"
+
+[[agent]]
+# https://docs.aws.amazon.com/quick/latest/userguide/web-crawler-integration.html
+ua_substring = "amazon-Quick-on-behalf-of-"
+
+[[agent]]
+ua_substring = "Bytespider"
+
+[[agent]]
+ua_substring = "TikTokSpider"
+
+[[agent]]
+ua_substring = "cohere-ai"
+
+[[agent]]
+ua_substring = "cohere-training-data-crawler"
+
+[[agent]]
+ua_substring = "ImagesiftBot"
+
+[[agent]]
+# https://you.com/docs/youbot
+ua_substring = "YouBot"
+domains = ["search.you.com"]
+ranges = ["68.67.112.0/24"]
+wba_operator = "You"
+
+[[agent]]
+# https://developers.facebook.com/docs/sharing/webmasters/web-crawlers/
+ua_substring = "Meta-webindexer"
+
+[[agent]]
+# https://developers.facebook.com/docs/sharing/webmasters/web-crawlers/
+ua_substring = "Meta-externalagent"
+
+# Kimi (Moonshot). Its UAs link to the policy page below; the three feeds list the same four IPs.
+[[agent]]
+# https://www.kimi.com/policies/kimi-crawlers
+ua_substring = "KimiBot"
+ranges_url = "https://www.kimi.com/policies/kimibot.json"
+
+[[agent]]
+ua_substring = "Kimi-SearchBot"
+ranges_url = "https://www.kimi.com/policies/kimi-searchbot.json"
+
+[[agent]]
+ua_substring = "kagi-fetcher"
+
+[[agent]]
+# https://www.linkup.so/bot
+ua_substring = "LinkupBot"
+ranges_url = "https://www.linkup.so/linkupbot-ips.txt"
+format = "text"
+
+[[agent]]
+ua_substring = "Timpibot"
+
+[[agent]]
+# https://www.semanticscholar.org/crawler
+ua_substring = "SemanticScholarBot"
+
+[[agent]]
+# https://www.lyrenth.com/bot -- the on-demand fetcher, run when a customer asks the index for
+# a specific URL; before AIWebIndex, which would otherwise match it.
+ua_substring = "AIWebIndex-Agent"
+domains = ["lyrenth.com"]
+ranges_url = "https://www.lyrenth.com/bot/ip-ranges.json"
+user_triggered = true
+wba_operator = "Lyrenth"
+
+[[agent]]
+# https://www.lyrenth.com/bot
+ua_substring = "AIWebIndex"
+domains = ["lyrenth.com"]
+ranges_url = "https://www.lyrenth.com/bot/ip-ranges.json"
+wba_operator = "Lyrenth"
+
+# Iframely's Processing agent does indexing, search and AI-assisted retrieval for its customers, and
+# the Training agent fetches for AI training where the publisher allows it. Its Preview agent is in
+# social_preview.toml.
+[[agent]]
+# https://iframely.com/docs/about-processing
+ua_substring = "Iframely-Processing"
+domains = ["iframely.com"]
+ranges_url = ["https://iframely.com/ips-v4", "https://iframely.com/ips-v6"]
+format = "text"
+rdns_fallback = true
+wba_operator = "Iframely"
+
+[[agent]]
+# https://iframely.com/docs/about-training
+ua_substring = "Iframely-Training"
+domains = ["iframely.com"]
+ranges_url = ["https://iframely.com/ips-v4", "https://iframely.com/ips-v6"]
+format = "text"
+rdns_fallback = true
+wba_operator = "Iframely"
+
+# Recognised by origin AS number, not a User-Agent token: this network crawls
+# behind rotating spoofed-browser UAs (HeadlessChrome, old Chrome), so there is
+# no stable token to match.
+# See also: https://www.reuters.com/technology/artificial-intelligence/after-deepseek-leap-forward-russias-sberbank-plans-joint-ai-research-with-china-2025-02-06/
+[[agent]]
+name = "Sberbank"
+asns = [35237, 47457]
+asn_primary = true
+
+[[agent]]
+# https://colossio.org
+name = "Colossio"
+ua_substring = "colossio"
+
+[[agent]]
+# https://duckduckgo.com/duckduckgo-help-pages/results/duckassistbot
+ua_substring = "DuckAssistBot"
+ranges_url = "https://duckduckgo.com/duckassistbot.json"
+wba_operator = "DuckDuckGo"
